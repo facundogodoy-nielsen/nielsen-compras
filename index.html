@@ -226,6 +226,82 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 ::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-track{background:var(--bg);}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+/* ── PEDIDO ORIGINAL / PAÑOL CHECK ── */
+.pedido-textarea {
+  width:100%; background:var(--s2); border:1px solid var(--border);
+  border-radius:8px; padding:12px 14px; color:var(--text);
+  font-family:var(--fm); font-size:13px; line-height:1.7;
+  outline:none; resize:vertical; min-height:110px;
+  transition:border-color .2s; text-transform:uppercase;
+}
+.pedido-textarea:focus { border-color:var(--or); }
+.pedido-textarea::placeholder { color:var(--muted); font-style:italic; text-transform:none; }
+
+.lista-tbl { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-top:10px; }
+.lista-tbl-hdr {
+  display:grid; grid-template-columns:1fr 90px 36px;
+  background:var(--s3); border-bottom:1px solid var(--border);
+}
+.lista-tbl-hdr div {
+  padding:7px 12px; font-size:9px; font-weight:700;
+  text-transform:uppercase; letter-spacing:1px; color:var(--or);
+}
+.lista-tbl-hdr div:not(:last-child) { border-right:1px solid var(--border); }
+
+.lista-row {
+  display:grid; grid-template-columns:1fr 90px 36px;
+  border-bottom:1px solid var(--border); transition:background .12s;
+}
+.lista-row:last-child { border-bottom:none; }
+.lista-row:nth-child(even) { background:rgba(255,255,255,.015); }
+.lista-row:hover { background:rgba(255,255,255,.03); }
+
+/* Estado de cada ítem en pañol */
+.lista-row.en-stock { background:rgba(34,197,94,.06); }
+.lista-row.en-stock .lc-art { color:var(--muted); text-decoration:line-through; }
+.lista-row.en-stock .lc-cant { color:var(--muted); }
+
+.lc {
+  padding:7px 12px; font-size:12px;
+  display:flex; align-items:center; gap:6px;
+}
+.lc:not(:last-child) { border-right:1px solid var(--border); }
+.lc-num { font-family:var(--fm); font-size:10px; color:var(--or); width:18px; flex-shrink:0; }
+.lc-art { flex:1; color:var(--text); line-height:1.3; }
+.lc-cant { font-family:var(--fm); font-size:13px; font-weight:700; color:var(--text); justify-content:center; }
+.lc input {
+  background:none; border:none; color:inherit;
+  font-family:inherit; font-size:inherit; font-weight:inherit;
+  width:100%; outline:none; text-transform:uppercase; padding:0;
+}
+.lc input::placeholder { color:var(--muted); font-style:italic; }
+
+/* Checkbox pañol */
+.paniol-chk-wrap {
+  justify-content:center;
+}
+.paniol-chk {
+  width:20px; height:20px; border-radius:5px;
+  border:2px solid var(--border2); background:var(--s2);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; transition:all .15s; font-size:12px; flex-shrink:0;
+}
+.paniol-chk.checked { background:var(--green); border-color:var(--green); color:#fff; }
+
+.paniol-legend {
+  display:flex; align-items:center; gap:16px; margin-top:8px;
+  font-size:11px; color:var(--muted); flex-wrap:wrap;
+}
+.paniol-legend span { display:flex; align-items:center; gap:5px; }
+
+.lista-summary {
+  margin-top:8px; padding:8px 12px;
+  background:var(--s3); border-radius:6px;
+  font-size:12px; display:flex; gap:16px; flex-wrap:wrap;
+}
+.ls-item { display:flex; align-items:center; gap:5px; }
+.ls-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 </style>
 </head>
 <body>
@@ -261,17 +337,20 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 <div class="panel active" id="p-0">
   <div class="card">
     <div class="card-title">📄 Orden de Pedido y Servicio</div>
-    <div class="info-box">La SC debe estar asociada a una <strong>Orden de Pedido</strong> y una <strong>Orden de Servicio</strong> vigente.</div>
+    <div class="info-box">
+      El <strong>N° de Orden de Pedido</strong> se genera automáticamente.<br>
+      Ingresá el <strong>N° de Orden de Servicio</strong> según corresponda, o tildá <strong>S/OS</strong> si el pedido no tiene OS asociada.
+    </div>
     <div class="row2">
       <div class="fg">
         <label>N° Orden de Pedido</label>
-        <input type="text" id="op-num" readonly style="color:var(--or);font-family:var(--fm);font-weight:700;background:var(--s3);cursor:default;">
+        <input type="text" id="op-num" readonly style="color:var(--or);font-family:var(--fm);font-size:15px;font-weight:700;background:var(--s3);cursor:default;letter-spacing:1px;border-color:var(--border2);">
       </div>
       <div class="fg">
         <label>N° Orden de Servicio <span class="req">*</span></label>
         <div class="sos-row">
           <input type="text" id="os-num" placeholder="OS-AREA-2026-0001" style="flex:1">
-          <div class="sos-btn" id="sos-btn" onclick="toggleSOS()">
+          <div class="sos-btn" id="sos-btn" onclick="toggleSOS()" title="Tildá si el pedido NO tiene Orden de Servicio">
             <div class="sos-chk" id="sos-chk"></div>
             <span>S/OS</span>
           </div>
@@ -306,6 +385,7 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
           <option value="CAMPAMENTO LA BREA">Campamento La Brea</option>
           <option value="CAMPAMENTO LAS PAILAS">Campamento Las Pailas</option>
           <option value="CAMPAMENTO LA CHOLA">Campamento La Chola</option>
+          <option value="CAMPAMENTO BATIDERO / VICUÑA">Campamento Batidero / Vicuña</option>
         </optgroup>
         <optgroup label="Base / Oficinas">
           <option value="BASE SAN JUAN">Base San Juan</option>
@@ -318,7 +398,61 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
       </select>
     </div>
   </div>
-  <div class="nav-row">
+    <div class="fg" style="margin-top:6px">
+      <label>Listado del Pedido Original <span class="req">*</span></label>
+      <textarea class="pedido-textarea" id="pedido-texto" oninput="onPedidoInput()"
+        placeholder="Pegá o escribí el listado acá..."></textarea>
+
+      <!-- GUÍA DE FORMATOS ACEPTADOS -->
+      <div style="margin-top:10px;background:var(--s3);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+        <div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">
+          📋 Formatos aceptados — el sistema detecta artículo y cantidad automáticamente
+        </div>
+        <div style="display:grid;gap:5px">
+          <div style="display:flex;align-items:center;gap:10px;font-size:12px">
+            <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0">→</span>
+            <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:3px 8px;border-radius:4px;flex:1">TORNILLOS M8 x 50MM - 300 UNIDADES</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:12px">
+            <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0">→</span>
+            <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:3px 8px;border-radius:4px;flex:1">LANA DE VIDRIO - 25 MT2</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:12px">
+            <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0">→</span>
+            <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:3px 8px;border-radius:4px;flex:1">5 u — RODAMIENTO SKF 6205-2RS</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:12px">
+            <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0">→</span>
+            <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:3px 8px;border-radius:4px;flex:1">CABLE UNIPOLAR 2.5MM x 10 METROS</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:12px">
+            <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0">→</span>
+            <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:3px 8px;border-radius:4px;flex:1">GUANTES NITRILO TALLE L (sin cantidad = queda en blanco)</span>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--muted);font-style:italic">
+          ✏️ Un ítem por línea · Podés editar la tabla que aparece arriba después del parseo
+        </div>
+      </div>
+    </div>
+
+    <!-- TABLA PEDIDO PARSEADO -->
+    <div id="pedido-tbl-wrap" style="display:none;margin-top:4px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:1px" id="pedido-count">0 ítems</span>
+        <button class="btn btn-ghost btn-sm" onclick="addPedidoRow()" style="font-size:11px;padding:5px 10px">+ Fila</button>
+      </div>
+      <div class="lista-tbl">
+        <div class="lista-tbl-hdr">
+          <div>Artículo / Descripción</div>
+          <div>Cantidad</div>
+          <div></div>
+        </div>
+        <div id="pedido-tbl-body"></div>
+      </div>
+    </div>
+
+  <div class="nav-row" style="margin-top:16px">
     <button class="btn btn-primary" onclick="next(0)">Continuar →</button>
   </div>
 </div>
@@ -328,9 +462,37 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
   <div class="card">
     <div class="card-title">🏭 Consulta al Pañol</div>
     <div class="warn-box"><strong>⚠️ OBLIGATORIO:</strong> Antes de generar una SC debés consultar al Pañol para verificar disponibilidad de stock.</div>
+
+    <!-- CHECKBOXES DE ITEMS EN STOCK -->
+    <div id="paniol-lista-wrap">
+      <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">
+        ✅ Tildá los ítems que el Pañol confirma tener en existencia <span style="color:var(--muted);font-weight:400">(no deben comprarse)</span>
+      </div>
+      <div class="lista-tbl" id="paniol-check-tbl">
+        <div class="lista-tbl-hdr" style="grid-template-columns:36px 1fr 90px">
+          <div></div><div>Artículo</div><div>Cantidad</div>
+        </div>
+        <div id="paniol-check-body">
+          <div style="padding:14px;color:var(--muted);font-size:12px;font-style:italic;text-align:center">
+            Completá el listado en el Paso 1 para ver los ítems acá.
+          </div>
+        </div>
+      </div>
+      <div class="paniol-legend">
+        <span><div class="ls-dot" style="background:var(--green)"></div> En stock — NO se compra</span>
+        <span><div class="ls-dot" style="background:var(--or)"></div> Faltante — VA a la SC</span>
+      </div>
+      <div class="lista-summary" id="paniol-summary" style="display:none">
+        <div class="ls-item"><div class="ls-dot" style="background:var(--green)"></div><span id="paniol-en-stock-cnt">0</span> en stock</div>
+        <div class="ls-item"><div class="ls-dot" style="background:var(--or)"></div><span id="paniol-a-comprar-cnt">0</span> a comprar</div>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);margin:14px 0 12px"></div>
+
     <div class="juro-box" id="juro-box" onclick="toggleJuro()">
       <div class="juro-chk" id="juro-chk"></div>
-      <div class="juro-txt"><strong>Declaro y juro</strong> que consulté al área de <strong>Pañol</strong> y confirmaron que los materiales <strong>no están disponibles</strong> en stock en cantidad suficiente.</div>
+      <div class="juro-txt"><strong>Declaro y juro</strong> que consulté al área de <strong>Pañol</strong> y confirmaron la disponibilidad indicada arriba.</div>
     </div>
     <div class="fg">
       <label>Pañolero consultado <span class="req">*</span></label>
@@ -343,7 +505,7 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
       </div>
       <div class="fg">
         <label>Observación (opcional)</label>
-        <input type="text" id="panolero-obs" placeholder="Ej: Sin stock de tornillos M8">
+        <input type="text" id="panolero-obs" placeholder="Ej: Tornillos M8 disponibles en estante A3">
       </div>
     </div>
   </div>
@@ -466,13 +628,12 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 <div class="panel" id="p-4">
   <div class="card">
     <div class="card-title">📦 Materiales / Artículos</div>
-    <div class="info-box">Escribí un ítem por línea. El sistema detecta cantidad y unidad automáticamente.</div>
+    <div class="info-box" id="items-info-box">
+      Los ítems se pre-cargan automáticamente desde el Paso 1, <strong>excluyendo lo que el Pañol confirmó en stock</strong>.
+      Revisá, editá si hace falta y confirmá antes de enviar.
+    </div>
     <textarea class="sc-textarea" id="items-texto" oninput="onItems()"
-      placeholder="Ejemplos:
-TORNILLOS M8 - 300 UNIDADES
-LANA DE VIDRIO - 25 MT2
-5 u — Cable unipolar 2.5mm
-3 kg grasa Shell Gadus"></textarea>
+      placeholder="Acá aparecerán automáticamente los ítems que faltan comprar..."></textarea>
 
     <div id="items-tbl-container" style="display:none;margin-top:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -527,7 +688,140 @@ LANA DE VIDRIO - 25 MT2
 
 <script>
 // ══ CONFIG — REEMPLAZAR CON URL DEL APPS SCRIPT ══
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDFdH50VT4udtoE32nq8LuG_BQFqcyXdy-eWBpcvhI3jTnbg8lTvB6CReAAEUt98R1/exec';
+const APPS_SCRIPT_URL = 'REEMPLAZAR_CON_URL_DEL_APPS_SCRIPT';
+
+// ══ LISTADO PEDIDO ORIGINAL ══
+let pedidoItems = []; // [{art, cant}]
+let pedidoTimer = null;
+let enStockSet = new Set(); // índices marcados como en stock
+
+// Parser de línea — detecta artículo + cantidad
+function parsePedidoLine(s) {
+  s = s.trim().replace(/^[\d]+[.)\-]\s*/, '').replace(/\s+/g, ' ');
+  if (!s) return null;
+
+  // Patrón A: DESC - N [UNIDAD]  →  "TORNILLOS M8 - 300 UNIDADES"
+  const mFin = s.match(/^(.+?)\s*[-\u2013\u2014]+\s*(\d+(?:[.,]\d+)?)\s*(.*)$/);
+  if (mFin) {
+    const art = mFin[1].trim().toUpperCase();
+    const umRaw = mFin[3].trim().toUpperCase().replace(/^UNIDADES?$/, 'u').replace(/^METROS?$/, 'm').replace(/^MT2$/, 'm²').replace(/^KG$/, 'kg');
+    const cantStr = mFin[2].replace(',', '.') + (umRaw && umRaw.length <= 4 ? ' ' + umRaw : '');
+    return { art, cant: cantStr.trim() };
+  }
+  // Patrón B: N [UNIDAD] — DESC  →  "5 u — Rodamiento SKF"
+  const mIni = s.match(/^(\d+(?:[.,]\d+)?(?:\s*[a-zA-Zá-úÁ-Ú²³]{1,6})?)\s*[-\u2013\u2014:·]?\s*(.+)$/);
+  if (mIni && /^\d/.test(mIni[1])) {
+    return { art: mIni[2].trim().toUpperCase(), cant: mIni[1].trim().toUpperCase() };
+  }
+  // Patrón C: DESC x N  →  "Cable x 10m"
+  const mX = s.match(/^(.+?)\s*[xX×]\s*(\d+(?:[.,]\d+)?(?:\s*[a-zA-Z]{1,4})?)\s*$/);
+  if (mX) {
+    return { art: mX[1].trim().toUpperCase(), cant: mX[2].trim().toUpperCase() };
+  }
+  // Sin cantidad detectada
+  return { art: s.toUpperCase(), cant: '' };
+}
+
+function onPedidoInput() {
+  clearTimeout(pedidoTimer);
+  pedidoTimer = setTimeout(parsePedido, 250);
+}
+
+function parsePedido() {
+  const texto = document.getElementById('pedido-texto').value;
+  const lines = texto.split('\n').map(l => l.trim()).filter(Boolean);
+  pedidoItems = lines.map(parsePedidoLine).filter(Boolean);
+  enStockSet = new Set(); // reset stock marks on re-parse
+  renderPedidoTbl();
+  renderPaniolCheck();
+}
+
+function renderPedidoTbl() {
+  const wrap = document.getElementById('pedido-tbl-wrap');
+  const body = document.getElementById('pedido-tbl-body');
+  const cnt = document.getElementById('pedido-count');
+  if (!pedidoItems.length) { if(wrap) wrap.style.display = 'none'; return; }
+  if(wrap) wrap.style.display = 'block';
+  if(cnt) cnt.textContent = pedidoItems.length + ' ítem' + (pedidoItems.length !== 1 ? 's' : '') + ' detectado' + (pedidoItems.length !== 1 ? 's' : '');
+  if(!body) return;
+  body.innerHTML = pedidoItems.map((it, i) =>
+    '<div class="lista-row" id="pr-' + i + '">' +
+    '<div class="lc"><span class="lc-num">' + String(i+1).padStart(2,'0') + '.</span>' +
+    '<span class="lc-art"><input value="' + esc(it.art) + '" onchange="pedidoItems['+i+'].art=this.value.toUpperCase();this.value=this.value.toUpperCase();renderPaniolCheck()" placeholder="Artículo..."></span></div>' +
+    '<div class="lc lc-cant"><input value="' + esc(it.cant) + '" onchange="pedidoItems['+i+'].cant=this.value.toUpperCase();this.value=this.value.toUpperCase()" placeholder="—" style="text-align:center"></div>' +
+    '<div class="lc" style="justify-content:center"><button class="del-btn" onclick="delPedidoRow('+i+')" style="font-size:13px;color:var(--muted)">✕</button></div>' +
+    '</div>'
+  ).join('');
+}
+
+function delPedidoRow(i) {
+  pedidoItems.splice(i, 1);
+  enStockSet.delete(i);
+  // Rebuild enStockSet shifting indices
+  const newSet = new Set();
+  enStockSet.forEach(idx => { if(idx < i) newSet.add(idx); else if(idx > i) newSet.add(idx-1); });
+  enStockSet = newSet;
+  renderPedidoTbl();
+  renderPaniolCheck();
+}
+
+function addPedidoRow() {
+  pedidoItems.push({ art: '', cant: '' });
+  renderPedidoTbl();
+  const wrap = document.getElementById('pedido-tbl-wrap');
+  if(wrap) wrap.style.display = 'block';
+}
+
+// ══ PAÑOL CHECK ══
+function renderPaniolCheck() {
+  const body = document.getElementById('paniol-check-body');
+  if (!body) return;
+  if (!pedidoItems.length) {
+    body.innerHTML = '<div style="padding:14px;color:var(--muted);font-size:12px;font-style:italic;text-align:center">Completá el listado en el Paso 1 para ver los ítems acá.</div>';
+    return;
+  }
+  body.innerHTML = pedidoItems.map((it, i) => {
+    const inStock = enStockSet.has(i);
+    return '<div class="lista-row ' + (inStock ? 'en-stock' : '') + '" id="pc-row-' + i + '" onclick="toggleStock(' + i + ')" style="cursor:pointer;grid-template-columns:36px 1fr 90px">' +
+    '<div class="lc paniol-chk-wrap"><div class="paniol-chk ' + (inStock ? 'checked' : '') + '" id="pc-chk-' + i + '">' + (inStock ? '✓' : '') + '</div></div>' +
+    '<div class="lc"><span class="lc-art">' + it.art + '</span></div>' +
+    '<div class="lc lc-cant">' + (it.cant || '—') + '</div>' +
+    '</div>';
+  }).join('');
+  updatePaniolSummary();
+}
+
+function toggleStock(i) {
+  if (enStockSet.has(i)) enStockSet.delete(i);
+  else enStockSet.add(i);
+  renderPaniolCheck();
+}
+
+function updatePaniolSummary() {
+  const summary = document.getElementById('paniol-summary');
+  const enStockCnt = document.getElementById('paniol-en-stock-cnt');
+  const aComprarCnt = document.getElementById('paniol-a-comprar-cnt');
+  if (!summary) return;
+  const total = pedidoItems.length;
+  const inStock = enStockSet.size;
+  const aComprar = total - inStock;
+  if (total > 0) summary.style.display = 'flex';
+  if(enStockCnt) enStockCnt.textContent = inStock;
+  if(aComprarCnt) aComprarCnt.textContent = aComprar;
+}
+
+// ══ PRE-CARGAR ITEMS EN PASO 5 ══
+function precargarItemsDesdeListado() {
+  // Filtramos los que NO están en stock
+  const aComprar = pedidoItems.filter((_, i) => !enStockSet.has(i));
+  if (!aComprar.length) return;
+  const texto = aComprar.map(it => {
+    const cant = it.cant ? it.cant + ' — ' : '';
+    return cant + it.art;
+  }).join('\n');
+  const ta = document.getElementById('items-texto');
+  if (ta) { ta.value = texto; onItems(); }
+}
 
 // ══ STATE ══
 let paso = 0;
@@ -541,29 +835,33 @@ let opNum = '';
 // ══ INIT ══
 function init() {
   const hoy = new Date().toISOString().split('T')[0];
-  document.getElementById('sol-fecha').value = hoy;
-  document.getElementById('panolero-fecha').value = new Date().toISOString().slice(0,16);
-  cargarNumOP();
+  const sfEl = document.getElementById('sol-fecha');
+  const pfEl = document.getElementById('panolero-fecha');
+  if (sfEl) sfEl.value = hoy;
+  if (pfEl) pfEl.value = new Date().toISOString().slice(0,16);
+  cargarNumOP(); // síncrono — siempre genera el número inmediatamente
   setupUppercase();
 }
 
-async function cargarNumOP() {
-  try {
-    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('REEMPLAZAR')) {
-      // Modo sin backend: generar local
-      const anio = new Date().getFullYear();
-      const cnt = parseInt(localStorage.getItem('nielsen_op_form_' + anio) || '0');
-      opNum = 'OP-' + anio + '-' + String(cnt + 1).padStart(4,'0');
-    } else {
-      const r = await fetch(APPS_SCRIPT_URL + '?action=getNextOP');
-      const d = await r.json();
-      opNum = d.num;
-    }
-    document.getElementById('op-num').value = opNum;
-  } catch(e) {
-    const anio = new Date().getFullYear();
-    opNum = 'OP-' + anio + '-XXXX';
-    document.getElementById('op-num').value = opNum;
+function cargarNumOP() {
+  // Siempre genera localmente de forma inmediata — nunca falla
+  const anio = new Date().getFullYear();
+  const key = 'nielsen_op_form_' + anio;
+  const cnt = parseInt(localStorage.getItem(key) || '0');
+  opNum = 'OP-' + anio + '-' + String(cnt + 1).padStart(4, '0');
+  const el = document.getElementById('op-num');
+  if (el) el.value = opNum;
+  // Si hay backend configurado, intentar sincronizar en segundo plano (sin bloquear)
+  if (APPS_SCRIPT_URL && !APPS_SCRIPT_URL.includes('REEMPLAZAR')) {
+    fetch(APPS_SCRIPT_URL + '?action=getNextOP')
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.num) {
+          opNum = d.num;
+          if (el) el.value = opNum;
+        }
+      })
+      .catch(() => {}); // silencioso — ya tenemos el número local
   }
 }
 
@@ -571,6 +869,7 @@ async function cargarNumOP() {
 function next(n) {
   if (!validar(n)) return;
   paso = n + 1;
+  if (paso === 4) precargarItemsDesdeListado(); // pre-cargar ítems al entrar al paso 5
   if (paso === 5) buildPreview();
   showPaso();
 }
@@ -594,10 +893,11 @@ function showPaso() {
 function validar(n) {
   const err = m => { toast(m, true); return false; };
   if (n === 0) {
-    if (!sinOS && !v('os-num')) return err('Ingresá el N° de OS o tildá S/OS');
+    if (!sinOS && !v('os-num')) return err('Ingresá el N° de OS, o tildá el botón S/OS si no tenés OS');
     if (!v('os-desc')) return err('Ingresá la descripción de la OS');
     if (!v('os-resp')) return err('Ingresá el responsable de la OS');
     if (!v('os-destino')) return err('Seleccioná el destino');
+    if (!pedidoItems.length) return err('Ingresá el listado del pedido original');
   }
   if (n === 1) {
     if (!juroOk) return err('Debés declarar que consultaste al Pañol');
@@ -626,11 +926,27 @@ function toggleSOS() {
   const btn = document.getElementById('sos-btn');
   const chk = document.getElementById('sos-chk');
   const inp = document.getElementById('os-num');
+  if (!btn || !chk || !inp) return;
   btn.classList.toggle('active', sinOS);
   chk.textContent = sinOS ? '✓' : '';
-  inp.value = sinOS ? 'S/OS' : opNum;
-  inp.readOnly = sinOS;
-  inp.style.color = sinOS ? 'var(--yellow)' : 'var(--or)';
+  // Si aún no se cargó opNum, generarlo ahora
+  if (!opNum) {
+    const anio = new Date().getFullYear();
+    opNum = 'OP-' + anio + '-' + String(parseInt(localStorage.getItem('nielsen_op_form_'+anio)||'0')+1).padStart(4,'0');
+  }
+  if (sinOS) {
+    inp.value = 'S/OS';
+    inp.readOnly = true;
+    inp.style.color = 'var(--yellow)';
+    inp.style.fontWeight = '700';
+    inp.style.background = 'rgba(245,158,11,.08)';
+  } else {
+    inp.value = opNum;
+    inp.readOnly = false;
+    inp.style.color = 'var(--or)';
+    inp.style.fontWeight = '700';
+    inp.style.background = 'var(--s3)';
+  }
 }
 
 // ══ TOGGLE JURO ══
@@ -650,7 +966,7 @@ function onArea() {
     sel.innerHTML = '<option value="">— Seleccionar —</option><option>ELECTRICIDAD</option><option>PLOMERIA</option><option>METALURGIA</option><option>CAMPAMENTO</option>';
   } else if (area === 'SSMA') {
     wrap.style.display = 'block';
-    sel.innerHTML = '<option value="">— General SSMA —</option><option value="MEDIO AMBIENTE">Medio Ambiente</option>';
+    sel.innerHTML = '<option value="">— General SSMA —</option><option value="MEDIO AMBIENTE">Medio Ambiente</option><option value="SEGURIDAD E HIGIENE">Seguridad e Higiene</option><option value="PREVENCION">Prevención</option><option value="PREVENCION RECURSOS HIDRICOS">Prevención Recursos Hídricos</option>';
   } else {
     wrap.style.display = 'none';
     sel.value = '';
@@ -735,28 +1051,41 @@ const UM_MAP = {
 };
 
 function parseLine(s) {
-  s = s.trim().replace(/^\d+\.\s*/,'').replace(/\s+/g,' ');
+  s = s.trim().replace(/^\d+\.\s*/, '').replace(/\s+/g, ' ');
   if (!s) return null;
-  // Patrón: DESC - N UNIDAD
-  const mFin = s.match(/^(.+?)\s*[-–—]+\s*(\d+(?:[.,]\d+)?)\s*(.*)$/);
+
+  // Patrón A: DESC - N UNIDAD  (ej: "TORNILLOS M8 - 300 UNIDADES")
+  const mFin = s.match(/^(.+?)\s*[-\u2013\u2014]+\s*(\d+(?:[.,]\d+)?)\s*(.*)$/);
   if (mFin) {
-    const umRaw = mFin[3].trim().toLowerCase().replace(/s$/,'');
+    const umRaw = mFin[3].trim().toLowerCase().replace(/es$/, '').replace(/s$/, '');
     const um = UM_MAP[mFin[3].trim().toLowerCase()] || UM_MAP[umRaw] || mFin[3].trim().toUpperCase();
-    return { desc: mFin[1].trim().toUpperCase(), cant: mFin[2].replace(',','.'), um };
+    return { desc: mFin[1].trim().toUpperCase(), cant: mFin[2].replace(',', '.'), um };
   }
-  // Patrón: N + UNIDAD + DESC
+
+  // Patrón B: N + UNIDAD + DESC  (ej: "5 u — Tornillos M8")
   const mIni = s.match(/^(\d+(?:[.,]\d+)?)\s+(.+)$/);
   if (mIni) {
-    const resto = mIni[2].replace(/^[-—:·\s]+/,'');
-    for (const [k,v2] of Object.entries(UM_MAP).sort((a,b)=>b[0].length-a[0].length)) {
-      const re = new RegExp('^' + k.replace(/[.*+?^${}()|[\]\]/g,'\$&') + '\b', 'i');
-      if (re.test(resto)) {
-        const desc = resto.replace(re,'').replace(/^[-—:·\s]+/,'').trim().toUpperCase();
-        return { desc: desc || resto.toUpperCase(), cant: mIni[1], um: v2 };
+    const resto = mIni[2].replace(/^[-\u2013\u2014:·\s]+/, '').trim();
+    // Buscar unidad conocida al inicio del resto (lookup directo, sin regex)
+    const keys = Object.keys(UM_MAP).sort((a, b) => b.length - a.length);
+    for (const k of keys) {
+      const r = resto.toLowerCase();
+      if (r === k || r.startsWith(k + ' ') || r.startsWith(k + '\t')) {
+        const um = UM_MAP[k];
+        const desc = resto.slice(k.length).replace(/^[-\u2013\u2014:·\s]+/, '').trim().toUpperCase();
+        return { desc: desc || resto.toUpperCase(), cant: mIni[1].replace(',', '.'), um };
       }
     }
-    return { desc: mIni[2].toUpperCase(), cant: mIni[1], um: '' };
+    return { desc: mIni[2].toUpperCase(), cant: mIni[1].replace(',', '.'), um: '' };
   }
+
+  // Patrón C: N pegado a unidad (ej: "3kg grasa")
+  const mPeg = s.match(/^(\d+(?:[.,]\d+)?)(kg|g|lt|lts|ml|m2|m|cm|mm|u)\s+(.+)$/i);
+  if (mPeg) {
+    const um = UM_MAP[mPeg[2].toLowerCase()] || mPeg[2].toUpperCase();
+    return { desc: mPeg[3].toUpperCase(), cant: mPeg[1].replace(',','.'), um };
+  }
+
   return { desc: s.toUpperCase(), cant: '', um: '' };
 }
 
@@ -764,8 +1093,7 @@ let parseTimer = null;
 function onItems() {
   clearTimeout(parseTimer);
   parseTimer = setTimeout(() => {
-    const lines = document.getElementById('items-texto').value.split('
-').map(l=>l.trim()).filter(Boolean);
+    const lines = document.getElementById('items-texto').value.split('\n').map(l=>l.trim()).filter(Boolean);
     itemsParsed = lines.map(parseLine).filter(Boolean);
     renderItemsTbl();
   }, 250);
@@ -804,8 +1132,7 @@ function syncTxt() {
     if (it.um) p.push(it.um);
     p.push('—'); p.push(it.desc);
     return p.join(' ');
-  }).join('
-');
+  }).join('\n');
 }
 
 // ══ PREVIEW ══
@@ -831,8 +1158,7 @@ function buildPreview() {
   document.getElementById('prev-grid').innerHTML = fields.map(([l,v2]) =>
     '<div class="preview-field"><div class="pf-lbl">'+l+'</div><div class="pf-val">'+v2+'</div></div>'
   ).join('');
-  const items = document.getElementById('items-texto').value.split('
-').map(l=>l.trim()).filter(Boolean);
+  const items = document.getElementById('items-texto').value.split('\n').map(l=>l.trim()).filter(Boolean);
   document.getElementById('prev-items').innerHTML = items.map((l,i) =>
     '<div><span style="color:var(--or);margin-right:8px">'+String(i+1).padStart(2,'0')+'.</span>'+l+'</div>'
   ).join('') || '—';
@@ -862,6 +1188,7 @@ async function enviar() {
     panolerFecha: document.getElementById('panolero-fecha').value,
     panoleroObs: document.getElementById('panolero-obs').value,
     items: document.getElementById('items-texto').value,
+    pedidoOriginal: pedidoItems.map((it,i) => ({ art:it.art, cant:it.cant, enStock: enStockSet.has(i) })),
     obs: document.getElementById('items-obs').value,
   };
 
