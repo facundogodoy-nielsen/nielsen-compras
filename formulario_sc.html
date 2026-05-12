@@ -993,6 +993,20 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
         <div class="settings-saved" id="cfg-cc-saved"></div>
       </div>
     </div>
+    <div style="padding:12px 20px 6px;border-top:1px solid var(--border)">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:10px">Numeración de SC</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px">
+          <div style="font-size:12px;color:var(--text)">Reiniciar contador de SC</div>
+          <div style="font-size:11px;color:var(--muted)">El próximo N° de SC comenzará desde 0001</div>
+        </div>
+        <button class="btn btn-sm" onclick="resetearContadorSC()"
+          style="background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.3);white-space:nowrap">
+          🔄 Resetear Nº SC
+        </button>
+      </div>
+      <div class="settings-saved" id="cfg-reset-saved" style="margin-top:6px"></div>
+    </div>
     <div class="settings-footer">
       <button class="btn btn-ghost btn-sm" onclick="cerrarSettings()">Cerrar</button>
     </div>
@@ -1548,6 +1562,10 @@ async function enviar() {
 }
 
 function showSuccess(numSC, numOP) {
+  // ── Llamar ANTES de ocultar paneles (los campos siguen accesibles) ──
+  _guardarSCenCC(numSC, numOP);   // guarda en Supabase + localStorage
+  _enviarEmailSC(numSC, numOP);   // envía mail al solicitante
+
   document.querySelectorAll('.panel').forEach(p => p.style.display = 'none');
   document.getElementById('success').style.display = 'block';
   document.getElementById('suc-num').textContent = numSC;
@@ -1593,6 +1611,26 @@ const SETTINGS_PIN = '1979';
 
 // ── Settings PIN ──
 let _spinBuf = '';
+
+
+// ── Resetear contador de SC desde Ajustes ──
+function resetearContadorSC() {
+  const anio = new Date().getFullYear();
+  // Limpiar todos los contadores SC del año actual
+  const keysToRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && (k.startsWith('sc_cnt_') || k.startsWith('op_cnt_'))) {
+      keysToRemove.push(k);
+    }
+  }
+  keysToRemove.forEach(k => localStorage.removeItem(k));
+  const saved = document.getElementById('cfg-reset-saved');
+  if (saved) {
+    saved.textContent = '✅ Contadores reseteados — próxima SC será 0001';
+    setTimeout(() => { saved.textContent = ''; }, 3500);
+  }
+}
 
 function abrirSettingsPin() {
   _spinBuf = '';

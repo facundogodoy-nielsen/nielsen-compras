@@ -820,7 +820,6 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     </button>
     <button class="sidebar-btn" onclick="showView('panel', this)">
       <span class="sb-icon">📊</span> Panel de Control
-      <span class="sb-cnt" id="sb-total">0</span>
     </button>
     <button class="sidebar-btn" onclick="showView('historial', this)">
       <span class="sb-icon">📋</span> Historial de SC
@@ -839,7 +838,6 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     </button>
     <button class="sidebar-btn" onclick="showView('panel-pa', this)">
       <span class="sb-icon">📊</span> Panel de Control
-      <span class="sb-cnt" id="sb-pa-total">0</span>
     </button>
     <button class="sidebar-btn" onclick="showView('historial-pa', this)">
       <span class="sb-icon">📋</span> Historial de PA
@@ -893,7 +891,6 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <span class="sidebar-label">Registros</span>
     <button class="sidebar-btn" onclick="showView('historial-op', this)">
       <span class="sb-icon">📋</span> Historial Pedidos
-      <span class="sb-cnt" id="sb-op-total">0</span>
     </button>
   </div>
   <div class="sidebar-section">
@@ -1149,10 +1146,6 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   </div>
 
   <!-- TABS -->
-  <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px">
-    <button class="hp-tab active" id="hp-tab-sc" onclick="switchHistPedTab('sc')">📝 Compras (SC)</button>
-    <button class="hp-tab" id="hp-tab-pa" onclick="switchHistPedTab('pa')">🛒 Abastecimiento (PA)</button>
-  </div>
   <div id="hp-panel-sc">
 
   <!-- STATS OP -->
@@ -1226,13 +1219,6 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     </div>
   </div>
   </div><!-- /hp-panel-sc -->
-  <div id="hp-panel-pa" style="display:none">
-    <div class="card" style="text-align:center;padding:32px 20px;color:var(--muted)">
-      <div style="font-size:36px;margin-bottom:12px">🛒</div>
-      <div style="font-size:14px;font-weight:600;margin-bottom:6px">Pedidos de Abastecimiento</div>
-      <div style="font-size:12px">Los pedidos del formulario PA aparecerán acá.</div>
-    </div>
-  </div>
 </div>
 
 
