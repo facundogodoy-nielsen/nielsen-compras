@@ -431,6 +431,75 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 }
 .ls-item { display:flex; align-items:center; gap:5px; }
 .ls-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+
+/* ══════════════════════════════════════════════
+   FORMULARIO SC — RESPONSIVE (mobile-first)
+   ══════════════════════════════════════════════ */
+
+/* Tablet: 768px */
+@media(max-width:768px){
+  .pg-header-title{font-size:1rem;}
+  .row2{grid-template-columns:1fr;}
+  .preview-grid{grid-template-columns:1fr;}
+  .crit-grid{grid-template-columns:1fr 1fr;}
+  .items-tbl-hdr,.irow{grid-template-columns:1fr 65px 70px 30px;}
+}
+
+/* Phone: 540px */
+@media(max-width:540px){
+  /* Header compacto */
+  .hdr-logo img{height:36px !important;}
+  .hdr-logo-txt h1{font-size:.85rem;}
+  .hdr-logo-txt p{display:none;}
+  .hdr-badge{display:none;}
+  .hdr-right-actions{gap:6px;}
+  .hdr-badge-mode{padding:4px 8px;font-size:10px;}
+
+  /* Stepper */
+  .stepper-wrap{padding:0 8px;}
+  .step-label{display:none;}
+  .step-dot{width:26px;height:26px;font-size:10px;}
+  .step-line{width:14px;}
+
+  /* Contenido */
+  .panel-body{padding:14px 12px;}
+  .panel-hdr{padding:12px 14px;}
+  .section-title{font-size:13px;}
+
+  /* Grids a 1 col */
+  .row2{grid-template-columns:1fr;}
+  .crit-grid{grid-template-columns:1fr 1fr;}
+  .preview-grid{grid-template-columns:1fr;}
+
+  /* Tablas pañol / stock */
+  .stock-tbl-hdr,.stock-row{grid-template-columns:28px 1fr 58px 58px;}
+  .stock-tbl-hdr div:last-child,.sr:last-child{display:none;}
+  .reserva-tbl-hdr,.reserva-row{grid-template-columns:1fr 60px 60px 1fr;}
+
+  /* Items tabla */
+  .items-tbl-hdr,.irow{grid-template-columns:1fr 58px 64px 28px;}
+
+  /* Botones de acción */
+  .btn-nav{font-size:.82rem;padding:10px 14px;}
+  .step-btns{flex-direction:column-reverse;gap:8px;}
+  .step-btns .btn-nav{width:100%;text-align:center;}
+
+  /* Modales */
+  .spin-box,.pin-box-fm{max-width:100%;margin:0;border-radius:16px 16px 0 0;}
+  .modal-ov-fm{align-items:flex-end !important;padding:0 !important;}
+
+  /* Resumen confirmación */
+  .confirm-grid{grid-template-columns:1fr !important;}
+  .success-card{padding:20px 14px;}
+}
+
+/* Phone pequeño: 380px */
+@media(max-width:380px){
+  .crit-grid{grid-template-columns:1fr;}
+  .panel-body{padding:12px 10px;}
+  .btn-nav{font-size:.78rem;padding:9px 12px;}
+}
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>

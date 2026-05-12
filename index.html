@@ -697,6 +697,93 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 .sync-dot { width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0; }
 .sync-spin { width:11px; height:11px; border:2px solid var(--border2); border-top-color:var(--accent2); border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0; }
 @keyframes spin { to { transform:rotate(360deg); } }
+
+
+/* ══════════════════════════════════════════════
+   CENTRO DE CONTROL — RESPONSIVE (mobile-first)
+   ══════════════════════════════════════════════ */
+
+/* Tablet: 900px */
+@media (max-width: 900px) {
+  aside { width: 210px; }
+  main  { padding: 18px 14px; }
+  .stats         { grid-template-columns: 1fr 1fr; }
+  .kanban        { grid-template-columns: 1fr 1fr; }
+  .crit-grid     { grid-template-columns: 1fr 1fr; }
+  .row-2,.row-3  { grid-template-columns: 1fr; }
+  .pg-title      { font-size: 20px; }
+}
+
+/* Phone grande: 640px */
+@media (max-width: 640px) {
+  /* Layout: ocultar sidebar, main ocupa todo */
+  aside { width: 0 !important; opacity: 0 !important; padding: 0 !important;
+          border-right: none !important; pointer-events: none !important; overflow: hidden !important; }
+  aside.collapsed { width: 0 !important; }
+  .layout > main { flex: 1; min-width: 0; width: 100%; }
+  main { padding: 10px 8px; }
+
+  /* Header */
+  header img  { height: 34px !important; }
+  .logo-sep, .logo-sub { display: none !important; }
+  .logo-txt { font-size: 11px !important; letter-spacing: 1px !important; }
+  .hdr-clock { display: none !important; }
+  .hdr-right  { gap: 6px; }
+  .hdr-settings-btn { padding: 4px 8px; font-size: 11px; }
+  .mode-badge { padding: 4px 8px; font-size: 10px; }
+
+  /* Títulos de página */
+  .pg-title  { font-size: 16px; letter-spacing: 1px; }
+  .pg-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .pg-header .btn { font-size: 11px; padding: 5px 10px; }
+
+  /* Stats: 2 columnas */
+  .stats  { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-val { font-size: 24px; }
+  #pa-stats-row { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+
+  /* Grids */
+  .crit-grid, .row-2, .row-3 { grid-template-columns: 1fr !important; }
+  .kanban   { grid-template-columns: 1fr !important; }
+  .sc-fields { grid-template-columns: 1fr !important; }
+
+  /* Tablas: scroll horizontal */
+  .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tbl-wrap table { min-width: 480px; }
+  table th, table td { font-size: 11px; padding: 7px 8px; }
+
+  /* Modales: hoja inferior en móvil */
+  .modal-ov { align-items: flex-end !important; padding: 0 !important; }
+  .modal { max-width: 100% !important; width: 100% !important; border-radius: 16px 16px 0 0 !important;
+            margin: 0 !important; max-height: 92vh !important; }
+
+  /* PIN y Settings */
+  .cc-ov    { padding: 8px !important; }
+  .pin-box  { max-width: 100%; padding: 22px 16px; }
+  .settings-box, .limpiar-box { max-width: 100% !important; }
+
+  /* HP Tabs */
+  .hp-tab { font-size: 11px; padding: 8px 10px; }
+
+  /* Panel PA / Kanban cards */
+  .kanban-card { padding: 12px; }
+  .card.sp { padding: 14px; }
+
+  /* Wizard steps */
+  .step-dot { width: 26px; height: 26px; font-size: 11px; }
+  .step-label { font-size: 9px; }
+  .step-line { width: 20px; }
+}
+
+/* Phone pequeño: 400px */
+@media (max-width: 400px) {
+  .stats  { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .stat-val { font-size: 20px; }
+  main { padding: 8px 6px; }
+  .pg-title { font-size: 14px; }
+  .card { padding: 10px; }
+  header img { height: 28px !important; }
+}
 </style>
 </head>
 <body>
@@ -1153,12 +1240,13 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 <div id="view-panel-pa" class="view">
   <div class="pg-header">
     <div class="pg-title">PANEL DE CONTROL DE <span>ABASTECIMIENTO</span></div>
-    <div class="pg-sub">Resumen de Pedidos de Abastecimiento de campamentos</div>
+    <div class="pg-sub">Resumen ejecutivo de Pedidos de Abastecimiento</div>
   </div>
-  <div style="padding:40px 20px;text-align:center;color:var(--muted)">
-    <div style="font-size:38px;margin-bottom:12px">🛒</div>
-    <div style="font-size:14px;font-weight:600;margin-bottom:6px">Módulo de Abastecimiento</div>
-    <div style="font-size:12px;max-width:380px;margin:0 auto">Configurá el link del formulario PA en ⚙️ Ajustes.</div>
+  <div id="panel-pa-body">
+    <div style="padding:32px;text-align:center;color:var(--muted)">
+      <div style="font-size:22px;margin-bottom:8px">⏳</div>
+      <div style="font-size:13px">Cargando datos...</div>
+    </div>
   </div>
 </div>
 <div id="view-historial-pa" class="view">
@@ -1206,7 +1294,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
         <thead>
           <tr>
             <th>N° PA</th><th>Fecha</th><th>Campamento</th><th>Solicitante</th>
-            <th>Categoría</th><th>Ítems</th><th>Estado</th><th>Acciones</th>
+            <th>Categoría</th><th>Cumplimiento</th><th>Estado</th><th>Acciones</th>
           </tr>
         </thead>
         <tbody id="pa-table-body">
@@ -1221,9 +1309,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="pg-title">KANBAN <span>ABASTECIMIENTO</span></div>
     <div class="pg-sub">Estado de Pedidos de Abastecimiento por columna</div>
   </div>
-  <div style="padding:40px 20px;text-align:center;color:var(--muted)">
-    <div style="font-size:38px;margin-bottom:12px">🗂</div>
-    <div style="font-size:14px;font-weight:600;margin-bottom:6px">Sin pedidos de abastecimiento</div>
+  <div id="kanban-pa-body">
+    <div style="padding:32px;text-align:center;color:var(--muted)">
+      <div style="font-size:22px;margin-bottom:8px">⏳</div>
+      <div style="font-size:13px">Cargando datos...</div>
+    </div>
   </div>
 </div>
 </main>
@@ -2105,7 +2195,9 @@ function showViewPA(id, btn) {
   const el=document.getElementById('view-'+id); if(el) el.classList.add('active');
   document.querySelectorAll('.sidebar-btn').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
-  if(id==='historial-pa' || id==='panel-pa') renderHistorialPA();
+  if(id==='historial-pa') renderHistorialPA();
+  if(id==='panel-pa') renderPanelPA();
+  if(id==='kanban-pa') renderKanbanPA();
 }
 
 // ── Sidebar toggle ──
@@ -3840,6 +3932,153 @@ actualizarPreview();
 // Fuente: nielsen_pa_2026 (escrito por nielsen_pedidos_v3)
 // ══════════════════════════════════════════════════════════
 
+
+// ── PA helpers (espejo de Pedidos V3) ──
+function calcPctPA(pa) {
+  const items = pa.items || [];
+  if (!items.length) return 0;
+  const ok = items.filter(i => i.estado === 'ok').length;
+  const parcial = items.filter(i => i.estado === 'parcial').length;
+  return Math.round((ok + parcial * 0.5) / items.length * 100);
+}
+
+function calcEstadoPA(pa) {
+  const items = pa.items || [];
+  if (!items.length) return 'pendiente';
+  const ok = items.filter(i => i.estado === 'ok').length;
+  const no = items.filter(i => i.estado === 'no').length;
+  if (ok === items.length) return 'full';
+  if (no === items.length) return 'none';
+  if (ok > 0 || items.filter(i => i.estado === 'parcial').length > 0) return 'partial';
+  return 'pendiente';
+}
+
+function renderPanelPA() {
+  renderHistorialPA(); // loads paData from Supabase
+  // Panel uses same data — rendered after renderHistorialPA resolves
+  setTimeout(_buildPanelPA, 600);
+}
+
+function _buildPanelPA() {
+  const cont = document.getElementById('panel-pa-body');
+  if (!cont) return;
+
+  const total  = paData.length;
+  const pend   = paData.filter(p => calcEstadoPA(p) === 'pendiente').length;
+  const parci  = paData.filter(p => calcEstadoPA(p) === 'partial').length;
+  const full   = paData.filter(p => calcEstadoPA(p) === 'full').length;
+  const none   = paData.filter(p => calcEstadoPA(p) === 'none').length;
+
+  // By campamento
+  const camps = {};
+  paData.forEach(pa => {
+    const c = pa.campamento || 'Sin asignar';
+    if (!camps[c]) camps[c] = { total:0, ok:0 };
+    camps[c].total++;
+    if (calcEstadoPA(pa) === 'full') camps[c].ok++;
+  });
+
+  const campRows = Object.entries(camps)
+    .sort((a,b) => b[1].total - a[1].total)
+    .map(([c, v]) => {
+      const pct = v.total ? Math.round(v.ok / v.total * 100) : 0;
+      return `<div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+          <span style="font-size:13px;font-weight:600">${c}</span>
+          <span style="font-size:12px;color:var(--muted)">${v.ok}/${v.total} concretados · <strong style="color:var(--green)">${pct}%</strong></span>
+        </div>
+        <div style="height:8px;background:var(--s3);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${pct===100?'var(--green)':pct>50?'var(--or)':'var(--yellow)'};border-radius:4px;transition:width .4s"></div>
+        </div>
+      </div>`;
+    }).join('') || '<div style="color:var(--muted);font-size:13px">Sin datos</div>';
+
+  // Recent 5
+  const recent = [...paData].slice(0,5).map(pa => {
+    const pct = calcPctPA(pa);
+    const est = calcEstadoPA(pa);
+    const col = {full:'var(--green)',partial:'var(--yellow)',none:'var(--red)',pendiente:'var(--muted)'}[est];
+    return `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1">
+        <div style="font-family:var(--fm);font-size:13px;font-weight:700;color:var(--or)">${pa.numPA||'—'}</div>
+        <div style="font-size:11px;color:var(--muted)">${pa.campamento||'—'} · ${pa.solicitante||'—'}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;font-weight:700;color:${col}">${pct}%</div>
+        <div style="font-size:10px;color:var(--muted)">${formatFecha(pa.fecha)}</div>
+      </div>
+    </div>`;
+  }).join('') || '<div style="color:var(--muted);font-size:13px;padding:16px 0">Sin pedidos registrados.</div>';
+
+  cont.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px">
+      <div class="stat" style="--sc:var(--or)"><div class="stat-lbl">Total PA</div><div class="stat-val">${total}</div><div class="stat-sub">Pedidos recibidos</div></div>
+      <div class="stat" style="--sc:var(--yellow)"><div class="stat-lbl">Pendientes</div><div class="stat-val">${pend}</div><div class="stat-sub">Sin procesar</div></div>
+      <div class="stat" style="--sc:var(--accent2)"><div class="stat-lbl">En curso</div><div class="stat-val">${parci}</div><div class="stat-sub">Parcialmente OK</div></div>
+      <div class="stat" style="--sc:var(--green)"><div class="stat-lbl">Concretados</div><div class="stat-val">${full}</div><div class="stat-sub">100% cumplido</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div class="card sp">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:16px">📍 Por Campamento</div>
+        ${campRows}
+      </div>
+      <div class="card sp">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">🕐 Últimos Pedidos</div>
+        ${recent}
+        ${total > 5 ? `<div style="font-size:11px;color:var(--muted);text-align:center;padding-top:8px">+${total-5} más — ver Historial</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function renderKanbanPA() {
+  renderHistorialPA();
+  setTimeout(_buildKanbanPA, 600);
+}
+
+function _buildKanbanPA() {
+  const cont = document.getElementById('kanban-pa-body');
+  if (!cont) return;
+
+  const cols = {
+    pendiente: { label: '⏳ Pendiente',   color: 'var(--muted)',   items: [] },
+    partial:   { label: '⚡ En Curso',     color: 'var(--yellow)',  items: [] },
+    full:      { label: '✅ Concretado',   color: 'var(--green)',   items: [] },
+    none:      { label: '❌ No recibido',  color: 'var(--red)',     items: [] }
+  };
+  paData.forEach((pa, idx) => { cols[calcEstadoPA(pa)]?.items.push({pa, idx}); });
+
+  cont.innerHTML = `<div class="kanban">` + Object.entries(cols).map(([key, col]) => {
+    const cards = col.items.map(({pa, idx}) => {
+      const pct = calcPctPA(pa);
+      const okCnt = (pa.items||[]).filter(i=>i.estado==='ok').length;
+      const total = (pa.items||[]).length;
+      return `<div class="kanban-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+          <span style="font-family:var(--fm);font-size:12px;font-weight:700;color:var(--or)">${pa.numPA||'—'}</span>
+          <span style="font-size:10px;color:var(--muted)">${formatFecha(pa.fecha)}</span>
+        </div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:2px">${pa.campamento||'—'}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">👤 ${pa.solicitante||'—'} · ${total} ítems</div>
+        <div style="height:5px;background:var(--s3);border-radius:3px;overflow:hidden;margin-bottom:6px">
+          <div style="height:100%;width:${pct}%;background:${col.color};border-radius:3px"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:10px;color:var(--muted)">${okCnt}/${total} OK · ${pct}%</span>
+          <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px" onclick="verPA(${idx})">Ver</button>
+        </div>
+      </div>`;
+    }).join('') || `<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px 0;font-style:italic">Sin pedidos</div>`;
+
+    return `<div class="kanban-col">
+      <div class="kanban-col-hdr" style="border-top:3px solid ${col.color}">
+        <span>${col.label}</span>
+        <span class="kanban-cnt">${col.items.length}</span>
+      </div>
+      ${cards}
+    </div>`;
+  }).join('') + `</div>`;
+}
+
 async function renderHistorialPA() {
   // 1. Intentar Supabase primero
   const rows = await sbSelect('pedidos_abastecimiento');
@@ -3900,15 +4139,24 @@ async function renderHistorialPA() {
   tb.innerHTML = data.map((pa) => {
     const realIdx = paData.indexOf(pa);
     const items = pa.items || [];
-    const preview = items.slice(0,2).map(i => i.nombre || i).join(' · ') + (items.length > 2 ? ` +${items.length-2} más` : '');
+    const pct = calcPctPA(pa);
+    const okCnt = items.filter(i=>i.estado==='ok').length;
     const catLabels = {M:'Mercadería',L:'Limpieza',H:'Hotelería',A:'Agua/Gas',K:'Kiosco'};
+    const pctColor = pct===100?'var(--green)':pct>0?'var(--yellow)':'var(--muted)';
     return '<tr>' +
       '<td class="mono" style="color:var(--or);font-weight:700">' + (pa.numPA||'—') + '</td>' +
       '<td>' + formatFecha(pa.fecha) + '</td>' +
       '<td><strong>' + (pa.campamento||'—') + '</strong></td>' +
       '<td>' + (pa.solicitante||'—') + '</td>' +
       '<td style="font-size:12px">' + (catLabels[pa.categoria]||pa.categoria||'—') + '</td>' +
-      '<td style="font-size:11px;color:var(--muted);max-width:200px">' + (preview||'—') + '</td>' +
+      '<td style="min-width:100px">' +
+        '<div style="display:flex;align-items:center;gap:6px">' +
+          '<div style="flex:1;height:5px;background:var(--s3);border-radius:3px;overflow:hidden">' +
+            '<div style="height:100%;width:'+pct+'%;background:'+pctColor+';border-radius:3px"></div>' +
+          '</div>' +
+          '<span style="font-size:11px;font-weight:700;color:'+pctColor+';white-space:nowrap">'+okCnt+'/'+items.length+'</span>' +
+        '</div>' +
+      '</td>' +
       '<td>' + (estBadge[pa.estado]||'<span class="badge badge-gray">—</span>') + '</td>' +
       '<td style="display:flex;gap:6px">' +
         '<button class="btn btn-ghost btn-sm" onclick="verPA(' + realIdx + ')">👁 Ver</button>' +
