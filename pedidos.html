@@ -326,6 +326,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
   .h-title h1{font-size:1.1rem;}
 }
 </style>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -1981,8 +1982,9 @@ function guardarPedidoActual(){
   };
   historial.unshift(pedido);
   localStorage.setItem(HIST_KEY, JSON.stringify(historial));
-  // ── INTEGRACIÓN: registrar en Centro de Control (nielsen_pa_2026) ──
+  // ── INTEGRACIÓN: registrar en CC + enviar email ──
   _guardarPAenCC(pedido);
+  _enviarEmailPA(pedido);
   toast(`Pedido ${d.nroPedido} guardado en historial.`,'ok');
   renderHistorial();
 }
@@ -2480,6 +2482,48 @@ async function sbDelete(tabla, col, val) {
     });
   } catch(e) { console.warn('SB delete error:', e.message); }
 }
+
+// ══════════════════════════════════════════════════════════
+// ENVÍO DE EMAIL PEDIDO ABASTECIMIENTO — EmailJS
+// ══════════════════════════════════════════════════════════
+function _enviarEmailPA(pedido) {
+  const pubKey  = localStorage.getItem('nielsen_emailjs_pubkey')  || '';
+  const service = localStorage.getItem('nielsen_emailjs_service') || '';
+  const tmpl    = localStorage.getItem('nielsen_emailjs_tmpl_pa') || '';
+  const from    = localStorage.getItem('nielsen_sender_email')    || 'compras@nielsenexpediciones.com.ar';
+
+  if (!pubKey || !service || !tmpl) {
+    console.info('EmailJS no configurado — sin envío de mail PA');
+    return;
+  }
+
+  const email = pedido.emailSolicitante || pedido.email || '';
+  if (!email) { console.warn('Sin email del solicitante PA'); return; }
+
+  const catLabels = {M:'Mercadería',L:'Limpieza y Descartables',H:'Hotelería',A:'Agua, Gas y Leña',K:'Kiosco La Brea'};
+  const items = (pedido.items||[]).slice(0,8).map((it,i) =>
+    `${i+1}. ${it.nombre||it}${it.cant?' — '+it.cant+(it.medida?' '+it.medida:''):''}` ).join('\n');
+
+  emailjs.init({ publicKey: pubKey });
+
+  emailjs.send(service, tmpl, {
+    to_email:       email,
+    to_name:        pedido.solicitante || '',
+    from_email:     from,
+    num_pa:         pedido.oc || pedido.nroPedido || '',
+    campamento:     pedido.campamento || '',
+    categoria:      catLabels[pedido.cat] || pedido.cat || '',
+    fecha:          pedido.fecha || '',
+    fecha_entrega:  pedido.fechaEntrega || 'No indicada',
+    items:          items || '—',
+    obs:            pedido.obs || '—',
+    link_historial: 'https://nielsen-compras.vercel.app/#historial-pa'
+  }).then(
+    () => console.log('✅ Email PA enviado a', email),
+    (err) => console.warn('⚠️ Error email PA:', err)
+  );
+}
+
 
 // ══════════════════════════════════════════════════════════
 // GUARDAR PA → Supabase + localStorage (fallback)

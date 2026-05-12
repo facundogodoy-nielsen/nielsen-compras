@@ -2042,11 +2042,24 @@ function verificarSettingsPin() {
   else { _spinBuf=''; _updPinDots('spd','spin-err'); document.getElementById('spin-err').textContent='❌ Clave incorrecta'; _shake('settings-pin-ov'); }
 }
 function abrirSettings() {
-  ['sc','pa','cc'].forEach(k => {
-    const inp=document.getElementById('cfg-'+k+'-url');
-    if(inp) inp.value=localStorage.getItem('nielsen_'+(k==='sc'?'sc_form_url':k==='pa'?'pa_url':'cc_url'))||'';
-    const s=document.getElementById('cfg-'+k+'-saved'); if(s) s.textContent='';
+  const fields = {
+    'cfg-sc-url':  'nielsen_sc_form_url',
+    'cfg-pa-url':  'nielsen_pa_url',
+    'cfg-sender':  'nielsen_sender_email',
+    'cfg-ejs-key': 'nielsen_emailjs_pubkey',
+    'cfg-ejs-svc': 'nielsen_emailjs_service',
+    'cfg-ejs-tsc': 'nielsen_emailjs_tmpl_sc',
+    'cfg-ejs-tpa': 'nielsen_emailjs_tmpl_pa'
+  };
+  Object.entries(fields).forEach(([id, key]) => {
+    const inp = document.getElementById(id);
+    if (inp) inp.value = localStorage.getItem(key) || '';
+    const savedId = id + '-saved';
+    const s = document.getElementById(savedId); if (s) s.textContent = '';
   });
+  // Pre-fill sender if empty
+  const senderInp = document.getElementById('cfg-sender');
+  if (senderInp && !senderInp.value) senderInp.value = 'facundo.godoy@nielsenexpediciones.com.ar';
   document.getElementById('settings-ov').classList.add('open');
 }
 function cerrarSettings() { document.getElementById('settings-ov').classList.remove('open'); }
@@ -4072,6 +4085,23 @@ window.addEventListener('storage', function(e) {
 // Activar MODO LECTOR al cargar
 recargarSCsDesdeLS();
 renderHistorialPA();
+// ── Hash routing: acceso directo por URL (#historial, #historial-pa, etc.) ──
+function navegarPorHash() {
+  const hash = location.hash.replace('#','');
+  const mapaVistas = {
+    'historial':    () => { const b=document.querySelector('[onclick*="showView(\'historial\'"]'); showView('historial',b); },
+    'historial-sc': () => { const b=document.querySelector('[onclick*="showView(\'historial\'"]'); showView('historial',b); },
+    'historial-pa': () => { const b=document.querySelector('[onclick*="showView(\'historial-pa\'"]'); showViewPA('historial-pa',b); },
+    'panel':        () => { const b=document.querySelector('[onclick*="showView(\'panel\'"]'); showView('panel',b); },
+    'panel-pa':     () => { const b=document.querySelector('[onclick*="showView(\'panel-pa\'"]'); showViewPA('panel-pa',b); },
+    'kanban':       () => { const b=document.querySelector('[onclick*="showView(\'kanban\'"]'); showView('kanban',b); },
+    'kanban-pa':    () => { const b=document.querySelector('[onclick*="showView(\'kanban-pa\'"]'); showViewPA('kanban-pa',b); },
+  };
+  if (hash && mapaVistas[hash]) mapaVistas[hash]();
+}
+window.addEventListener('hashchange', navegarPorHash);
+setTimeout(navegarPorHash, 200); // Ejecutar al cargar
+
 // ── Polling Supabase cada 30s para sincronizar entre dispositivos ──
 setInterval(async () => {
   const av = document.querySelector('.view.active');
@@ -4129,22 +4159,48 @@ iniciarAutoSync();
       <button class="settings-close" onclick="cerrarSettings()">✕</button>
     </div>
     <div class="settings-body">
+      <!-- LINKS -->
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:4px">Links del sistema</div>
       <div class="settings-field">
-        <label>🔗 Link — Formulario Nueva SC</label>
-        <input type="url" id="cfg-sc-url" placeholder="https://..." oninput="guardarCfgCC('nielsen_sc_form_url','cfg-sc-url','cfg-sc-saved')" autocomplete="off">
+        <label>🔗 Formulario Nueva SC</label>
+        <input type="url" id="cfg-sc-url" placeholder="https://nielsen-compras.vercel.app/formulario_sc" oninput="guardarCfgCC('nielsen_sc_form_url','cfg-sc-url','cfg-sc-saved')" autocomplete="off">
         <div class="settings-saved" id="cfg-sc-saved"></div>
       </div>
       <div class="settings-field">
-        <label>🛒 Link — Formulario Nuevo PA</label>
-        <input type="url" id="cfg-pa-url" placeholder="https://..." oninput="guardarCfgCC('nielsen_pa_url','cfg-pa-url','cfg-pa-saved')" autocomplete="off">
+        <label>🛒 Formulario Nuevo PA</label>
+        <input type="url" id="cfg-pa-url" placeholder="https://nielsen-compras.vercel.app/pedidos" oninput="guardarCfgCC('nielsen_pa_url','cfg-pa-url','cfg-pa-saved')" autocomplete="off">
         <div class="settings-saved" id="cfg-pa-saved"></div>
       </div>
+      <!-- EMAIL -->
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin:10px 0 4px">Configuración de emails</div>
       <div class="settings-field">
-        <label>📊 Link — Centro de Control SC (seguimiento en mail)</label>
-        <input type="url" id="cfg-cc-url" placeholder="https://..." oninput="guardarCfgCC('nielsen_cc_url','cfg-cc-url','cfg-cc-saved')" autocomplete="off">
-        <div class="settings-saved" id="cfg-cc-saved"></div>
+        <label>📧 Email remitente (quién envía)</label>
+        <input type="email" id="cfg-sender" placeholder="facundo.godoy@nielsenexpediciones.com.ar" oninput="guardarCfgCC('nielsen_sender_email','cfg-sender','cfg-sender-saved')" autocomplete="off">
+        <div class="settings-saved" id="cfg-sender-saved"></div>
       </div>
-      <div style="font-size:10px;color:var(--muted);margin-top:4px">Los links se guardan automáticamente en este dispositivo.</div>
+      <div class="settings-field">
+        <label>🔑 EmailJS — Public Key</label>
+        <input type="text" id="cfg-ejs-key" placeholder="user_xxxxxxxxxxxx" oninput="guardarCfgCC('nielsen_emailjs_pubkey','cfg-ejs-key','cfg-ejs-key-saved')" autocomplete="off">
+        <div class="settings-saved" id="cfg-ejs-key-saved"></div>
+      </div>
+      <div class="settings-field">
+        <label>📡 EmailJS — Service ID</label>
+        <input type="text" id="cfg-ejs-svc" placeholder="service_xxxxxxxx" oninput="guardarCfgCC('nielsen_emailjs_service','cfg-ejs-svc','cfg-ejs-svc-saved')" autocomplete="off">
+        <div class="settings-saved" id="cfg-ejs-svc-saved"></div>
+      </div>
+      <div class="settings-field">
+        <label>📋 EmailJS — Template SC (solicitud de compra)</label>
+        <input type="text" id="cfg-ejs-tsc" placeholder="template_xxxxxxxx" oninput="guardarCfgCC('nielsen_emailjs_tmpl_sc','cfg-ejs-tsc','cfg-ejs-tsc-saved')" autocomplete="off">
+        <div class="settings-saved" id="cfg-ejs-tsc-saved"></div>
+      </div>
+      <div class="settings-field">
+        <label>📋 EmailJS — Template PA (pedido abastecimiento)</label>
+        <input type="text" id="cfg-ejs-tpa" placeholder="template_xxxxxxxx" oninput="guardarCfgCC('nielsen_emailjs_tmpl_pa','cfg-ejs-tpa','cfg-ejs-tpa-saved')" autocomplete="off">
+        <div class="settings-saved" id="cfg-ejs-tpa-saved"></div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">
+        ℹ️ Los valores se guardan en este navegador y se comparten con el formulario y el sistema de pedidos automáticamente (mismo dominio).
+      </div>
     </div>
     <div style="padding:12px 20px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end">
       <button class="btn btn-ghost btn-sm" onclick="cerrarSettings()">Cerrar</button>

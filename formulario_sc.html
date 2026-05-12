@@ -432,6 +432,7 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 .ls-item { display:flex; align-items:center; gap:5px; }
 .ls-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 </style>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -1441,90 +1442,39 @@ function buildPreview() {
 
 // ══ ENVIAR ══
 async function enviar() {
-  showLoader('Enviando solicitud...');
-  const area = document.getElementById('sol-area').value;
-  const subarea = document.getElementById('sol-subarea').value;
+  showLoader('Registrando solicitud...');
+  const area   = document.getElementById('sol-area').value;
+  const subarea= document.getElementById('sol-subarea').value;
   const motivo = document.getElementById('sol-motivo').value;
-  const payload = {
-    area, subarea,
-    solicitante: document.getElementById('sol-nombre').value,
-    email: document.getElementById('sol-email').value,
-    fecha: document.getElementById('sol-fecha').value,
-    fechaLimite: document.getElementById('sol-fecha-limite').value,
-    criticidad: critSel,
-    destino: document.getElementById('os-destino').value,
-    motivo: motivo === 'OTROS' ? 'OTROS — ' + document.getElementById('sol-motivo-otro').value : motivo,
-    os: sinOS ? 'S/OS' : document.getElementById('os-num').value,
-    sinOS,
-    osAsunto: document.getElementById('os-asunto').value,
-    osDesc: document.getElementById('os-desc').value,
-    osResp: document.getElementById('os-resp').value,
-    panolero: document.getElementById('panolero').value,
-    panolerFecha: document.getElementById('panolero-fecha').value,
-    panoleroObs: document.getElementById('panolero-obs').value,
-    items: document.getElementById('items-texto').value,
-    pedidoOriginal: pedidoItems.map((it,i) => ({ art:it.art, cant:it.cant, enStock: enStockSet.has(i) })),
-    obs: document.getElementById('items-obs').value,
-    presupuestos: presupuestos.map(p => ({ name: p.name, size: p.size, type: p.type })),
-    ccUrl: localStorage.getItem(CC_URL_KEY) || '',
-    valeNum: valeNumActual || '',
-  };
 
   try {
-    let numSC, numOP;
-    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('REEMPLAZAR')) {
-      // Modo demo sin backend
-      numSC = 'SC-DEMO-' + Date.now();
-      // Incrementar contador de OP en localStorage (correlativo persistido)
-      const _anioDemo = new Date().getFullYear();
-      const _keyDemo = 'nielsen_op_form_' + _anioDemo;
-      const _cntDemo = parseInt(localStorage.getItem(_keyDemo) || '0') + 1;
-      localStorage.setItem(_keyDemo, _cntDemo);
-      numOP = 'OP-' + _anioDemo + '-' + String(_cntDemo).padStart(4, '0');
-      toast('✅ Modo demo: SC generada (sin backend configurado)');
-    } else {
-      // Generar número SC localmente (el servidor lo confirma por email)
-      const anio = new Date().getFullYear();
-      const mes = String(new Date().getMonth()+1).padStart(2,'0');
-      const PREFS = {
-        'TALLER':'SCTL','TRANSPORTE':'SCTR','MANTENIMIENTO':'SCMT',
-        'GERENCIA':'SCG','COMPRAS':'SCCYA','SSMA':'SCSSMA',
-        'LOGISTICA':'SCLG','RRHH':'SCRH','CALIDAD':'SCCL',
-        'PRESIDENCIA':'SCPR','COCINA BASE':'SCCB','CAMPAMENTOS':'SCCAMP'
-      };
-      const SUBP = {'ELECTRICIDAD':'SCMTE','PLOMERIA':'SCMTP','METALURGIA':'SCMTM','CAMPAMENTO':'SCMTC'};
-      let pref = PREFS[payload.area] || 'SC';
-      if (payload.area === 'MANTENIMIENTO' && payload.subarea && SUBP[payload.subarea]) pref = SUBP[payload.subarea];
-      const scKey = 'sc_cnt_' + pref + '_' + anio;
-      const scCnt = (parseInt(localStorage.getItem(scKey) || '0')) + 1;
-      localStorage.setItem(scKey, scCnt);
-      numSC = pref + '-' + anio + mes + '-' + String(scCnt).padStart(4,'0');
+    // ── Generar número SC correlativo (siempre, sin depender de Apps Script) ──
+    const anio = new Date().getFullYear();
+    const mes  = String(new Date().getMonth()+1).padStart(2,'0');
+    const PREFS = {
+      'TALLER':'SCTL','TRANSPORTE':'SCTR','MANTENIMIENTO':'SCMT',
+      'GERENCIA':'SCG','COMPRAS':'SCCYA','SSMA':'SCSSMA',
+      'LOGISTICA':'SCLG','RRHH':'SCRH','CALIDAD':'SCCL',
+      'PRESIDENCIA':'SCPR','COCINA BASE':'SCCB','CAMPAMENTOS':'SCCAMP'
+    };
+    const SUBP = {'ELECTRICIDAD':'SCMTE','PLOMERIA':'SCMTP','METALURGIA':'SCMTM','CAMPAMENTO':'SCMTC'};
+    let pref = PREFS[area] || 'SC';
+    if (area === 'MANTENIMIENTO' && subarea && SUBP[subarea]) pref = SUBP[subarea];
+    const scKey = 'sc_cnt_' + pref + '_' + anio;
+    const scCnt = (parseInt(localStorage.getItem(scKey) || '0')) + 1;
+    localStorage.setItem(scKey, scCnt);
+    const numSC = pref + '-' + anio + mes + '-' + String(scCnt).padStart(4,'0');
 
-      const opKey = 'op_cnt_' + anio;
-      const opCnt = (parseInt(localStorage.getItem(opKey) || '0')) + 1;
-      localStorage.setItem(opKey, opCnt);
-      numOP = 'OP-' + anio + '-' + String(opCnt).padStart(4,'0');
+    const opKey = 'op_cnt_' + anio;
+    const opCnt = (parseInt(localStorage.getItem(opKey) || '0')) + 1;
+    localStorage.setItem(opKey, opCnt);
+    const numOP = 'OP-' + anio + '-' + String(opCnt).padStart(4,'0');
 
-      payload.numSC = numSC;
-      payload.numOP = numOP;
-
-      // Enviar al Apps Script — usar no-cors para evitar el error CORS
-      // El servidor recibe y procesa los datos correctamente aunque no devuelva respuesta
-      fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'saveSC', payload })
-      }).catch(() => {}); // silencioso — el servidor igual recibe
-
-      // Pequeña pausa para que el servidor procese
-      await new Promise(r => setTimeout(r, 800));
-    }
     hideLoader();
     showSuccess(numSC, numOP);
   } catch(err) {
     hideLoader();
-    toast('Error al enviar: ' + err.message, true);
+    toast('Error al registrar: ' + err.message, true);
   }
 }
 
@@ -2115,6 +2065,58 @@ async function sbDelete(tabla, col, val) {
     });
   } catch(e) { console.warn('SB delete error:', e.message); }
 }
+
+// ══════════════════════════════════════════════════════════
+// ENVÍO DE EMAIL — EmailJS
+// Configuración en Ajustes del Centro de Control
+// ══════════════════════════════════════════════════════════
+function _enviarEmailSC(numSC, numOP) {
+  const pubKey  = localStorage.getItem('nielsen_emailjs_pubkey')  || '';
+  const service = localStorage.getItem('nielsen_emailjs_service') || '';
+  const tmpl    = localStorage.getItem('nielsen_emailjs_tmpl_sc') || '';
+  const from    = localStorage.getItem('nielsen_sender_email')    || 'compras@nielsenexpediciones.com.ar';
+
+  if (!pubKey || !service || !tmpl) {
+    console.info('EmailJS no configurado — sin envío de mail');
+    return;
+  }
+
+  const nombre   = document.getElementById('sol-nombre')?.value || '';
+  const email    = document.getElementById('sol-email')?.value  || '';
+  const area     = document.getElementById('sol-area')?.value   || '';
+  const destino  = document.getElementById('os-destino')?.value || '';
+  const fecha    = document.getElementById('sol-fecha')?.value  || '';
+  const fLimite  = document.getElementById('sol-fecha-limite')?.value || 'No indicada';
+  const itemsTxt = document.getElementById('items-texto')?.value || '';
+  const obs      = document.getElementById('items-obs')?.value   || '';
+  const os       = sinOS ? 'Sin OS' : (document.getElementById('os-num')?.value || '');
+
+  if (!email) { console.warn('Sin email del solicitante'); return; }
+
+  emailjs.init({ publicKey: pubKey });
+
+  emailjs.send(service, tmpl, {
+    to_email:     email,
+    to_name:      nombre,
+    from_email:   from,
+    num_sc:       numSC,
+    num_op:       numOP,
+    area:         area,
+    criticidad:   critSel || 'MEDIA',
+    destino:      destino,
+    os:           os,
+    fecha:        fecha,
+    fecha_limite: fLimite,
+    items:        itemsTxt,
+    obs:          obs || '—',
+    vale_num:     valeNumActual || '—',
+    link_historial: 'https://nielsen-compras.vercel.app/#historial'
+  }).then(
+    () => console.log('✅ Email SC enviado a', email),
+    (err) => console.warn('⚠️ Error email SC:', err)
+  );
+}
+
 
 // ══════════════════════════════════════════════════════════
 // GUARDAR SC → Supabase + localStorage (fallback)
