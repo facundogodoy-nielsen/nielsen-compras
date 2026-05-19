@@ -716,12 +716,30 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 
 /* Phone grande: 640px */
 @media (max-width: 640px) {
-  /* Layout: ocultar sidebar, main ocupa todo */
-  aside { width: 0 !important; opacity: 0 !important; padding: 0 !important;
-          border-right: none !important; pointer-events: none !important; overflow: hidden !important; }
-  aside.collapsed { width: 0 !important; }
+  /* Layout: main ocupa todo, sidebar como drawer */
   .layout > main { flex: 1; min-width: 0; width: 100%; }
   main { padding: 10px 8px; }
+
+  /* Sidebar: drawer deslizante desde la izquierda */
+  aside {
+    position: fixed !important;
+    left: 0 !important; top: 0 !important; bottom: 0 !important;
+    width: 280px !important;
+    height: 100dvh !important;
+    z-index: 600 !important;
+    transform: translateX(-100%) !important;
+    transition: transform .28s cubic-bezier(.4,0,.2,1) !important;
+    opacity: 1 !important;
+    padding: 12px 0 !important;
+    border-right: 1px solid var(--border2) !important;
+    pointer-events: none !important;
+    overflow-y: auto !important; overflow-x: hidden !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,.5) !important;
+  }
+  aside.sidebar-open {
+    transform: translateX(0) !important;
+    pointer-events: auto !important;
+  }
 
   /* Header */
   header img  { height: 34px !important; }
@@ -1011,6 +1029,15 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   margin-top: 2px;
 }
 
+
+/* ── Sidebar backdrop (mobile) ── */
+#sidebar-backdrop {
+  display: none;
+  position: fixed; inset: 0; z-index: 599;
+  background: rgba(0,0,0,.55);
+  -webkit-tap-highlight-color: transparent;
+}
+#sidebar-backdrop.show { display: block; }
 </style>
 </head>
 <body>
@@ -2610,11 +2637,58 @@ function showViewPA(id, btn) {
 }
 
 // ── Sidebar toggle ──
-function toggleSidebar() {
-  const aside=document.getElementById('main-aside');
-  if(aside) aside.classList.toggle('collapsed');
-  // icon permanece como ☰ siempre
+function isMobile() { return window.innerWidth <= 640; }
+
+function closeSidebarMobile() {
+  const aside = document.getElementById('main-aside');
+  const bd    = document.getElementById('sidebar-backdrop');
+  if (aside) aside.classList.remove('sidebar-open');
+  if (bd)    bd.classList.remove('show');
+  document.body.style.overflow = '';
 }
+
+function toggleSidebar() {
+  const aside = document.getElementById('main-aside');
+  if (!aside) return;
+
+  if (isMobile()) {
+    // MOBILE: drawer overlay
+    const isOpen = aside.classList.contains('sidebar-open');
+    const bd = document.getElementById('sidebar-backdrop');
+    if (isOpen) {
+      aside.classList.remove('sidebar-open');
+      if (bd) bd.classList.remove('show');
+      document.body.style.overflow = '';
+    } else {
+      aside.classList.add('sidebar-open');
+      if (bd) bd.classList.add('show');
+      document.body.style.overflow = 'hidden'; // prevent scroll behind drawer
+    }
+  } else {
+    // DESKTOP: inline collapse
+    aside.classList.toggle('collapsed');
+  }
+}
+
+// Auto-close sidebar on mobile when a nav item is clicked
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.sidebar-btn, .sidebar-btn-cta').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (isMobile()) closeSidebarMobile();
+    });
+  });
+});
+
+// Close on resize to desktop
+window.addEventListener('resize', () => {
+  if (!isMobile()) {
+    const bd = document.getElementById('sidebar-backdrop');
+    if (bd) bd.classList.remove('show');
+    document.body.style.overflow = '';
+    const aside = document.getElementById('main-aside');
+    if (aside) aside.classList.remove('sidebar-open');
+  }
+});
 
 // ── Limpiar Datos — 3-step flow ──
 let _limpiarSel = new Set();
@@ -5045,5 +5119,6 @@ iniciarAutoSync();
     </button>
   </div>
 </div>
+<div id="sidebar-backdrop" onclick="closeSidebarMobile()"></div>
 </body>
 </html>

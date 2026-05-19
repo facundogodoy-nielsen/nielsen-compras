@@ -1313,11 +1313,19 @@ function getNextOC(){
   return OC_PREFIX + String(n).padStart(4,'0');
 }
 
-function resetearNumero(){
-  if(!confirm('¿Reiniciar numeración desde OCC-2026-0001? Esto borrará el contador actual.')) return;
+async function resetearNumero(){
+  if(!modoAdmin){ toast('⛔ Solo disponible en Modo Editor','err'); return; }
+  const anio = new Date().getFullYear();
   localStorage.removeItem(OC_KEY);
-  document.getElementById('nroPedido').value = OC_PREFIX + '0001';
-  toast('Numeración reiniciada.','ok');
+  try {
+    await fetch(_SB_URL+'/rest/v1/counters?name=eq.oc_'+anio, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
+      body:JSON.stringify({value:0})
+    });
+  } catch(e) {}
+  document.getElementById('nroPedido').value = OC_PREFIX + '0001 (preliminar)';
+  toast('Numeración reseteada en todos los dispositivos','ok');
 }
 
 (function(){
