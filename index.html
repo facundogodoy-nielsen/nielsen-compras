@@ -2449,24 +2449,20 @@ function verificarSettingsPin() {
   else { _spinBuf=''; _updPinDots('spd','spin-err'); document.getElementById('spin-err').textContent='❌ Clave incorrecta'; _shake('settings-pin-ov'); }
 }
 function abrirSettings() {
-  const fields = {
-    'cfg-sc-url':  'nielsen_sc_form_url',
-    'cfg-pa-url':  'nielsen_pa_url',
-    'cfg-sender':  'nielsen_sender_email',
-    'cfg-ejs-key': 'nielsen_emailjs_pubkey',
-    'cfg-ejs-svc': 'nielsen_emailjs_service',
-    'cfg-ejs-tsc': 'nielsen_emailjs_tmpl_sc',
-    'cfg-ejs-tpa': 'nielsen_emailjs_tmpl_pa'
+  const fieldDefaults = {
+    'cfg-sc-url':  { key: 'nielsen_sc_form_url', def: DEFAULT_SC_URL },
+    'cfg-pa-url':  { key: 'nielsen_pa_url',      def: DEFAULT_PA_URL },
+    'cfg-sender':  { key: 'nielsen_sender_email', def: 'facundo.godoy@nielsenexpediciones.com.ar' },
+    'cfg-ejs-key': { key: 'nielsen_emailjs_pubkey',  def: '' },
+    'cfg-ejs-svc': { key: 'nielsen_emailjs_service', def: '' },
+    'cfg-ejs-tsc': { key: 'nielsen_emailjs_tmpl_sc', def: '' },
+    'cfg-ejs-tpa': { key: 'nielsen_emailjs_tmpl_pa', def: '' }
   };
-  Object.entries(fields).forEach(([id, key]) => {
+  Object.entries(fieldDefaults).forEach(([id, {key, def}]) => {
     const inp = document.getElementById(id);
-    if (inp) inp.value = localStorage.getItem(key) || '';
-    const savedId = id + '-saved';
-    const s = document.getElementById(savedId); if (s) s.textContent = '';
+    if (inp) inp.value = localStorage.getItem(key) || def;
+    const s = document.getElementById(id + '-saved'); if (s) s.textContent = '';
   });
-  // Pre-fill sender if empty
-  const senderInp = document.getElementById('cfg-sender');
-  if (senderInp && !senderInp.value) senderInp.value = 'facundo.godoy@nielsenexpediciones.com.ar';
   document.getElementById('settings-ov').classList.add('open');
 }
 function cerrarSettings() { document.getElementById('settings-ov').classList.remove('open'); }
@@ -2480,16 +2476,12 @@ function guardarCfgCC(key, inputId, savedId) {
 
 // ── Abrir formulario SC ──
 function abrirFormulario() {
-  const url = localStorage.getItem('nielsen_sc_form_url') || '';
-  if(url) { window.open(url,'_blank'); return; }
-  showToast('Configurá el link del Formulario SC en ⚙️ Ajustes','error');
+  window.open(getLinkSC(), '_blank');
 }
 
 // ── PA link ──
 function abrirLinkPA() {
-  const url = localStorage.getItem('nielsen_pa_url') || '';
-  if(!url){ showToast('Configurá el link del Sistema de Pedidos en ⚙️ Ajustes','error'); return; }
-  window.open(url,'_blank');
+  window.open(getLinkPA(), '_blank');
 }
 
 // ── Historial Pedidos tabs ──
@@ -4022,8 +4014,22 @@ function exportarOP() {
 // ══ LINK DEL FORMULARIO ══
 const FORM_URL_KEY = 'nielsen_sc_form_url';
 
+// ══════════════════════════════════════════════════════════════════
+// LINKS POR DEFECTO — funcionan en cualquier dispositivo sin config
+// El panel de Ajustes puede sobreescribirlos via localStorage
+// ══════════════════════════════════════════════════════════════════
+const DEFAULT_SC_URL  = 'https://nielsen-compras.vercel.app/formulario_sc';
+const DEFAULT_PA_URL  = 'https://nielsen-compras.vercel.app/pedidos';
+const DEFAULT_CC_URL  = 'https://nielsen-compras.vercel.app';
+
+function getLinkSC()  { return localStorage.getItem('nielsen_sc_form_url') || DEFAULT_SC_URL; }
+function getLinkPA()  { return localStorage.getItem('nielsen_pa_url')      || DEFAULT_PA_URL; }
+function getLinkCC()  { return localStorage.getItem('nielsen_cc_url')      || DEFAULT_CC_URL; }
+
+
+
 function getFormURL() {
-  return localStorage.getItem(FORM_URL_KEY) || '';
+  return getLinkSC();
 }
 
 function abrirFormulario() {
@@ -4036,8 +4042,7 @@ function abrirFormulario() {
 }
 
 function copiarLink() {
-  const url = getFormURL();
-  if (!url) { showToast('Primero configurá el link del formulario', 'error'); return; }
+  const url = getLinkSC();
   // Método más confiable — funciona en file://, http y https
   try {
     const el = document.createElement('textarea');
