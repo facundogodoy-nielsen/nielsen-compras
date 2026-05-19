@@ -1054,16 +1054,16 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
         <div class="settings-saved" id="cfg-cc-saved"></div>
       </div>
     </div>
-    <div style="padding:12px 20px 6px;border-top:1px solid var(--border)">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:10px">Numeración de SC</div>
+    <div style="padding:12px 20px 16px;border-top:1px solid var(--border)">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:10px">Numeración de Pedidos</div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:180px">
-          <div style="font-size:12px;color:var(--text)">Reiniciar contador de SC</div>
-          <div style="font-size:11px;color:var(--muted)">El próximo N° de SC comenzará desde 0001</div>
+          <div style="font-size:12px;color:var(--text);font-weight:600">Resetear Nº de Pedido</div>
+          <div style="font-size:11px;color:var(--muted)">El próximo N° de SC y OP comenzará desde 0001</div>
         </div>
         <button class="btn btn-sm" onclick="resetearContadorSC()"
-          style="background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.3);white-space:nowrap">
-          🔄 Resetear Nº SC
+          style="background:rgba(239,68,68,.12);color:#dc2626;border:1.5px solid rgba(239,68,68,.4);white-space:nowrap;font-weight:700;padding:8px 14px">
+          🔄 Resetear Nº Pedido
         </button>
       </div>
       <div class="settings-saved" id="cfg-reset-saved" style="margin-top:6px"></div>
@@ -1675,21 +1675,32 @@ let _spinBuf = '';
 
 
 // ── Resetear contador de SC desde Ajustes ──
-function resetearContadorSC() {
+async function resetearContadorSC() {
   const anio = new Date().getFullYear();
-  // Limpiar todos los contadores SC del año actual
-  const keysToRemove = [];
-  for (let i = 0; i < localStorage.length; i++) {
+  const mes  = String(new Date().getMonth()+1).padStart(2,'0');
+  // 1. Limpiar localStorage
+  for (let i = localStorage.length - 1; i >= 0; i--) {
     const k = localStorage.key(i);
-    if (k && (k.startsWith('sc_cnt_') || k.startsWith('op_cnt_'))) {
-      keysToRemove.push(k);
+    if (k && (k.startsWith('sc_cnt_') || k.startsWith('op_cnt_') || k.startsWith('nielsen_vp_'))) {
+      localStorage.removeItem(k);
     }
   }
-  keysToRemove.forEach(k => localStorage.removeItem(k));
+  // 2. Resetear en Supabase
+  const prefijos = ['SCTL','SCTR','SCMT','SCG','SCCYA','SCSSMA','SCLG','SCRH','SCCL','SCPR','SCCB','SCCAMP','SCMTE','SCMTP','SCMTM','SCMTC','SC'];
+  const names = [...prefijos.map(p=>'sc_'+p+'_'+anio),'op_'+anio,'vp_'+anio+mes];
+  try {
+    await Promise.all(names.map(name =>
+      fetch(_SB_URL+'/rest/v1/counters?name=eq.'+encodeURIComponent(name), {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
+        body:JSON.stringify({value:0})
+      }).catch(()=>{})
+    ));
+  } catch(e) {}
   const saved = document.getElementById('cfg-reset-saved');
   if (saved) {
-    saved.textContent = '✅ Contadores reseteados — próxima SC será 0001';
-    setTimeout(() => { saved.textContent = ''; }, 3500);
+    saved.textContent = '✅ Numeración reseteada en todos los dispositivos';
+    setTimeout(()=>{ saved.textContent=''; }, 3500);
   }
 }
 
@@ -1974,18 +1985,19 @@ function escHtml(s) {
 function peekNumVP() {
   const anio = new Date().getFullYear();
   const mes  = String(new Date().getMonth()+1).padStart(2,'0');
-  const key  = 'nielsen_vp_'+anio+mes;
-  const cnt  = parseInt(localStorage.getItem(key)||'0');
+  const cnt  = parseInt(localStorage.getItem('nielsen_vp_'+anio+mes)||'0');
   return 'VP-'+anio+mes+'-'+String(cnt+1).padStart(4,'0');
 }
 
-function generarNumVP() {
+async function generarNumVP() {
   const anio = new Date().getFullYear();
   const mes  = String(new Date().getMonth()+1).padStart(2,'0');
-  const key  = 'nielsen_vp_'+anio+mes;
-  const cnt  = parseInt(localStorage.getItem(key)||'0')+1;
-  localStorage.setItem(key, cnt);
-  return 'VP-'+anio+mes+'-'+String(cnt).padStart(4,'0');
+  return await sbGetNextNum(
+    'vp_' + anio + mes,
+    'nielsen_vp_' + anio + mes,
+    'VP-' + anio + mes + '-',
+    4
+  );
 }
 
 function buildValeHTML(numVP, light) {
@@ -2071,13 +2083,13 @@ function buildValeHTML(numVP, light) {
     <div style="font-family:'Bebas Neue',Impact,sans-serif;font-size:44px;letter-spacing:5px;color:${c.wm};text-align:center;margin-top:14px;pointer-events:none;user-select:none">VALE DE RETIRO</div>`;
 }
 
-function abrirModalVale() {
+async function abrirModalVale() {
   const enStock = Object.entries(stockItems).filter(([,v]) => v.checked);
   if (!enStock.length) {
     toast('Tildá al menos un ítem con existencia para generar el vale', true);
     return;
   }
-  if (!valeNumActual) valeNumActual = generarNumVP();
+  if (!valeNumActual) valeNumActual = await generarNumVP();
   document.getElementById('vale-doc-inner').innerHTML = buildValeHTML(valeNumActual, false);
   document.getElementById('vale-ov').classList.add('open');
 }
