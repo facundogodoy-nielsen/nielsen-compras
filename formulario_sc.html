@@ -544,6 +544,12 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 @keyframes splashSlide{ from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
 @keyframes splashLine { from{width:0} to{width:60px} }
 
+
+/* ── Reset confirm modal ── */
+.reset-confirm-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:700;align-items:center;justify-content:center;padding:16px;}
+.reset-confirm-ov.open{display:flex;}
+.reset-confirm-box{background:var(--s1);border:1.5px solid var(--red);border-radius:14px;padding:28px 24px;width:100%;max-width:340px;text-align:center;}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
@@ -1059,9 +1065,9 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:180px">
           <div style="font-size:12px;color:var(--text);font-weight:600">Resetear Nº de Pedido</div>
-          <div style="font-size:11px;color:var(--muted)">El próximo N° de SC y OP comenzará desde 0001</div>
+          <div style="font-size:11px;color:var(--muted)">Próxima SC → SC-AREA-2026-0001 &nbsp;·&nbsp; Próximo PC → PC-2026-0001</div>
         </div>
-        <button class="btn btn-sm" onclick="resetearContadorSC()"
+        <button class="btn btn-sm" onclick="pedirConfirmacionReset()"
           style="background:rgba(239,68,68,.12);color:#dc2626;border:1.5px solid rgba(239,68,68,.4);white-space:nowrap;font-weight:700;padding:8px 14px">
           🔄 Resetear Nº Pedido
         </button>
@@ -1082,7 +1088,7 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
     <div class="vale-doc" id="vale-doc-inner"></div>
     <div class="vale-doc-footer">
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('vale-ov').classList.remove('open')">Cerrar</button>
-      <button class="btn btn-primary btn-sm" onclick="imprimirVale()">🖨️ Imprimir / Guardar PDF</button>
+      <button class="btn btn-primary btn-sm" id="vale-print-btn" onclick="imprimirVale()">🖨️ Imprimir / Guardar PDF</button>
     </div>
   </div>
 </div>
@@ -1235,7 +1241,7 @@ function cargarNumOP() {
   const anio = new Date().getFullYear();
   const key = 'nielsen_op_form_' + anio;
   const cnt = parseInt(localStorage.getItem(key) || '0');
-  opNum = 'OP-' + anio + '-' + String(cnt + 1).padStart(4, '0');
+  opNum = 'PC-' + anio + '-' + String(cnt + 1).padStart(4, '0');
   const el = document.getElementById('op-num');
   if (el) el.value = opNum;
   // Si hay backend configurado, intentar sincronizar en segundo plano (sin bloquear)
@@ -1320,7 +1326,7 @@ function toggleSOS() {
   // Si aún no se cargó opNum, generarlo ahora
   if (!opNum) {
     const anio = new Date().getFullYear();
-    opNum = 'OP-' + anio + '-' + String(parseInt(localStorage.getItem('nielsen_op_form_'+anio)||'0')+1).padStart(4,'0');
+    opNum = 'PC-' + anio + '-' + String(parseInt(localStorage.getItem('nielsen_op_form_'+anio)||'0')+1).padStart(4,'0');
   }
   if (sinOS) {
     inp.value = 'S/OS';
@@ -1612,7 +1618,7 @@ async function enviar() {
     const opKey = 'op_cnt_' + anio;
     const opCnt = (parseInt(localStorage.getItem(opKey) || '0')) + 1;
     localStorage.setItem(opKey, opCnt);
-    const numOP = 'OP-' + anio + '-' + String(opCnt).padStart(4,'0');
+    const numOP = 'PC-' + anio + '-' + String(opCnt).padStart(4,'0');
 
     hideLoader();
     showSuccess(numSC, numOP);
@@ -1668,6 +1674,11 @@ function setupUppercase() {
 // ══════════════════════════════════════════════════
 const INV_URL_KEY = 'nielsen_inv_url';
 const CC_URL_KEY  = 'nielsen_cc_url';
+// ── Links por defecto (funcionan sin configuración previa) ──
+const DEFAULT_INV_URL = 'https://nielsen-inventario.vercel.app';
+const DEFAULT_CC_URL  = 'https://nielsen-compras.vercel.app/#historial';
+function getInvURL() { return localStorage.getItem(INV_URL_KEY) || DEFAULT_INV_URL; }
+function getCCURL()  { return localStorage.getItem(CC_URL_KEY)  || DEFAULT_CC_URL; }
 const SETTINGS_PIN = '2026';
 
 // ── Settings PIN ──
@@ -1675,6 +1686,30 @@ let _spinBuf = '';
 
 
 // ── Resetear contador de SC desde Ajustes ──
+
+// ── Reset con doble confirmación de clave ──
+function pedirConfirmacionReset() {
+  cerrarSettings();
+  document.getElementById('reset-confirm-pwd').value = '';
+  document.getElementById('reset-confirm-err').textContent = '';
+  document.getElementById('reset-confirm-ov').classList.add('open');
+  setTimeout(() => document.getElementById('reset-confirm-pwd').focus(), 150);
+}
+function cerrarResetConfirm() {
+  document.getElementById('reset-confirm-ov').classList.remove('open');
+}
+async function ejecutarReset() {
+  const pwd = document.getElementById('reset-confirm-pwd').value;
+  if (pwd !== SETTINGS_PIN) {
+    document.getElementById('reset-confirm-err').textContent = '❌ Clave incorrecta';
+    document.getElementById('reset-confirm-pwd').value = '';
+    document.getElementById('reset-confirm-pwd').focus();
+    return;
+  }
+  cerrarResetConfirm();
+  await resetearContadorSC();
+}
+
 async function resetearContadorSC() {
   const anio = new Date().getFullYear();
   const mes  = String(new Date().getMonth()+1).padStart(2,'0');
@@ -1765,8 +1800,8 @@ function abrirSettings() {
   // Cargar valores actuales
   const invEl = document.getElementById('cfg-inv-url');
   const ccEl  = document.getElementById('cfg-cc-url');
-  if (invEl) invEl.value = localStorage.getItem(INV_URL_KEY) || '';
-  if (ccEl)  ccEl.value  = localStorage.getItem(CC_URL_KEY)  || '';
+  if (invEl) invEl.value = getInvURL();
+  if (ccEl)  ccEl.value  = getCCURL();
   document.getElementById('cfg-inv-saved').textContent = '';
   document.getElementById('cfg-cc-saved').textContent  = '';
   document.getElementById('settings-ov').classList.add('open');
@@ -1794,17 +1829,13 @@ function guardarCfg(key, inputId, savedId) {
 function actualizarInvUrlStatus() {
   const el = document.getElementById('inv-url-status');
   if (!el) return;
-  const url = localStorage.getItem(INV_URL_KEY) || '';
-  el.textContent = url ? '🔗 Link configurado' : 'Sin link — configurá en ⚙️ Ajustes';
-  el.style.color = url ? 'var(--green)' : 'var(--muted)';
+  const url = getInvURL();
+  el.textContent = '🔗 ' + url.replace(/^https?:\/\//, '').split('/')[0];
+  el.style.color = 'var(--green)';
 }
 
 function abrirInventario() {
-  let url = localStorage.getItem(INV_URL_KEY) || '';
-  if (!url) {
-    toast('Configurá el link del inventario en ⚙️ Ajustes', true);
-    return;
-  }
+  let url = getInvURL();
   const urlObj = (() => { try { return new URL(url); } catch { return null; } })();
   if (urlObj) { urlObj.hash = 'stock-global'; url = urlObj.href; }
   else { url = url.replace(/#.*$/,'') + '#stock-global'; }
@@ -2092,12 +2123,27 @@ async function abrirModalVale() {
   if (!valeNumActual) valeNumActual = await generarNumVP();
   document.getElementById('vale-doc-inner').innerHTML = buildValeHTML(valeNumActual, false);
   document.getElementById('vale-ov').classList.add('open');
+  // Auto-open print dialog after modal renders
+  setTimeout(() => {
+    const printBtn = document.getElementById('vale-print-btn');
+    if (printBtn) printBtn.focus();
+  }, 200);
 }
 
 function imprimirVale() {
-  const numVP = valeNumActual || peekNumVP();
-  document.getElementById('vale-print-area').innerHTML =
-    `<div style="font-family:'IBM Plex Sans',Arial,sans-serif;background:#fff;color:#1a1a1a;padding:0">${buildValeHTML(numVP,true)}</div>`;
+  const valeEl = document.getElementById('vale-doc-inner');
+  if (!valeEl) { window.print(); return; }
+  const w = window.open('','_print','width=800,height=600');
+  if (!w) { window.print(); return; }
+  const lt = '<', gt = '>';
+  w.document.write(lt+'!DOCTYPE html'+gt+lt+'html'+gt+lt+'head'+gt+lt+'title'+gt+'Vale de Retiro'+lt+'/title'+gt);
+  w.document.write(lt+'style'+gt+'body{margin:0;padding:20px;font-family:Arial,sans-serif;}@media print{body{margin:0;padding:0;}}'+lt+'/style'+gt+lt+'/head'+gt+lt+'body'+gt);
+  w.document.write(valeEl.innerHTML);
+  w.document.write(lt+'/body'+gt+lt+'/html'+gt);
+  w.document.close();
+  w.focus();
+  setTimeout(function(){ w.print(); setTimeout(function(){ w.close(); }, 500); }, 300);
+}</div>`;
   window.print();
 }
 
@@ -2376,5 +2422,26 @@ async function _guardarSCenCC(numSC, numOP) {
 
 init();
 </script>
+
+<!-- Reset confirm PIN modal -->
+<div class="reset-confirm-ov" id="reset-confirm-ov" onclick="if(event.target===this)cerrarResetConfirm()">
+  <div class="reset-confirm-box">
+    <div style="font-size:20px;font-weight:800;letter-spacing:2px;color:var(--red);margin-bottom:6px">⚠️ CONFIRMAR RESET</div>
+    <div style="font-size:12px;color:var(--text);margin-bottom:16px;line-height:1.5">
+      Se reiniciarán <strong>todos los contadores</strong> de SC, PC y VP.<br>
+      Ingresá la clave nuevamente para confirmar.
+    </div>
+    <input type="password" id="reset-confirm-pwd" class="login-pwd-inp" placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')ejecutarReset()"
+      style="margin-bottom:10px;text-align:center;letter-spacing:4px;font-size:18px"
+      autocomplete="off">
+    <div style="color:var(--red);font-size:11px;min-height:16px;margin-bottom:12px" id="reset-confirm-err"></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-ghost btn-sm" onclick="cerrarResetConfirm()" style="flex:1">Cancelar</button>
+      <button class="btn btn-sm" onclick="ejecutarReset()"
+        style="flex:1;background:#dc2626;color:#fff;border-color:#dc2626;font-weight:700">Confirmar</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

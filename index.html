@@ -1699,7 +1699,7 @@ function tick() {
 setInterval(tick, 1000); tick();
 
 // ══ NAV ══
-function showView(id, btn) {
+async function showView(id, btn) {
   // PA views have their own DOM IDs
   const paViews = ['panel-pa','historial-pa','kanban-pa'];
   if (paViews.includes(id)) { showViewPA(id, btn); return; }
@@ -1707,9 +1707,10 @@ function showView(id, btn) {
   document.getElementById('view-' + id).classList.add('active');
   document.querySelectorAll('.sidebar-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  if (id === 'panel')    { recargarSCsDesdeLS(); renderPanel(); }
-  if (id === 'historial'){ recargarSCsDesdeLS(); renderHistorial(); }
-  if (id === 'kanban')   renderKanban();
+  // Await fresh data before rendering
+  if (id === 'panel')    { await recargarSCsDesdeLS(); renderPanel(); }
+  if (id === 'historial'){ await recargarSCsDesdeLS(); renderHistorial(); }
+  if (id === 'kanban')   { await recargarSCsDesdeLS(); renderKanban(); }
   if (id === 'nueva-sc') resetWizard();
 }
 
@@ -1787,10 +1788,12 @@ function intentarLogin() {
     setTimeout(() => { ov.style.display = 'none'; }, 420);
     if (loginModeSelected === 'editor') {
       activarModoEditor();
-      // Editor: ir directo al panel principal
-      recargarSCsDesdeLS();
+      // Editor: cargar datos y luego mostrar panel
+      recargarSCsDesdeLS().then(() => {
+        renderPanel();
+        showView('panel', document.querySelector('.sidebar-btn[onclick*="showView(\'panel\'"]'));
+      });
       renderHistorialPA();
-      showView('panel', document.querySelector('.sidebar-btn[onclick*="showView(\'panel\'"]'));
     } else {
       activarModoLector();
       // Lector: mostrar la pantalla de acceso rápido
@@ -2140,7 +2143,7 @@ function renderFilaSC(sc, i, tableId) {
        : `<span style="color:var(--muted);font-size:11px">${diasRestantes}d</span>`)
     : '—';
   return `<tr>
-    <td class="mono">${sc.num}</td>
+    <td class="mono" style="color:var(--or);font-weight:700">${sc.numSC||sc.num||'—'}</td>
     <td><strong>${areaLabel}</strong></td>
     <td>${sc.solicitante}</td>
     <td style="font-family:var(--fm);font-size:11px;color:var(--muted)">${sc.sinOS ? `<span class="badge badge-yellow">S/OS</span>` : sc.os}</td>
@@ -2306,7 +2309,7 @@ function verSC(idx) {
   const sc = scs[idx];
   if (!sc) return;
   window._scIdx = idx;
-  document.getElementById('modal-sc-num').textContent = sc.num;
+  document.getElementById('modal-sc-num').textContent = sc.numSC || sc.num || '—';
   const areaLabel = sc.subarea
     ? (sc.area === 'MANTENIMIENTO' ? `MANTENIMIENTO › ${sc.subarea}` : `${sc.area} › ${sc.subarea}`)
     : sc.area;
@@ -2322,7 +2325,7 @@ function verSC(idx) {
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Fecha límite</div>${formatFecha(sc.fechaLimite)}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Destino</div>${sc.destino||'—'}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Motivo de Compra</div><strong style="color:var(--or)">${sc.motivo||'—'}</strong></div>
-      <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Orden de Pedido</div><span style="font-family:var(--fm)">${sc.op}</span></div>
+      <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Nº Pedido (PC)</div><span style="font-family:var(--fm);color:var(--or);font-weight:700">${sc.numOP||sc.op||'—'}</span></div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Orden de Servicio</div><span style="font-family:var(--fm)">${sc.os}</span></div>
       <div style="grid-column:1/-1"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Descripción OS</div>${sc.osDesc}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Responsable OS</div>${sc.osResp}</div>
@@ -2375,6 +2378,14 @@ function verSC(idx) {
       </div>
     </div>
 
+    ${sc.valeNum||sc.valeNumActual ? `<div style="margin-top:14px;padding:12px 14px;background:rgba(232,93,37,.08);border:1px solid rgba(232,93,37,.25);border-radius:8px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or);margin-bottom:6px">📋 Vale de Retiro de Pañol</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-family:var(--fm);font-size:16px;font-weight:800;color:var(--or)">${sc.valeNum||sc.valeNumActual}</span>
+        <span style="font-size:11px;color:var(--muted)">Reserva realizada en paso de Pañol</span>
+      </div>
+      ${sc.panolero?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Pañolero: <strong>${sc.panolero}</strong></div>`:''}
+    </div>` : ''}
     ${sc.obs ? '<div style="margin-top:10px;font-size:12px;color:var(--muted)">📝 ' + sc.obs + '</div>' : ''}
   `;
 
@@ -2388,6 +2399,7 @@ function verSC(idx) {
 }
 
 function cerrarModal() { document.getElementById('modal-sc').classList.remove('open'); }
+function abrirModalSC(idx) { verSC(idx); } // alias usado por Panel de Control
 document.getElementById('modal-sc').addEventListener('click', e => { if (e.target === document.getElementById('modal-sc')) cerrarModal(); });
 
 function cambiarEstado(idx, estado) {
@@ -3667,6 +3679,13 @@ function confirmarCompra() {
   else if (pct > 0 && sc.estado === 'PENDIENTE') sc.estado = 'EN PROCESO';
 
   localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+  // Sync ALL changed fields to Supabase
+  if (sc.numSC) sbPatch('solicitudes_compra','num_sc',sc.numSC,{
+    estado: sc.estado,
+    items_comprados: JSON.stringify(sc.itemsComprados||{}),
+    pct_comprado: sc.pctComprado||0,
+    tipo_compra: sc.tipoCompra||''
+  });
   actualizarContadores();
 
   const activeView = document.querySelector('.view.active');
