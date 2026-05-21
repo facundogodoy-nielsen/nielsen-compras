@@ -1000,8 +1000,8 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
   <div class="success-icon">✅</div>
   <div style="font-family:var(--fd);font-size:22px;letter-spacing:2px;color:var(--or)">SOLICITUD ENVIADA</div>
   <div class="success-num" id="suc-num"></div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:4px">N° de Pedido</div>
-  <div style="font-family:var(--fm);font-size:18px;font-weight:700;color:var(--subtle);margin-bottom:16px" id="suc-op"></div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:2px;letter-spacing:1px;text-transform:uppercase">N° de Pedido de Compra</div>
+  <div style="font-family:var(--fm);font-size:24px;font-weight:800;color:var(--text);letter-spacing:2px;margin-bottom:16px;background:rgba(255,255,255,.05);padding:8px 20px;border-radius:8px;display:inline-block" id="suc-op"></div>
   <div class="success-sub">Tu solicitud fue registrada. Recibirás una confirmación en tu correo.<br>El área de Compras te notificará ante cualquier novedad.</div>
   <button class="btn btn-primary" onclick="nuevaSC()" style="margin-top:24px;max-width:300px;margin-left:auto;margin-right:auto">+ Nueva Solicitud</button>
 </div>
@@ -1591,6 +1591,31 @@ function buildPreview() {
 }
 
 // ══ ENVIAR ══
+
+// ── Contador global desde Supabase (sin duplicados entre dispositivos) ──
+const _SB_URL_FM = 'https://qivvewvgqlsptydftlhx.supabase.co';
+const _SB_KEY_FM = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+
+async function sbGetNextNum(counterName, localKey, prefix, digits) {
+  try {
+    const r = await fetch(_SB_URL_FM + '/rest/v1/rpc/increment_counter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json',
+        'apikey': _SB_KEY_FM, 'Authorization': 'Bearer ' + _SB_KEY_FM },
+      body: JSON.stringify({ counter_name: counterName })
+    });
+    if (r.ok) {
+      const n = await r.json();
+      localStorage.setItem(localKey, n);
+      return prefix + String(n).padStart(digits, '0');
+    }
+  } catch(e) { console.warn('sbGetNextNum offline:', e.message); }
+  // Fallback localStorage
+  const n = (parseInt(localStorage.getItem(localKey) || '0')) + 1;
+  localStorage.setItem(localKey, n);
+  return prefix + String(n).padStart(digits, '0');
+}
+
 async function enviar() {
   showLoader('Registrando solicitud...');
   const area   = document.getElementById('sol-area').value;
@@ -1610,15 +1635,17 @@ async function enviar() {
     const SUBP = {'ELECTRICIDAD':'SCMTE','PLOMERIA':'SCMTP','METALURGIA':'SCMTM','CAMPAMENTO':'SCMTC'};
     let pref = PREFS[area] || 'SC';
     if (area === 'MANTENIMIENTO' && subarea && SUBP[subarea]) pref = SUBP[subarea];
-    const scKey = 'sc_cnt_' + pref + '_' + anio;
-    const scCnt = (parseInt(localStorage.getItem(scKey) || '0')) + 1;
-    localStorage.setItem(scKey, scCnt);
-    const numSC = pref + '-' + anio + mes + '-' + String(scCnt).padStart(4,'0');
-
-    const opKey = 'op_cnt_' + anio;
-    const opCnt = (parseInt(localStorage.getItem(opKey) || '0')) + 1;
-    localStorage.setItem(opKey, opCnt);
-    const numOP = 'PC-' + anio + '-' + String(opCnt).padStart(4,'0');
+    // ── Números desde Supabase → sin duplicados en cualquier dispositivo ──
+    const numSC = await sbGetNextNum(
+      'sc_' + pref + '_' + anio,
+      'sc_cnt_' + pref + '_' + anio,
+      pref + '-' + anio + mes + '-', 4
+    );
+    const numOP = await sbGetNextNum(
+      'op_' + anio,
+      'op_cnt_' + anio,
+      'PC-' + anio + '-', 4
+    );
 
     hideLoader();
     showSuccess(numSC, numOP);

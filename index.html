@@ -1143,7 +1143,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   <div class="sidebar-divider"></div>
   <div class="sidebar-section">
     <span class="sidebar-label">Registros</span>
-    <button class="sidebar-btn" onclick="showView('historial', this)">
+    <button class="sidebar-btn" onclick="showView('historial-op', this)">
       <span class="sb-icon">📋</span> Historial Pedidos
     </button>
   </div>
@@ -1406,91 +1406,50 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
      VIEW: HISTORIAL DE ÓRDENES DE PEDIDO
 ══════════════════════════════════ -->
 <div id="view-historial-op" class="view">
-  <div class="pg-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
+  <div class="pg-header">
     <div>
       <div class="pg-title">HISTORIAL DE <span>PEDIDOS</span></div>
-      <div class="pg-sub">Pedidos de Compras (SC) y Pedidos de Abastecimiento (PA)</div>
+      <div class="pg-sub">Pedidos originales de materiales — incluye el listado previo a la SC final</div>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button class="btn btn-ghost btn-sm" onclick="exportarOP()">⬇️ Exportar Excel</button>
-      <button class="btn btn-sm" data-editor-only onclick="abrirModalOP()">+ Cargar OP Manual</button>
-    </div>
+    <button class="btn btn-ghost btn-sm" onclick="exportarPedidosOP()">⬇️ Exportar Excel</button>
   </div>
-
-  <!-- TABS -->
-  <div id="hp-panel-sc">
-
-  <!-- STATS OP -->
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px" id="op-stats">
-    <div class="stat" style="--sc:var(--or)">
-      <div class="stat-lbl">Total OP</div>
-      <div class="stat-val" id="op-st-total">0</div>
-      <div class="stat-sub">Pedidos recibidos</div>
-    </div>
-    <div class="stat" style="--sc:var(--accent3)">
-      <div class="stat-lbl">Derivaron en SC</div>
-      <div class="stat-val" id="op-st-sc">0</div>
-      <div class="stat-sub">Generaron solicitud</div>
-    </div>
-    <div class="stat" style="--sc:var(--accent2)">
-      <div class="stat-lbl">Resueltos por Pañol</div>
-      <div class="stat-val" id="op-st-paniol">0</div>
-      <div class="stat-sub">Stock disponible</div>
-    </div>
-    <div class="stat" style="--sc:var(--muted)">
-      <div class="stat-lbl">Sin SC (otro motivo)</div>
-      <div class="stat-val" id="op-st-sin">0</div>
-      <div class="stat-sub">No derivaron en compra</div>
-    </div>
-  </div>
-
-  <!-- FILTROS -->
-  <div class="card sp" style="padding:14px 20px;">
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-      <select id="fop-resultado" onchange="renderHistorialOP()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px;font-family:var(--ff);outline:none">
-        <option value="">Todos los resultados</option>
-        <option value="CON SC">Con SC generada</option>
-        <option value="PANIOL">Resuelto por Pañol</option>
-        <option value="SIN SC">Sin SC</option>
-      </select>
-      <select id="fop-area" onchange="renderHistorialOP()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px;font-family:var(--ff);outline:none">
+  <!-- Filtros -->
+  <div class="card sp" style="padding:14px 20px;margin-bottom:16px">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="fop-buscar" onkeyup="renderHistorialPedidos()" placeholder="Buscar por N° PC, área, solicitante, materiales..."
+        style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px;font-family:var(--ff);outline:none;flex:1;min-width:200px">
+      <select id="fop-area" onchange="renderHistorialPedidos()"
+        style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px;font-family:var(--ff);outline:none">
         <option value="">Todas las áreas</option>
-        <option value="TALLER">Taller</option>
-        <option value="TRANSPORTE">Transporte</option>
-        <option value="MANTENIMIENTO">Mantenimiento</option>
-        <option value="GERENCIA">Gerencia</option>
-        <option value="COMPRAS">Compras</option>
-        <option value="SSMA">SSMA</option>
-        <option value="LOGISTICA">Logística</option>
-        <option value="RRHH">RRHH</option>
-        <option value="CALIDAD">Calidad</option>
-        <option value="PRESIDENCIA">Presidencia</option>
-        <option value="COCINA BASE">Cocina Base</option>
-        <option value="CAMPAMENTOS">Campamentos</option>
+        <option>TALLER</option><option>TRANSPORTE</option><option>MANTENIMIENTO</option>
+        <option>GERENCIA</option><option>COMPRAS</option><option>SSMA</option>
+        <option>LOGISTICA</option><option>RRHH</option><option>CALIDAD</option>
+        <option>PRESIDENCIA</option><option>COCINA BASE</option><option>CAMPAMENTOS</option>
       </select>
-      <input type="text" id="fop-buscar" onkeyup="renderHistorialOP()" placeholder="Buscar por N° OP, solicitante, OS..."
-        style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px;font-family:var(--ff);outline:none;flex:1;min-width:200px;">
     </div>
   </div>
-
-  <!-- TABLA -->
+  <!-- Tabla de pedidos originales -->
   <div class="card">
     <div class="tbl-wrap">
       <table>
         <thead>
           <tr>
-            <th>N° OP</th><th>Fecha</th><th>Área</th><th>Solicitante</th>
-            <th>OS / Asunto</th><th>Destino</th><th>Ítems pedidos</th>
-            <th>Resultado</th><th>SC Generada</th><th>Acciones</th>
+            <th>N° PC</th>
+            <th>Fecha</th>
+            <th>Área</th>
+            <th>Solicitante</th>
+            <th>OS / Asunto</th>
+            <th>Materiales Solicitados</th>
+            <th>SC Asociada</th>
+            <th>Estado SC</th>
           </tr>
         </thead>
         <tbody id="op-table-body">
-          <tr class="empty-row"><td colspan="10">Sin órdenes de pedido registradas.</td></tr>
+          <tr class="empty-row"><td colspan="8">Sin pedidos registrados.</td></tr>
         </tbody>
       </table>
     </div>
   </div>
-  </div><!-- /hp-panel-sc -->
 </div>
 
 
@@ -1708,9 +1667,10 @@ async function showView(id, btn) {
   document.querySelectorAll('.sidebar-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   // Await fresh data before rendering
-  if (id === 'panel')    { await recargarSCsDesdeLS(); renderPanel(); }
-  if (id === 'historial'){ await recargarSCsDesdeLS(); renderHistorial(); }
-  if (id === 'kanban')   { await recargarSCsDesdeLS(); renderKanban(); }
+  if (id === 'panel')       { await recargarSCsDesdeLS(); renderPanel(); }
+  if (id === 'historial')    { await recargarSCsDesdeLS(); renderHistorial(); }
+  if (id === 'kanban')       { await recargarSCsDesdeLS(); renderKanban(); }
+  if (id === 'historial-op') { await recargarSCsDesdeLS(); renderHistorialPedidos(); }
   if (id === 'nueva-sc') resetWizard();
 }
 
@@ -4905,6 +4865,77 @@ window.addEventListener('hashchange', navegarPorHash);
 setTimeout(navegarPorHash, 200); // Ejecutar al cargar
 
 // ── Polling Supabase cada 30s para sincronizar entre dispositivos ──
+
+// ══════════════════════════════════════════════════════════════════
+// HISTORIAL PEDIDOS — vista de OPs (pedidos originales de materiales)
+// Usa los mismos datos que las SCs pero desde la perspectiva del pedido
+// ══════════════════════════════════════════════════════════════════
+function renderHistorialPedidos() {
+  const tb = document.getElementById('op-table-body');
+  if (!tb) return;
+
+  const buscar = (document.getElementById('fop-buscar')?.value || '').toLowerCase();
+  const area   = document.getElementById('fop-area')?.value || '';
+
+  // Usar scs[] — cada SC tiene su PC asociado
+  let data = [...scs].reverse(); // más recientes primero
+  if (area) data = data.filter(s => s.area === area);
+  if (buscar) data = data.filter(s =>
+    ((s.numOP||s.numSC||'') + (s.area||'') + (s.solicitante||'') + (s.items||'')).toLowerCase().includes(buscar)
+  );
+
+  if (!data.length) {
+    tb.innerHTML = '<tr class="empty-row"><td colspan="8">Sin pedidos que coincidan con el filtro.</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = data.map(sc => {
+    // Materiales: mostrar primeras 2 líneas + "y N más"
+    const lineas = (sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
+    const preview = lineas.slice(0,2).join(' · ') + (lineas.length > 2 ? ` <span style="color:var(--muted);font-size:11px">+${lineas.length-2} más</span>` : '');
+    const allItems = lineas.map((l,i)=>`<div style="padding:3px 0;border-bottom:1px solid var(--border);font-size:11px">${i+1}. ${l}</div>`).join('');
+
+    const pcNum = sc.numOP || sc.numPC || '—';
+    const scNum = sc.numSC || sc.num || '—';
+    const estC  = sc.estado==='COMPLETADA'?'badge-green':sc.estado==='EN PROCESO'?'badge-blue':sc.estado==='CANCELADA'?'badge-gray':'badge-yellow';
+
+    return `<tr>
+      <td class="mono" style="color:var(--or2);font-weight:700;white-space:nowrap">${pcNum}</td>
+      <td style="white-space:nowrap">${formatFecha(sc.fecha)}</td>
+      <td><strong>${sc.area||'—'}</strong>${sc.subarea?`<br><span style="font-size:11px;color:var(--muted)">${sc.subarea}</span>`:''}</td>
+      <td>${sc.solicitante||'—'}</td>
+      <td style="font-size:12px;max-width:140px">
+        ${sc.os&&sc.os!=='S/OS'?`<span style="font-family:var(--fm)">${sc.os}</span>`:'<span class="badge badge-yellow" style="font-size:10px">S/OS</span>'}
+        ${sc.osAsunto?`<div style="color:var(--or);font-size:11px;font-weight:600;margin-top:2px">${sc.osAsunto}</div>`:''}
+      </td>
+      <td style="max-width:220px">
+        <div style="font-size:11px">${preview||'—'}</div>
+        ${lineas.length>2?`<details style="margin-top:4px"><summary style="font-size:10px;color:var(--muted);cursor:pointer">Ver todos (${lineas.length})</summary><div style="margin-top:4px">${allItems}</div></details>`:''}
+      </td>
+      <td>
+        <span style="font-family:var(--fm);font-size:12px;font-weight:700;color:var(--or)">${scNum}</span>
+        ${sc.numSC?`<br><button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 7px;margin-top:4px" onclick="verSC(${scs.indexOf(sc)})">👁 Ver SC</button>`:''}
+      </td>
+      <td><span class="badge ${estC}">${sc.estado||'—'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function exportarPedidosOP() {
+  if (typeof XLSX === 'undefined') { showToast('Librería no disponible', 'error'); return; }
+  if (!scs.length) { showToast('Sin datos para exportar', 'error'); return; }
+  const hdrs = ['N° PC','Fecha','Área','Sub-área','Solicitante','OS','Asunto OS','Materiales','SC Asociada','Estado'];
+  const rows = [hdrs, ...scs.map(s=>[
+    s.numOP||'', s.fecha||'', s.area||'', s.subarea||'', s.solicitante||'',
+    s.os||'', s.osAsunto||'', (s.items||'').replace(/\n/g,' | '),
+    s.numSC||'', s.estado||''
+  ])];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Historial Pedidos');
+  XLSX.writeFile(wb, 'nielsen_HistorialPedidos_' + new Date().toISOString().slice(0,10) + '.xlsx');
+}
+
 setInterval(async () => {
   const av = document.querySelector('.view.active');
   if (!av) return;
