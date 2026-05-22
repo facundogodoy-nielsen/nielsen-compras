@@ -1593,32 +1593,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="modal-close" onclick="cerrarModal()">✕</button>
     <div class="modal-title" id="modal-sc-num">—</div>
     <div id="modal-sc-body"></div>
-    <!-- ── SECCIÓN FACTURA ── -->
-    <div style="margin-top:22px;border-top:1px solid var(--border);padding-top:18px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:12px;display:flex;align-items:center;gap:8px">
-        <span style="width:3px;height:14px;background:var(--or);border-radius:2px;display:inline-block"></span>
-        🧾 Factura de Compra — Verificación Automática
-      </div>
 
-      <label class="factura-zone" id="factura-drop-zone" for="factura-file-input"
-        ondragover="event.preventDefault();this.classList.add('drag')"
-        ondragleave="this.classList.remove('drag')"
-        ondrop="onFacturaDrop(event)">
-        <input type="file" id="factura-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp"
-          onchange="onFacturaSelect(event)">
-        <div class="factura-icon">📄</div>
-        <div class="factura-txt">Adjuntar Factura de Compra</div>
-        <div class="factura-sub">Arrastrá o hacé clic · PDF, JPG, PNG · La IA verificará los ítems automáticamente</div>
-      </label>
-
-      <div id="factura-preview-area"></div>
-      <div id="factura-analisis-area"></div>
-
-      <div class="factura-actions">
-        <button class="btn btn-sm btn-ghost" id="btn-reanalizar" data-editor-only style="display:none" onclick="reAnalizarFactura()">🔄 Re-analizar</button>
-        <button class="btn btn-sm btn-ghost" id="btn-borrar-factura" data-editor-only style="display:none" onclick="borrarFactura()">🗑 Quitar factura</button>
-      </div>
-    </div>
 
     <div style="display:flex;gap:10px;justify-content:space-between;margin-top:20px;flex-wrap:wrap">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -2365,7 +2340,12 @@ function verSC(idx) {
         ${renderItemsCompra(lineas, sc)}
       </div>
 
-      ${esModoEditor() ? '<div class="compra-confirmar-row"><button class="btn btn-ghost btn-sm" onclick="limpiarConfirmacion()">↩ Limpiar todo</button></div>' : ''}
+      ${esModoEditor() ? `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <button class="btn btn-ghost btn-sm" onclick="limpiarConfirmacion()">↩ Limpiar todo</button>
+        <button class="btn btn-green" onclick="confirmarCompraFinal()" style="padding:9px 20px;font-size:13px;font-weight:700;letter-spacing:.5px">
+          ✅ Confirmar
+        </button>
+      </div>` : ''}
     </div>
 
     ${sc.valeNum||sc.valeNumActual ? `<div style="margin-top:14px;padding:14px 16px;background:rgba(232,93,37,.08);border:1px solid rgba(232,93,37,.25);border-radius:10px">
@@ -3623,9 +3603,17 @@ function renderItemsCompra(lineas, sc) {
         +(d.presupuestoNombre?'<span style="font-size:11px;color:var(--accent2)">'+d.presupuestoNombre+'</span>':'')
         +'</div></div>'
       : est==='COMPRADO'
-        ? '<div class="ci-sub"><div class="ci-sub-lbl">Comprobante</div><div class="ci-sub-row">'
-          +'<button class="btn btn-ghost btn-sm"'+dis+' onclick="adjuntarFactura('+i+')">📄 Adjuntar Factura</button>'
-          +(d.facturaNombre?'<span style="font-size:11px;color:var(--green)">📎 '+d.facturaNombre+'</span>':'')
+        ? '<div class="ci-sub"><div class="ci-sub-lbl">Datos de Factura</div>'
+          +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px">'
+          +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Fecha comprobante</div>'
+          +'<input type="date" class="ci-qty" style="width:100%;padding:5px 8px;" id="fdate-'+i+'"'
+          +' value="'+(d.facturaFecha||'')+'"'+dis+' oninput="setFacturaDato('+i+',\'fecha\',this.value)"></div>'
+          +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">N° Comprobante</div>'
+          +'<input type="text" class="ci-qty" style="width:100%;padding:5px 8px;letter-spacing:normal" id="fnum-'+i+'"'
+          +' value="'+(d.facturaNum||'')+'" placeholder="0001-00000001"'+dis+' oninput="setFacturaDato('+i+',\'num\',this.value)"></div>'
+          +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Proveedor</div>'
+          +'<input type="text" class="ci-qty" style="width:100%;padding:5px 8px;letter-spacing:normal" id="fprov-'+i+'"'
+          +' value="'+(d.facturaProveedor||'')+'" placeholder="Nombre proveedor"'+dis+' oninput="setFacturaDato('+i+',\'proveedor\',this.value)"></div>'
           +'</div></div>'
       : est==='NO_COMPRADO'
         ? '<div class="ci-sub"><div class="ci-sub-lbl">Justificación</div>'
@@ -3741,6 +3729,70 @@ function setItemQty(idx, val) {
   if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'PENDIENTE',cantidad:'',justificacion:''};
   sc.itemsDetalle[idx].cantidad=val;
 }
+function confirmarCompraFinal() {
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  const sc = scs[window._scIdx]; if(!sc) return;
+  const lineas = (sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
+  const det = sc.itemsDetalle || {};
+
+  // Recoger cantidades y justificaciones actuales del DOM
+  lineas.forEach((_,i) => {
+    if(!det[i]) det[i]={estado:'PENDIENTE',cantidad:'',justificacion:''};
+    const qEl=document.getElementById('qty-'+i);
+    if(qEl) det[i].cantidad=qEl.value;
+    const jEl=document.getElementById('just-'+i);
+    if(jEl) det[i].justificacion=jEl.value;
+    const fEl=document.getElementById('fdate-'+i);
+    if(fEl) det[i].facturaFecha=fEl.value;
+    const fnEl=document.getElementById('fnum-'+i);
+    if(fnEl) det[i].facturaNum=fnEl.value;
+    const fpEl=document.getElementById('fprov-'+i);
+    if(fpEl) det[i].facturaProveedor=fpEl.value;
+  });
+  sc.itemsDetalle = det;
+
+  // Calcular estado general y % de la SC
+  const comp   = Object.values(det).filter(d=>d.estado==='COMPRADO').length;
+  const pres   = Object.values(det).filter(d=>d.estado==='PRESUPUESTADO').length;
+  const total  = lineas.length;
+  sc.pctComprado = total>0 ? Math.round((comp+pres*0.5)/total*100) : 0;
+  if(comp===total && total>0)    sc.estado = 'COMPLETADA';
+  else if(comp>0||pres>0)        sc.estado = 'EN PROCESO';
+  // backward compat
+  const comprados={};
+  Object.entries(det).forEach(([i,d])=>{ comprados[i]=(d.estado==='COMPRADO'); });
+  sc.itemsComprados = comprados;
+
+  // Guardar local + Supabase
+  localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+  if(sc.numSC) sbPatch('solicitudes_compra','num_sc',sc.numSC,{
+    estado:      sc.estado,
+    pct_comprado:sc.pctComprado,
+    items_comprados: JSON.stringify(sc.itemsComprados||{}),
+    items_detalle:   JSON.stringify(sc.itemsDetalle||{})
+  });
+  actualizarContadores();
+
+  // Feedback visual
+  showToast('✅ Confirmación guardada — SC actualizada','ok');
+  _recalcCI(det, total);
+
+  // Refrescar vistas activas
+  const av = document.querySelector('.view.active');
+  if(av?.id==='view-panel')    renderPanel();
+  if(av?.id==='view-historial') renderHistorial();
+  if(av?.id==='view-kanban')    renderKanban();
+}
+
+function setFacturaDato(idx, campo, val) {
+  const sc=scs[window._scIdx]; if(!sc) return;
+  if(!sc.itemsDetalle) sc.itemsDetalle={};
+  if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'COMPRADO',cantidad:'',justificacion:''};
+  if(campo==='fecha')      sc.itemsDetalle[idx].facturaFecha     = val;
+  if(campo==='num')        sc.itemsDetalle[idx].facturaNum       = val;
+  if(campo==='proveedor')  sc.itemsDetalle[idx].facturaProveedor = val;
+}
+
 function setItemJust(idx, val) {
   const sc=scs[window._scIdx]; if(!sc) return;
   if(!sc.itemsDetalle) sc.itemsDetalle={};
