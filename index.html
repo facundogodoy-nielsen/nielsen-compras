@@ -1357,7 +1357,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
             <th>N° SC</th><th>Área</th><th>Solicitante</th><th>OS</th>
             <th>Asunto OS</th>
             <th>F. Solicitud</th><th>F. Límite</th><th>Criticidad</th>
-            <th>Estado</th><th>Tipo</th><th>Acciones</th>
+            <th>Estado</th><th>Acciones</th>
           </tr>
         </thead>
         <tbody id="hist-table"></tbody>
@@ -2112,7 +2112,6 @@ function renderFilaSC(sc, i, tableId) {
     <td>${formatFecha(sc.fechaLimite)} ${diasStr}</td>
     <td>${critBadge(sc.criticidad)}</td>
     <td>${estBadge(sc.estado)}</td>
-    <td><span class="badge badge-gray" style="font-size:10px">${sc.tipo||'—'}</span></td>
     <td style="white-space:nowrap">
       <button class="btn btn-sm btn-ghost" onclick="verSC(${i})">👁 Ver</button>
     </td>
@@ -2192,10 +2191,28 @@ function renderPanel() {
   }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Sin SC pendientes. ¡Todo al día! 🎉</td></tr>';
 }
 
+function onAreaFilterChange() {
+  const area = document.getElementById('f-area')?.value || '';
+  const subSel = document.getElementById('f-subarea');
+  if (subSel) {
+    const subareas = [...new Set(scs.filter(s=>!area||s.area===area).map(s=>s.subarea).filter(Boolean))].sort();
+    if (subareas.length) {
+      subSel.style.display = '';
+      subSel.innerHTML = '<option value="">Todas las sub-áreas</option>' +
+        subareas.map(s=>`<option value="${s}">${s}</option>`).join('');
+    } else {
+      subSel.style.display = 'none';
+      subSel.value = '';
+    }
+  }
+  renderHistorial();
+}
+
 function renderHistorial() {
   let data = [...scs];
-  const fArea = document.getElementById('f-area')?.value || '';
-  const fCrit = document.getElementById('f-crit')?.value || '';
+  const fArea    = document.getElementById('f-area')?.value    || '';
+  const fSubarea = document.getElementById('f-subarea')?.value || '';
+  const fCrit    = document.getElementById('f-crit')?.value    || '';
   const fEst = document.getElementById('f-est')?.value || '';
   const fBus = (document.getElementById('f-buscar')?.value || '').toLowerCase();
   if (fArea) data = data.filter(s => s.area === fArea || (s.area === 'MANTENIMIENTO' && s.subarea === fArea));
@@ -2721,6 +2738,7 @@ function ejecutarLimpiar() {
   cerrarLimpiarConfirm();
   const limpiarSC = _limpiarSel.has('sc') || _limpiarSel.has('todo');
   const limpiarOP = _limpiarSel.has('op') || _limpiarSel.has('todo');
+  const limpiarPA = _limpiarSel.has('pa') || _limpiarSel.has('todo');
   if(limpiarSC){
     scs=[]; contadorPorArea={};
     localStorage.removeItem('nielsen_scs_2026');
@@ -2730,13 +2748,15 @@ function ejecutarLimpiar() {
   if(limpiarOP){
     opData=[];
     localStorage.removeItem('nielsen_ops_2026');
+    if(typeof renderHistorialOP==='function') renderHistorialOP();
+    if(typeof actualizarStatsOP==='function') actualizarStatsOP();
+  }
+  if(limpiarPA){
     paData=[];
     localStorage.removeItem('nielsen_pa_2026');
-    renderHistorialOP();
     renderHistorialPA();
-    actualizarStatsOP();
   }
-  const items=[..._limpiarSel].map(k=>k==='sc'?'SC':k==='op'?'Historial OP':'Todo').join(' + ');
+  const items=[..._limpiarSel].map(k=>k==='sc'?'Historial SC':k==='op'?'Historial Pedidos':k==='pa'?'Historial PA':'Todo el historial').join(' + ');
   showToast('✅ Datos limpiados: '+items,'ok');
   if(limpiarSC && activeView?.id==='view-panel') renderPanel();
   if(limpiarSC && activeView?.id==='view-historial') renderHistorial();
@@ -3373,15 +3393,18 @@ function importarSCsExcel(event) {
 
       if (rows.length < 2) { showToast('El archivo no tiene datos', 'error'); return; }
 
-      // Detectar fila de headers (primera fila con "SC" o "área")
-      let headerRow = -1;
-      for (let i = 0; i < Math.min(rows.length, 5); i++) {
-        const rowStr = rows[i].join('|').toLowerCase();
-        if (rowStr.includes('área') || rowStr.includes('area') || rowStr.includes('sc')) {
-          headerRow = i; break;
+      // Headers en fila 5 del Excel (índice 4). Si no tiene headers ahí, detectar automáticamente
+      let headerRow = 3; // fila 4 (0-indexed) = fila 5 en Excel
+      const row4str = (rows[3]||[]).join('|').toLowerCase();
+      if (!row4str.includes('área') && !row4str.includes('area') && !row4str.includes('solicitante') && !row4str.includes('sc')) {
+        headerRow = 0; // fallback: primera fila
+        for (let i = 0; i < Math.min(rows.length, 8); i++) {
+          const rowStr = rows[i].join('|').toLowerCase();
+          if (rowStr.includes('área') || rowStr.includes('area') || rowStr.includes('solicitante')) {
+            headerRow = i; break;
+          }
         }
       }
-      if (headerRow === -1) headerRow = 0;
 
       const rawHdrs = rows[headerRow].map(h => String(h||'').trim().toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quitar tildes
@@ -4965,10 +4988,11 @@ function exportarPedidosOP() {
 setInterval(async () => {
   const av = document.querySelector('.view.active');
   if (!av) return;
-  if (av.id==='view-historial' || av.id==='view-panel') {
+  if (['view-historial','view-panel','view-kanban'].includes(av.id)) {
     await recargarSCsDesdeLS();
     if (av.id==='view-historial') renderHistorial();
-    if (av.id==='view-panel') renderPanel();
+    if (av.id==='view-panel')    renderPanel();
+    if (av.id==='view-kanban')   renderKanban();
   }
   if (av.id==='view-historial-pa' || av.id==='view-panel-pa') renderHistorialPA();
 }, 30000);
@@ -5105,8 +5129,15 @@ iniciarAutoSync();
       <div class="limpiar-option" id="lopt-op" onclick="toggleLimpiarOpt('op')">
         <div class="limpiar-chk" id="lchk-op"></div>
         <div>
-          <div style="font-size:13px;font-weight:600;color:var(--text)">Historial de OP / Pedidos</div>
-          <div style="font-size:11px;color:var(--muted)">Borra todas las Órdenes de Pedido registradas</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">Historial Pedidos (OP)</div>
+          <div style="font-size:11px;color:var(--muted)">Borra los Pedidos de Compra</div>
+        </div>
+      </div>
+      <div class="limpiar-option" id="lopt-pa" onclick="toggleLimpiarOpt('pa')">
+        <div class="limpiar-chk" id="lchk-pa"></div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">Historial PA (Abastecimiento)</div>
+          <div style="font-size:11px;color:var(--muted)">Borra todos los Pedidos de Abastecimiento</div>
         </div>
       </div>
       <div class="limpiar-option" id="lopt-todo" onclick="toggleLimpiarOpt('todo')">
