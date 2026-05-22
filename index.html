@@ -2483,6 +2483,13 @@ async function sbDelete(tabla, col, val) {
   } catch(e) { console.warn('SB delete error:', e.message); }
 }
 
+// ── Utilidad: setEl(id, valor) — actualiza textContent ──
+function setEl(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val !== undefined && val !== null ? val : '—';
+}
+
+
 // ══════════════════════════════════════════════════
 // MODOS LECTOR / EDITOR
 // ══════════════════════════════════════════════════
@@ -3383,12 +3390,13 @@ function importarSCsExcel(event) {
 
       // Mapa de columnas — nombres posibles → campo interno
       const colMap = {
-        'n sc': 'num', 'numero sc': 'num', 'n de sc': 'num',
+        'n sc': 'num', 'numero sc': 'num', 'n de sc': 'num', 'num sc': 'num', 'nsc': 'num',
         'area': 'area', 'area solicitante': 'area',
         'subarea': 'subarea', 'sub area': 'subarea', 'sub-area': 'subarea',
         'solicitante': 'solicitante', 'nombre': 'solicitante',
         'email': 'email', 'correo': 'email', 'correo electronico': 'email',
         'fecha sc': 'fecha', 'fecha solicitud': 'fecha', 'fecha': 'fecha',
+        'n op': 'op', 'numero op': 'op', 'n pc': 'op', 'nro pc': 'op', 'pc': 'op',
         'fecha limite': 'fechaLimite', 'fecha limiterequerimiento': 'fechaLimite', 'fecha requerimiento': 'fechaLimite',
         'criticidad': 'criticidad', 'urgencia': 'criticidad',
         'destino': 'destino', 'destino campamento': 'destino', 'ubicacion': 'destino',
@@ -3412,8 +3420,8 @@ function importarSCsExcel(event) {
         if (mapped) colIdx[mapped] = i;
       });
 
-      const VALID_AREAS = ['TALLER','TRANSPORTE','MANTENIMIENTO','GERENCIA','COMPRAS','SSMA','LOGISTICA','RRHH','CALIDAD','PRESIDENCIA','COCINA BASE'];
-      const VALID_CRIT = ['CRITICA','ALTA','MEDIA','BAJA'];
+      const VALID_AREAS = ['TALLER','TRANSPORTE','MANTENIMIENTO','GERENCIA','COMPRAS','SSMA','LOGISTICA','RRHH','CALIDAD','PRESIDENCIA','COCINA BASE','CAMPAMENTOS'];
+      const VALID_CRIT = ['CRITICA','URGENTE','ALTA','MEDIA','BAJA'];
       const VALID_EST = ['PENDIENTE','EN PROCESO','COMPLETADA','CANCELADA'];
 
       const nuevas = []; const errores = []; let fila = headerRow + 2;
@@ -3431,18 +3439,23 @@ function importarSCsExcel(event) {
         };
 
         const area = get('area');
-        const estado = get('estado') || 'PENDIENTE';
-        const criticidad = get('criticidad');
+        const estado = get('estado') || 'PENDIENTE'; // will be overridden below
+        const criticidad = get('criticidad'); // will be overridden below
+        const criticidadRaw = get('criticidad');
+        const criticidadFinal = VALID_CRIT.includes(criticidadRaw) ? criticidadRaw : 'MEDIA';
+        const estadoRaw = get('estado');
+        const estadoFinal = VALID_EST.includes(estadoRaw) ? estadoRaw : 'PENDIENTE';
         const sinOS = get('sinOS') === 'SI';
         const os = sinOS ? 'S/OS' : get('os');
 
         // Validaciones básicas
         const rowErrors = [];
         if (!get('solicitante')) rowErrors.push('Solicitante vacío');
-        if (!VALID_AREAS.includes(area)) rowErrors.push(`Área inválida: "${area}"`);
-        if (!VALID_CRIT.includes(criticidad)) rowErrors.push(`Criticidad inválida: "${criticidad}"`);
-        if (!get('fecha')) rowErrors.push('Fecha SC vacía');
-        if (!get('op')) rowErrors.push('N° OP vacío');
+        // Área: aceptar aunque no esté en lista (datos de otras áreas pueden existir)
+        // Solo rechazar si está vacía
+        if (!area) rowErrors.push('Área vacía');
+        // Criticidad: usar MEDIA como default si no se reconoce
+        // Fecha: auto-completar con hoy si vacía (no rechazar)
         if (rowErrors.length > 0) {
           errores.push(`Fila ${fila}: ${rowErrors.join(' | ')}`);
           continue;
@@ -3450,7 +3463,7 @@ function importarSCsExcel(event) {
 
         // Generar N° SC si no tiene o es duplicado
         let numSC = get('num');
-        if (!numSC || scs.some(s => s.num === numSC)) {
+        if (!numSC || scs.some(s => (s.numSC||s.num) === numSC)) {
           numSC = generarNumSC(area, get('subarea')) + '-IMP';
         }
 
@@ -3496,6 +3509,19 @@ function importarSCsExcel(event) {
       scs.push(...nuevas);
       localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
       localStorage.setItem('nielsen_sc_contadores', JSON.stringify(contadorPorArea));
+      // Sync imported SCs to Supabase
+      nuevas.forEach(sc => {
+        sbInsert('solicitudes_compra', {
+          num_sc: sc.numSC||sc.num, num_op: sc.numOP||sc.op||'',
+          area: sc.area, subarea: sc.subarea||'', solicitante: sc.solicitante,
+          email: sc.email||'', fecha: sc.fecha||null, fecha_limite: sc.fechaLimite||null,
+          criticidad: sc.criticidad, os: sc.os||'', os_asunto: sc.osAsunto||'',
+          destino: sc.destino||'', motivo: sc.motivo||'',
+          items: sc.items||'', obs: sc.obs||'',
+          panolero: sc.panolero||'', vale_num: sc.valeNum||'',
+          estado: sc.estado||'PENDIENTE', origen: 'IMPORTACION_EXCEL'
+        }).catch(()=>{});
+      });
       actualizarContadores();
       renderHistorial();
       renderPanel();
