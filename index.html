@@ -2209,7 +2209,12 @@ function onAreaFilterChange() {
 }
 
 function renderHistorial() {
-  let data = [...scs];
+  let data = [...scs].sort((a,b)=>{
+    const nA=parseInt((a.numSC||a.num||"").replace(/[^0-9]/g,"")||"0");
+    const nB=parseInt((b.numSC||b.num||"").replace(/[^0-9]/g,"")||"0");
+    if(nB!==nA) return nB-nA;
+    return (b.fecha||b.creado||"").localeCompare(a.fecha||a.creado||"");
+  });
   const fArea    = document.getElementById('f-area')?.value    || '';
   const fSubarea = document.getElementById('f-subarea')?.value || '';
   const fCrit    = document.getElementById('f-crit')?.value    || '';
@@ -2221,7 +2226,7 @@ function renderHistorial() {
   if (fBus) data = data.filter(s => (s.num + s.solicitante + s.os + s.osDesc + s.email).toLowerCase().includes(fBus));
   const tb = document.getElementById('hist-table');
   tb.innerHTML = data.length
-    ? data.slice().reverse().map((sc) => renderFilaSC(sc, scs.indexOf(sc), 'hist')).join('')
+    ? data.map((sc) => renderFilaSC(sc, scs.indexOf(sc), 'hist')).join('')
     : '<tr class="empty-row"><td colspan="11">Sin resultados para el filtro aplicado.</td></tr>';
 }
 
@@ -2232,53 +2237,50 @@ function filtrarPorArea(area) {
 
 function renderKanban() {
   const cont = document.getElementById('kanban-body');
+  if (!cont) return;
   const ESTADOS = ['PENDIENTE','EN PROCESO','CONFIRMADA','COMPLETADA','CANCELADA'];
-  const COLORS  = {PENDIENTE:'var(--yellow)','EN PROCESO':'var(--accent2)',CONFIRMADA:'var(--accent3)',COMPLETADA:'var(--green)',CANCELADA:'var(--muted)'};
-  const CRIT_C  = {CRITICA:'var(--red)',URGENTE:'#f97316',ALTA:'var(--yellow)',MEDIA:'var(--accent2)',BAJA:'var(--green)'};
-
-  if(cont){
-    const groups = {};
-    ESTADOS.forEach(e=>{ groups[e]=[]; });
-    scs.forEach((sc,idx)=>{ (groups[sc.estado]||(groups[sc.estado]=[])).push({sc,idx}); });
-
-    cont.innerHTML = `<div class="kanban">` + ESTADOS.map(est=>{
-      const col = groups[est]||[];
-      const cards = col.map(({sc,idx})=>`<div class="kanban-card">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-          <span style="font-family:var(--fm);font-size:12px;font-weight:700;color:var(--or)">${sc.numSC}</span>
-          <span style="font-size:9px;background:${CRIT_C[sc.criticidad]||'var(--muted)'};color:#fff;padding:2px 6px;border-radius:10px">${sc.criticidad||'—'}</span>
-        </div>
-        <div style="font-size:12px;font-weight:600;margin-bottom:2px">${sc.area||'—'}</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">👤 ${sc.solicitante||'—'}</div>
-        ${sc.osAsunto?`<div style="font-size:10px;color:var(--subtle);margin-bottom:6px;font-style:italic">${sc.osAsunto}</div>`:''}
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:10px;color:var(--muted)">${sc.fechaLimite?'⏰ '+formatFecha(sc.fechaLimite):''}</span>
-          <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 7px" onclick="abrirModalSC(${idx})">Ver</button>
-        </div>
-      </div>`).join('') || `<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px 0;font-style:italic">Sin SC</div>`;
-
-      return `<div class="kanban-col">
-        <div class="kanban-col-hdr" style="border-top:3px solid ${COLORS[est]||'var(--muted)'}">
-          <span style="font-size:11px">${est}</span>
-          <span class="kanban-cnt">${col.length}</span>
-        </div>
-        ${cards}
-      </div>`;
-    }).join('') + `</div>`;
-  } else {
-    // fallback: original kanban rendering
-    const cols = document.querySelectorAll('.kanban-col[data-est]');
-    cols.forEach(col => { col.querySelectorAll('.kanban-card[data-idx]').forEach(c=>c.remove()); });
-    scs.forEach((sc,idx)=>{
-      const col = document.querySelector('.kanban-col[data-est="'+sc.estado+'"]');
-      if(!col) return;
-      const c=document.createElement('div'); c.className='kanban-card'; c.dataset.idx=idx;
-      c.innerHTML=`<div style="font-family:var(--fm);font-size:11px;font-weight:700;color:var(--or);margin-bottom:4px">${sc.numSC}</div>
-        <div style="font-size:11px;font-weight:600">${sc.area||'—'}</div>
-        <div style="font-size:10px;color:var(--muted)">${sc.solicitante||'—'}</div>`;
-      col.appendChild(c);
-    });
+  const COLORS  = {'PENDIENTE':'var(--yellow)','EN PROCESO':'var(--accent2)','CONFIRMADA':'var(--accent3)','COMPLETADA':'var(--green)','CANCELADA':'var(--muted)'};
+  const CRIT_C  = {'CRITICA':'var(--red)','URGENTE':'#f97316','ALTA':'var(--yellow)','MEDIA':'var(--accent2)','BAJA':'var(--green)'};
+  const groups  = {};
+  ESTADOS.forEach(e=>{ groups[e]=[]; });
+  scs.forEach((sc,idx)=>{ (groups[sc.estado||'PENDIENTE']||(groups[sc.estado]=[]) ) && groups[sc.estado||'PENDIENTE'].push({sc,idx}); });
+  function pctSC(sc){
+    if(sc.pctComprado!=null) return sc.pctComprado;
+    if(sc.itemsComprados){ const v=Object.values(sc.itemsComprados); return v.length?Math.round(v.filter(Boolean).length/v.length*100):0; }
+    if(sc.estado==='COMPLETADA') return 100;
+    if(sc.estado==='EN PROCESO') return 50;
+    return 0;
   }
+  cont.innerHTML = '<div class="kanban">'+ESTADOS.map(est=>{
+    const col=groups[est]||[]; const color=COLORS[est]||'var(--muted)';
+    const avgPct=col.length?Math.round(col.reduce((s,{sc})=>s+pctSC(sc),0)/col.length):0;
+    const cards=col.map(({sc,idx})=>{
+      const pct=pctSC(sc);
+      return '<div class="kanban-card">'
+        +'<div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:flex-start">'
+        +'<span style="font-family:var(--fm);font-size:12px;font-weight:700;color:var(--or)">'+(sc.numSC||sc.num||'—')+'</span>'
+        +'<span style="font-size:9px;background:'+(CRIT_C[sc.criticidad]||'var(--muted)')+';color:#fff;padding:2px 6px;border-radius:10px">'+(sc.criticidad||'—')+'</span>'
+        +'</div>'
+        +'<div style="font-size:12px;font-weight:600;margin-bottom:2px">'+(sc.solicitante||'—')+'</div>'
+        +(sc.osAsunto?'<div style="font-size:10px;color:var(--subtle);margin-bottom:4px;font-style:italic">'+sc.osAsunto+'</div>':'')
+        +'<div style="height:4px;background:var(--s3);border-radius:2px;overflow:hidden;margin:6px 0 2px">'
+        +'<div style="height:100%;width:'+pct+'%;background:'+color+';border-radius:2px"></div></div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center">'
+        +'<span style="font-size:10px;font-weight:700;color:'+color+'">'+pct+'%</span>'
+        +'<span style="font-size:10px;color:var(--muted)">'+(sc.area||'')+'</span>'
+        +'</div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'
+        +'<span style="font-size:10px;color:var(--muted)">'+(sc.fechaLimite?'⏰ '+formatFecha(sc.fechaLimite):formatFecha(sc.fecha))+'</span>'
+        +'<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 7px" onclick="verSC('+idx+')">Ver</button>'
+        +'</div></div>';
+    }).join('')||'<div style="font-size:11px;color:var(--muted);text-align:center;padding:20px 0;font-style:italic">Sin solicitudes</div>';
+    return '<div class="kanban-col"><div class="kanban-col-hdr" style="border-top:3px solid '+color+'">'
+      +'<span style="font-size:11px;font-weight:700">'+est+'</span>'
+      +'<div style="display:flex;align-items:center;gap:8px">'
+      +'<span style="font-size:10px;color:var(--muted)">'+avgPct+'%</span>'
+      +'<span class="kanban-cnt">'+col.length+'</span>'
+      +'</div></div>'+cards+'</div>';
+  }).join('')+'</div>';
 }
 
 // ══ VER SC ══
@@ -4603,51 +4605,42 @@ function _fillPanelPATable() {
 function _buildKanbanPA() {
   const cont = document.getElementById('kanban-pa-body');
   if (!cont) return;
-
-  const catLabels = {M:'Mercadería',L:'Limpieza',H:'Hotelería',A:'Agua/Gas',K:'Kiosco'};
-  const cols = {
-    pendiente: { label: '⏳ Pendiente',   color: 'var(--muted)',  items: [] },
-    partial:   { label: '⚡ En Curso',    color: 'var(--yellow)', items: [] },
-    full:      { label: '✅ Entregado',   color: 'var(--green)',  items: [] },
-    none:      { label: '❌ No recibido', color: 'var(--red)',    items: [] }
+  const COLS = {
+    pendiente:{label:'⏳ Pendiente', color:'var(--muted)',  items:[]},
+    partial:  {label:'⚡ En Curso',  color:'var(--yellow)', items:[]},
+    full:     {label:'✅ Entregado', color:'var(--green)',  items:[]},
+    none:     {label:'❌ No recib.', color:'var(--red)',    items:[]}
   };
-  paData.forEach((pa, idx) => { cols[calcEstadoPA(pa)]?.items.push({pa, idx}); });
-
-  cont.innerHTML = `<div class="kanban">` + Object.entries(cols).map(([key, col]) => {
-    const cards = col.items.map(({pa, idx}) => {
-      const pct   = calcPctPA(pa);
-      const items = pa.items||[];
-      const okCnt = items.filter(i=>i.estado==='ok').length;
-      const preview = items.slice(0,2).map(i=>i.nombre||i).join(', ')+(items.length>2?` +${items.length-2}`:'');
-      return `<div class="kanban-card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-          <span style="font-family:var(--fm);font-size:12px;font-weight:700;color:var(--or)">${pa.numPA||'—'}</span>
-          <span style="font-size:10px;color:var(--muted)">${formatFecha(pa.fecha)}</span>
-        </div>
-        <div style="font-size:13px;font-weight:700;margin-bottom:2px">🏕 ${pa.campamento||'—'}</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">👤 ${pa.solicitante||'—'}</div>
-        <div style="font-size:10px;color:var(--subtle);margin-bottom:8px;font-style:italic">${preview||'—'}</div>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-          <div style="flex:1;height:5px;background:var(--s3);border-radius:3px;overflow:hidden">
-            <div style="height:100%;width:${pct}%;background:${col.color};border-radius:3px"></div>
-          </div>
-          <span style="font-size:10px;font-weight:700;color:${col.color};white-space:nowrap">${pct}%</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:10px;color:var(--muted)">${okCnt}/${items.length} ítems OK</span>
-          <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px" onclick="verPA(${idx})">Ver →</button>
-        </div>
-      </div>`;
-    }).join('') || `<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px 0;font-style:italic">Sin pedidos en esta columna</div>`;
-
-    return `<div class="kanban-col">
-      <div class="kanban-col-hdr" style="border-top:3px solid ${col.color}">
-        <span>${col.label}</span>
-        <span class="kanban-cnt">${col.items.length}</span>
-      </div>
-      ${cards}
-    </div>`;
-  }).join('') + `</div>`;
+  paData.forEach((pa,idx)=>{ const e=calcEstadoPA(pa); if(COLS[e]) COLS[e].items.push({pa,idx}); });
+  cont.innerHTML='<div class="kanban">'+Object.entries(COLS).map(([key,col])=>{
+    const color=col.color;
+    const avgPct=col.items.length?Math.round(col.items.reduce((s,{pa})=>s+calcPctPA(pa),0)/col.items.length):0;
+    const cards=col.items.map(({pa,idx})=>{
+      const pct=calcPctPA(pa); const items=pa.items||[];
+      const okCnt=items.filter(i=>i.estado==='ok').length;
+      const preview=items.slice(0,2).map(i=>i.nombre||i).join(', ')+(items.length>2?' +'+(items.length-2):'');
+      return '<div class="kanban-card">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">'
+        +'<span style="font-family:var(--fm);font-size:12px;font-weight:700;color:var(--or)">'+(pa.numPA||'—')+'</span>'
+        +'<span style="font-size:10px;color:var(--muted)">'+formatFecha(pa.fecha)+'</span>'
+        +'</div>'
+        +'<div style="font-size:13px;font-weight:700;margin-bottom:2px">🏕 '+(pa.campamento||'—')+'</div>'
+        +'<div style="font-size:11px;color:var(--muted);margin-bottom:4px">👤 '+(pa.solicitante||'—')+'</div>'
+        +(preview?'<div style="font-size:10px;color:var(--subtle);margin-bottom:6px;font-style:italic">'+preview+'</div>':'')
+        +'<div style="height:4px;background:var(--s3);border-radius:2px;overflow:hidden;margin-bottom:4px">'
+        +'<div style="height:100%;width:'+pct+'%;background:'+color+';border-radius:2px"></div></div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center">'
+        +'<span style="font-size:10px;color:'+color+';font-weight:700">'+pct+'% · '+okCnt+'/'+items.length+' OK</span>'
+        +'<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 7px" onclick="verPA('+idx+')">Ver</button>'
+        +'</div></div>';
+    }).join('')||'<div style="font-size:11px;color:var(--muted);text-align:center;padding:20px 0;font-style:italic">Sin pedidos</div>';
+    return '<div class="kanban-col"><div class="kanban-col-hdr" style="border-top:3px solid '+color+'">'
+      +'<span style="font-size:11px;font-weight:700">'+col.label+'</span>'
+      +'<div style="display:flex;align-items:center;gap:8px">'
+      +'<span style="font-size:10px;color:var(--muted)">'+avgPct+'%</span>'
+      +'<span class="kanban-cnt">'+col.items.length+'</span>'
+      +'</div></div>'+cards+'</div>';
+  }).join('')+'</div>';
 }
 
 async function renderHistorialPA() {

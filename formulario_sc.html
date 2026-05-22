@@ -1239,25 +1239,43 @@ function init() {
   actualizarInvUrlStatus();
 }
 
-function cargarNumOP() {
-  // Siempre genera localmente de forma inmediata — nunca falla
+async function cargarNumOP() {
   const anio = new Date().getFullYear();
-  const key = 'nielsen_op_form_' + anio;
-  const cnt = parseInt(localStorage.getItem(key) || '0');
-  opNum = 'PC-' + anio + '-' + String(cnt + 1).padStart(4, '0');
-  const el = document.getElementById('op-num');
-  if (el) el.value = opNum;
-  // Si hay backend configurado, intentar sincronizar en segundo plano (sin bloquear)
-  if (APPS_SCRIPT_URL && !APPS_SCRIPT_URL.includes('REEMPLAZAR')) {
-    fetch(APPS_SCRIPT_URL + '?action=getNextOP')
-      .then(r => r.json())
-      .then(d => {
-        if (d && d.num) {
-          opNum = d.num;
-          if (el) el.value = opNum;
-        }
-      })
-      .catch(() => {}); // silencioso — ya tenemos el número local
+  const key  = 'nielsen_op_form_' + anio;
+  const el   = document.getElementById('op-num');
+
+  // 1. Mostrar inmediatamente desde localStorage (sin esperar)
+  const localCnt = parseInt(localStorage.getItem(key) || '0');
+  opNum = 'PC-' + anio + '-' + String(localCnt + 1).padStart(4, '0');
+  if (el) el.value = opNum + ' …';
+
+  // 2. Consultar Supabase para obtener el MAX actual y mostrar el siguiente
+  try {
+    const SB_URL = (typeof _SB_URL !== 'undefined') ? _SB_URL : (typeof _SB_URL_FM !== 'undefined' ? _SB_URL_FM : '');
+    const SB_KEY = (typeof _SB_KEY !== 'undefined') ? _SB_KEY : (typeof _SB_KEY_FM !== 'undefined' ? _SB_KEY_FM : '');
+    if (!SB_URL) throw new Error('Sin config Supabase');
+
+    const r = await fetch(SB_URL + '/rest/v1/solicitudes_compra?select=num_op&num_op=like.PC-' + anio + '-*&order=num_op.desc&limit=1', {
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+    });
+    if (r.ok) {
+      const rows = await r.json();
+      if (rows && rows.length && rows[0].num_op) {
+        const lastNum = parseInt(rows[0].num_op.split('-').pop()) || 0;
+        const nextNum = lastNum + 1;
+        // Sync localStorage so counter is consistent
+        if (nextNum > localCnt + 1) localStorage.setItem(key, nextNum - 1);
+        opNum = 'PC-' + anio + '-' + String(nextNum).padStart(4, '0');
+      } else {
+        // No hay PCs en Supabase — usar localStorage
+        opNum = 'PC-' + anio + '-' + String(localCnt + 1).padStart(4, '0');
+      }
+      if (el) el.value = opNum;
+    }
+  } catch(e) {
+    console.warn('cargarNumOP Supabase:', e.message);
+    // Mantener el valor local
+    if (el) el.value = opNum;
   }
 }
 
