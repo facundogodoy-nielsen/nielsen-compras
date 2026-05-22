@@ -113,8 +113,18 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 .crit-card.selected::after{content:'✓';position:absolute;top:8px;right:10px;font-size:15px;font-weight:900;color:rgba(255,255,255,.9);}
 .crit-card:hover{filter:brightness(1.1);}
 .crit-card.selected{filter:brightness(1.12);box-shadow:0 6px 20px rgba(0,0,0,.4);}
-.cc-critica{background:linear-gradient(135deg,#8B2500,#a33010);border-color:rgba(200,80,30,.3);}
-.cc-critica.selected{border-color:#ff6040;}
+.cc-urgente{background:linear-gradient(135deg,#8B2500,#a33010);border-color:rgba(200,80,30,.3);}
+.cc-urgente.selected{border-color:#ff6040;}
+.cc-critica-bar{
+  display:flex;align-items:flex-start;gap:14px;
+  background:rgba(80,10,10,.55);
+  border:1.5px solid rgba(220,60,30,.35);
+  border-radius:10px;padding:14px 16px;margin-top:12px;cursor:pointer;
+  transition:all .2s;position:relative;
+}
+.cc-critica-bar:hover{border-color:rgba(220,60,30,.7);background:rgba(100,15,10,.7);}
+.cc-critica-bar.selected{border-color:#ff6040;background:rgba(120,20,10,.8);box-shadow:0 4px 16px rgba(220,60,30,.35);}
+.cc-critica-bar.selected::after{content:'✓';position:absolute;top:12px;right:14px;font-size:15px;font-weight:900;color:rgba(255,100,80,.9);}
 .cc-alta{background:linear-gradient(135deg,#c45a00,#d97010);border-color:rgba(200,130,0,.3);}
 .cc-alta.selected{border-color:#ffaa40;}
 .cc-media{background:linear-gradient(135deg,#b08a00,#c8a010);border-color:rgba(180,160,0,.3);}
@@ -892,31 +902,55 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 <div class="panel" id="p-3">
   <div class="card">
     <div class="card-title">🚦 Nivel de Criticidad</div>
-    <div class="info-box">Seleccioná según el impacto operativo real. La criticidad determina el plazo de respuesta.</div>
+    <div class="info-box">Seleccioná según el impacto operativo real. La criticidad determina el plazo de respuesta y el circuito de aprobación.</div>
+
+    <!-- 4 niveles seleccionables -->
     <div class="crit-grid">
-      <div class="crit-card cc-critica" id="cc-CRITICA" onclick="setCrit('CRITICA')">
-        <div class="cc-icon">🔴</div>
-        <div class="cc-name">CRÍTICA</div>
-        <div class="cc-desc">Indispensable para continuidad operativa. Detiene la operación.</div>
-        <div class="cc-plazo">≤ 24 horas</div>
+      <div class="crit-card cc-urgente" id="cc-URGENTE" onclick="setCrit('URGENTE')">
+        <div class="cc-icon">🟠</div>
+        <div class="cc-name">URGENTE</div>
+        <div class="cc-desc">Riesgo de detención en 24–72 hs. Requiere respuesta el mismo día. Pasa por circuito de compras con aprobación directa.</div>
+        <div class="cc-plazo">Mismo día / 24 hs</div>
       </div>
       <div class="crit-card cc-alta" id="cc-ALTA" onclick="setCrit('ALTA')">
-        <div class="cc-icon">🟠</div>
+        <div class="cc-icon">🟡</div>
         <div class="cc-name">ALTA</div>
-        <div class="cc-desc">Importante para cumplir tarea programada o evitar demoras.</div>
-        <div class="cc-plazo">≤ 72 horas</div>
+        <div class="cc-desc">Afecta productividad pero no detiene la operación. Hay margen de días para gestionar la compra.</div>
+        <div class="cc-plazo">2 a 5 días hábiles</div>
       </div>
       <div class="crit-card cc-media" id="cc-MEDIA" onclick="setCrit('MEDIA')">
-        <div class="cc-icon">🟡</div>
+        <div class="cc-icon">🟢</div>
         <div class="cc-name">MEDIA</div>
-        <div class="cc-desc">Útil para reposición o planificación. Se puede programar.</div>
-        <div class="cc-plazo">3 a 7 días</div>
+        <div class="cc-desc">Reposición o mejora sin impacto operativo inmediato. Ingresa al ciclo normal de compras.</div>
+        <div class="cc-plazo">7 a 15 días</div>
       </div>
       <div class="crit-card cc-baja" id="cc-BAJA" onclick="setCrit('BAJA')">
-        <div class="cc-icon">⚫</div>
+        <div class="cc-icon">⚪</div>
         <div class="cc-name">BAJA</div>
-        <div class="cc-desc">Complementaria o preventiva. Sin riesgo operativo inmediato.</div>
-        <div class="cc-plazo">+ 7 días</div>
+        <div class="cc-desc">Mejora o conveniencia. Sin impacto operativo. Se puede agrupar en una orden conjunta.</div>
+        <div class="cc-plazo">Sin fecha límite</div>
+      </div>
+    </div>
+
+    <!-- CRÍTICA: barra informativa + seleccionable -->
+    <div class="cc-critica-bar" id="cc-CRITICA" onclick="setCrit('CRITICA')">
+      <div style="flex-shrink:0;font-size:22px;line-height:1;padding-top:2px">🔴</div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+          <span style="font-weight:800;font-size:14px;letter-spacing:1px;color:#ff7055">CRÍTICA</span>
+          <span style="font-size:10px;background:rgba(255,80,40,.2);color:#ff8060;border:1px solid rgba(255,80,40,.3);border-radius:4px;padding:2px 7px;letter-spacing:.5px">OPERACIÓN DETENIDA</span>
+        </div>
+        <div style="font-size:11.5px;color:rgba(255,200,190,.85);line-height:1.5;margin-bottom:4px">
+          La operación ya está detenida o hay riesgo inmediato de vida. Se resuelve <strong style="color:#ffaa99">sin SC previa</strong> mediante caja chica, retiro de pañol o compra directa de emergencia.
+          Esta SC se completa <strong style="color:#ffaa99">a posteriori</strong> como respaldo administrativo del gasto ejecutado.
+        </div>
+        <div style="font-size:10px;color:rgba(255,160,140,.7);font-style:italic">
+          ⚠️ Si la operación aún no se detuvo, considerá usar <strong>URGENTE</strong> en su lugar.
+        </div>
+      </div>
+      <div style="flex-shrink:0;text-align:right;padding-top:2px">
+        <div style="font-size:10px;font-weight:700;color:#ff7055;white-space:nowrap">Resolución</div>
+        <div style="font-size:11px;color:rgba(255,160,140,.8);white-space:nowrap">Inmediata</div>
       </div>
     </div>
   </div>
@@ -1552,7 +1586,7 @@ function syncTxt() {
 
 // ══ PREVIEW ══
 function fD(d) { if(!d) return '—'; const [y,m,day]=d.split('-'); return day+'/'+m+'/'+y; }
-const CRIT_ICONS = {CRITICA:'🔴',ALTA:'🟠',MEDIA:'🟡',BAJA:'⚫'};
+const CRIT_ICONS = {CRITICA:'🔴',URGENTE:'🟠',ALTA:'🟡',MEDIA:'🟢',BAJA:'⚪'};
 
 function buildPreview() {
   const area = document.getElementById('sol-area').value;

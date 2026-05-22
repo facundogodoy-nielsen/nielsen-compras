@@ -1333,10 +1333,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       </select>
       <select id="f-crit" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--ff);font-size:13px;outline:none" onchange="renderHistorial()">
         <option value="">Todas las criticidades</option>
-        <option value="CRITICA">Crítica</option>
-        <option value="ALTA">Alta</option>
-        <option value="MEDIA">Media</option>
-        <option value="BAJA">Baja</option>
+        <option value="CRITICA">🔴 Crítica</option>
+        <option value="URGENTE">🟠 Urgente</option>
+        <option value="ALTA">🟡 Alta</option>
+        <option value="MEDIA">🟢 Media</option>
+        <option value="BAJA">⚪ Baja</option>
       </select>
       <select id="f-est" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--ff);font-size:13px;outline:none" onchange="renderHistorial()">
         <option value="">Todos los estados</option>
@@ -2130,7 +2131,7 @@ function renderPanel() {
   const crits = {CRITICA:0,URGENTE:0,ALTA:0,MEDIA:0,BAJA:0};
   scs.filter(s=>s.estado==='PENDIENTE'||s.estado==='EN PROCESO')
      .forEach(s=>{ if(crits[s.criticidad]!==undefined) crits[s.criticidad]++; });
-  const critColors = {CRITICA:'var(--red)',URGENTE:'#f97316',ALTA:'var(--yellow)',MEDIA:'var(--accent2)',BAJA:'var(--green)'};
+  const critColors = {CRITICA:'var(--red)',URGENTE:'#E85D26',ALTA:'var(--yellow)',MEDIA:'#22c55e',BAJA:'var(--muted)'};
   const critMax = Math.max(...Object.values(crits),1);
   const critEl = document.getElementById('panel-crit-bars');
   if(critEl) critEl.innerHTML = Object.entries(crits).map(([c,n])=>`
@@ -2165,7 +2166,7 @@ function renderPanel() {
     : '<div style="color:var(--muted);font-size:12px;padding:12px 0">Sin SC pendientes 🎉</div>';
 
   // Tabla: pendientes + urgentes
-  const CRIT_COLORS = { CRITICA:'badge-red', URGENTE:'badge-red', ALTA:'badge-yellow', MEDIA:'badge-blue', BAJA:'badge-green' };
+  const CRIT_COLORS = { CRITICA:'badge-red', URGENTE:'badge-orange', ALTA:'badge-yellow', MEDIA:'badge-green', BAJA:'badge-gray' };
   const tableScs = scs.filter(s=>s.estado==='PENDIENTE'||s.estado==='EN PROCESO')
     .sort((a,b)=>{
       const ord = {CRITICA:0,URGENTE:1,ALTA:2,MEDIA:3,BAJA:4};
@@ -2240,7 +2241,7 @@ function renderKanban() {
   if (!cont) return;
   const ESTADOS = ['PENDIENTE','EN PROCESO','CONFIRMADA','COMPLETADA','CANCELADA'];
   const COLORS  = {'PENDIENTE':'var(--yellow)','EN PROCESO':'var(--accent2)','CONFIRMADA':'var(--accent3)','COMPLETADA':'var(--green)','CANCELADA':'var(--muted)'};
-  const CRIT_C  = {'CRITICA':'var(--red)','URGENTE':'#f97316','ALTA':'var(--yellow)','MEDIA':'var(--accent2)','BAJA':'var(--green)'};
+  const CRIT_C  = {'CRITICA':'#cc2200','URGENTE':'#E85D26','ALTA':'#d4a000','MEDIA':'#22c55e','BAJA':'#888'};
   const groups  = {};
   ESTADOS.forEach(e=>{ groups[e]=[]; });
   scs.forEach((sc,idx)=>{ (groups[sc.estado||'PENDIENTE']||(groups[sc.estado]=[]) ) && groups[sc.estado||'PENDIENTE'].push({sc,idx}); });
