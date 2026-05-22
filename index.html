@@ -1038,6 +1038,32 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   -webkit-tap-highlight-color: transparent;
 }
 #sidebar-backdrop.show { display: block; }
+
+/* ── CONFIRMACIÓN DE COMPRA — nuevo sistema de estados ── */
+.ci-row{border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;transition:border-color .2s;}
+.ci-row:hover{border-color:var(--border2);}
+.ci-main{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--s2);}
+.ci-num{font-family:var(--fm);font-size:11px;color:var(--or);width:22px;flex-shrink:0;}
+.ci-txt{flex:1;font-size:12px;color:var(--text);line-height:1.4;}
+.ci-qty{width:58px;background:var(--s3);border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:12px;color:var(--text);text-align:center;outline:none;font-family:var(--ff);transition:border-color .15s;}
+.ci-qty:focus{border-color:var(--or);}
+.ci-qty[disabled]{opacity:.4;cursor:not-allowed;}
+.ci-states{display:flex;gap:3px;flex-shrink:0;}
+.ci-btn{padding:4px 8px;border-radius:5px;border:1px solid var(--border2);background:var(--s3);font-size:10px;font-weight:700;letter-spacing:.3px;cursor:pointer;color:var(--muted);transition:all .15s;white-space:nowrap;}
+.ci-btn[disabled]{opacity:.35;cursor:not-allowed;}
+.ci-btn.presup.on{background:rgba(99,102,241,.2);color:#a5b4fc;border-color:rgba(99,102,241,.4);}
+.ci-btn.comprado.on{background:rgba(34,197,94,.15);color:#4ade80;border-color:rgba(34,197,94,.4);}
+.ci-btn.nocomp.on{background:rgba(239,68,68,.15);color:#f87171;border-color:rgba(239,68,68,.4);}
+.ci-sub{padding:10px 12px 12px 44px;background:var(--s1);border-top:1px solid var(--border);}
+.ci-sub-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;}
+.ci-sub-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.ci-just{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;color:var(--text);font-family:var(--ff);outline:none;resize:none;min-height:44px;transition:border-color .15s;box-sizing:border-box;}
+.ci-just:focus{border-color:var(--or);}
+.ci-just[disabled]{opacity:.4;}
+/* Vale detail */
+.vale-detail-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:10px;}
+.vale-detail-item{background:var(--s2);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--muted);}
+.vale-detail-item strong{display:block;font-size:12px;color:var(--text);margin-bottom:2px;}
 </style>
 </head>
 <body>
@@ -1596,9 +1622,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 
     <div style="display:flex;gap:10px;justify-content:space-between;margin-top:20px;flex-wrap:wrap">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-ghost" data-editor-only onclick="cambiarEstado(window._scIdx,'EN PROCESO')">🔵 En Proceso</button>
-        <button class="btn btn-sm btn-green" data-editor-only onclick="cambiarEstado(window._scIdx,'COMPLETADA')">✅ Completada</button>
-        <button class="btn btn-sm btn-danger" data-editor-only onclick="cambiarEstado(window._scIdx,'CANCELADA')">✕ Cancelar</button>
+
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-sm btn-ghost" onclick="imprimirModalSC()">🖨 Imprimir</button>
@@ -2315,7 +2339,7 @@ function verSC(idx) {
 
     <!-- SECCIÓN CONFIRMACIÓN COMPRA -->
     <div class="compra-section">
-      <div class="compra-section-title">🛒 Confirmación de Compra — Marcar ítems adquiridos</div>
+      <div class="compra-section-title">🛒 Confirmación de Compra — Estado por ítem</div>
 
       <!-- Barra de progreso -->
       <div class="compra-barra-wrap">
@@ -2325,7 +2349,7 @@ function verSC(idx) {
             <div class="compra-pct-lbl">OC Concretada</div>
           </div>
           <div style="text-align:right">
-            <div class="compra-pct-detalle" id="compra-pct-detalle">0 de ${lineas.length} ítems comprados</div>
+            <div class="compra-pct-detalle" id="compra-pct-detalle">0 de ${lineas.length} ítems</div>
             <div id="compra-estado-badge" style="margin-top:4px"></div>
           </div>
         </div>
@@ -2334,48 +2358,43 @@ function verSC(idx) {
         </div>
       </div>
 
-      <!-- Controles -->
-      <div class="compra-ctrl-row">
-        <div class="compra-sel-all" id="compra-sel-all" onclick="toggleSelAll()">
-          <div class="compra-chk-all" id="compra-chk-all"></div>
-          <span>Seleccionar todos</span>
-        </div>
-        <div style="font-size:11px;color:var(--muted)">Hacé clic en cada ítem para marcarlo como comprado</div>
-      </div>
+      ${!esModoEditor() ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Lector — solo visualización. Ingresá como Editor para modificar estados.</div>' : '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Seleccioná el estado de cada ítem. Podés indicar cantidades parciales.</div>'}
 
-      <!-- Lista de ítems con checkboxes -->
+      <!-- Lista de ítems con estados -->
       <div id="compra-items-list">
         ${renderItemsCompra(lineas, sc)}
       </div>
 
-      <!-- Estado actual si ya fue confirmado -->
-      ${sc.itemsComprados ? renderEstadoConfirmacion(sc) : ''}
-
-      <!-- Botones confirmar -->
-      <div class="compra-confirmar-row">
-        <button class="btn btn-green btn-sm" data-editor-only onclick="confirmarCompra()">✅ Confirmar Compra</button>
-        <button class="btn btn-ghost btn-sm" data-editor-only onclick="limpiarConfirmacion()">↩ Limpiar selección</button>
-      </div>
+      ${esModoEditor() ? '<div class="compra-confirmar-row"><button class="btn btn-ghost btn-sm" onclick="limpiarConfirmacion()">↩ Limpiar todo</button></div>' : ''}
     </div>
 
-    ${sc.valeNum||sc.valeNumActual ? `<div style="margin-top:14px;padding:12px 14px;background:rgba(232,93,37,.08);border:1px solid rgba(232,93,37,.25);border-radius:8px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or);margin-bottom:6px">📋 Vale de Retiro de Pañol</div>
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <span style="font-family:var(--fm);font-size:16px;font-weight:800;color:var(--or)">${sc.valeNum||sc.valeNumActual}</span>
+    ${sc.valeNum||sc.valeNumActual ? `<div style="margin-top:14px;padding:14px 16px;background:rgba(232,93,37,.08);border:1px solid rgba(232,93,37,.25);border-radius:10px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or);margin-bottom:8px">📋 Vale de Retiro de Pañol</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+        <span style="font-family:var(--fm);font-size:18px;font-weight:800;color:var(--or)">${sc.valeNum||sc.valeNumActual}</span>
         <span style="font-size:11px;color:var(--muted)">Reserva realizada en paso de Pañol</span>
       </div>
-      ${sc.panolero?`<div style="font-size:11px;color:var(--muted);margin-top:4px">Pañolero: <strong>${sc.panolero}</strong></div>`:''}
+      <div class="vale-detail-grid">
+        ${sc.panolero ? '<div class="vale-detail-item"><strong>Pañolero</strong>'+sc.panolero+'</div>' : ''}
+        ${sc.panolerFecha ? '<div class="vale-detail-item"><strong>Fecha / Hora</strong>'+sc.panolerFecha.replace('T',' ')+'</div>' : ''}
+        ${sc.solicitante ? '<div class="vale-detail-item"><strong>Solicitante</strong>'+sc.solicitante+'</div>' : ''}
+        ${sc.destino ? '<div class="vale-detail-item"><strong>Destino</strong>'+sc.destino+'</div>' : ''}
+      </div>
+      ${sc.stockItems && Object.keys(sc.stockItems).length ? '<div style="margin-top:10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Ítems en stock para retiro</div>'
+        + Object.entries(sc.stockItems).filter(([,v])=>v&&v.checked).map(([k,v])=>
+          '<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><span>'+k+'</span><span style="color:var(--accent2);font-weight:600">'+( v.cant||'—')+'</span></div>'
+        ).join('') + '</div>' : ''}
     </div>` : ''}
     ${sc.obs ? '<div style="margin-top:10px;font-size:12px;color:var(--muted)">📝 ' + sc.obs + '</div>' : ''}
   `;
 
-  // Restaurar selección guardada y actualizar barra
-  if (sc.itemsComprados) {
+  // Inicializar barra con estado actual
+  if (sc.itemsDetalle) {
+    _recalcCI(sc.itemsDetalle, lineas.length);
+  } else if (sc.itemsComprados) {
     actualizarBarraCompra(Object.values(sc.itemsComprados).filter(Boolean).length, lineas.length);
   }
   document.getElementById('modal-sc').classList.add('open');
-  // Restaurar factura si existe
-  restaurarFacturaSC(sc);
 }
 
 function cerrarModal() { document.getElementById('modal-sc').classList.remove('open'); }
@@ -2583,7 +2602,8 @@ function abrirSettings() {
     'cfg-ejs-key': { key: 'nielsen_emailjs_pubkey',  def: '' },
     'cfg-ejs-svc': { key: 'nielsen_emailjs_service', def: '' },
     'cfg-ejs-tsc': { key: 'nielsen_emailjs_tmpl_sc', def: '' },
-    'cfg-ejs-tpa': { key: 'nielsen_emailjs_tmpl_pa', def: '' }
+    'cfg-ejs-tpa': { key: 'nielsen_emailjs_tmpl_pa', def: '' },
+  'cfg-comp-url': { key: 'nielsen_comparacion_url', def: '' }
   };
   Object.entries(fieldDefaults).forEach(([id, {key, def}]) => {
     const inp = document.getElementById(id);
@@ -3583,16 +3603,51 @@ function renderEstadoConfirmacion(sc) {
 
 function renderItemsCompra(lineas, sc) {
   if (!lineas.length) return '<div style="color:var(--muted);font-style:italic;font-size:12px">Sin ítems cargados.</div>';
+  const det = sc.itemsDetalle || {};
+  const editable = esModoEditor();
+  const dis = editable ? '' : ' disabled';
+
   return lineas.map((l, i) => {
-    const yaComprado = sc.itemsComprados && sc.itemsComprados[i];
-    const checked = yaComprado ? 'checked' : '';
-    const tick = yaComprado ? '✓' : '';
+    const d = det[i] || {estado:'PENDIENTE',cantidad:'',justificacion:''};
+    const est = d.estado || 'PENDIENTE';
+    const qty = d.cantidad || '';
+    const just = d.justificacion || '';
     const num = String(i+1).padStart(2,'0');
-    return '<div class="compra-item-row ' + checked + '" id="compra-item-' + i + '" onclick="toggleItem(' + i + ',' + lineas.length + ')">'
-      + '<div class="compra-chk-all compra-item-chk" id="compra-chk-' + i + '">' + tick + '</div>'
-      + '<div class="compra-item-num">' + num + '.</div>'
-      + '<div class="compra-item-txt">' + l + '</div>'
-      + '</div>';
+    const indC = {PRESUPUESTADO:'#6366f1',COMPRADO:'#22c55e',NO_COMPRADO:'#ef4444',PENDIENTE:'var(--muted)'}[est];
+    const indI = {PRESUPUESTADO:'~',COMPRADO:'✓',NO_COMPRADO:'✕',PENDIENTE:'○'}[est];
+
+    const subPanel = est==='PRESUPUESTADO'
+      ? '<div class="ci-sub"><div class="ci-sub-lbl">Presupuesto recibido</div><div class="ci-sub-row">'
+        +'<button class="btn btn-ghost btn-sm"'+dis+' onclick="adjuntarPresupuesto('+i+')">📎 Adjuntar Presupuesto</button>'
+        +'<button class="btn btn-ghost btn-sm" onclick="abrirComparacion()">📊 Comparar Presupuestos ↗</button>'
+        +(d.presupuestoNombre?'<span style="font-size:11px;color:var(--accent2)">'+d.presupuestoNombre+'</span>':'')
+        +'</div></div>'
+      : est==='COMPRADO'
+        ? '<div class="ci-sub"><div class="ci-sub-lbl">Comprobante</div><div class="ci-sub-row">'
+          +'<button class="btn btn-ghost btn-sm"'+dis+' onclick="adjuntarFactura('+i+')">📄 Adjuntar Factura</button>'
+          +(d.facturaNombre?'<span style="font-size:11px;color:var(--green)">📎 '+d.facturaNombre+'</span>':'')
+          +'</div></div>'
+      : est==='NO_COMPRADO'
+        ? '<div class="ci-sub"><div class="ci-sub-lbl">Justificación</div>'
+          +'<textarea class="ci-just"'+dis+' id="just-'+i+'" placeholder="Motivo..." oninput="setItemJust('+i+',this.value)">'+just+'</textarea>'
+          +'</div>'
+      : '';
+
+    return '<div class="ci-row" id="ci-row-'+i+'">'
+      +'<div class="ci-main">'
+      +'<div style="width:14px;height:14px;border-radius:50%;background:'+indC+';display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;flex-shrink:0">'+indI+'</div>'
+      +'<div class="ci-num">'+num+'</div>'
+      +'<div class="ci-txt">'+l+'</div>'
+      +'<input class="ci-qty" type="number" min="0" step="0.01" id="qty-'+i+'" value="'+qty
+      +'" placeholder="Cant." title="Cantidad" oninput="setItemQty('+i+',this.value)"'+dis+'>'
+      +'<div class="ci-states">'
+      +'<button class="ci-btn presup'+(est==='PRESUPUESTADO'?' on':'')+'"'+dis+' onclick="setItemEst('+i+',\'PRESUPUESTADO\','+lineas.length+')">PRESUP.</button>'
+      +'<button class="ci-btn comprado'+(est==='COMPRADO'?' on':'')+'"'+dis+' onclick="setItemEst('+i+',\'COMPRADO\','+lineas.length+')">COMPRADO</button>'
+      +'<button class="ci-btn nocomp'+(est==='NO_COMPRADO'?' on':'')+'"'+dis+' onclick="setItemEst('+i+',\'NO_COMPRADO\','+lineas.length+')">NO COMP.</button>'
+      +'</div>'
+      +'</div>'
+      +subPanel
+      +'</div>';
   }).join('');
 }
 
@@ -3665,6 +3720,101 @@ function actualizarBarraCompra(count, total) {
     const cls = pct === 100 ? 'badge-green' : pct > 0 ? 'badge-yellow' : 'badge-red';
     bdgEl.innerHTML = '<span class="badge ' + cls + '">' + label + '</span>';
   }
+}
+
+
+function setItemEst(idx, estado, total) {
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  const sc = scs[window._scIdx]; if(!sc) return;
+  if(!sc.itemsDetalle) sc.itemsDetalle = {};
+  const d = sc.itemsDetalle[idx] || {estado:'PENDIENTE',cantidad:'',justificacion:''};
+  d.estado = (d.estado===estado) ? 'PENDIENTE' : estado;
+  sc.itemsDetalle[idx] = d;
+  _saveItemDetalle(sc);
+  const lineas=(sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
+  document.getElementById('compra-items-list').innerHTML = renderItemsCompra(lineas,sc);
+  _recalcCI(sc.itemsDetalle, total||lineas.length);
+}
+function setItemQty(idx, val) {
+  const sc=scs[window._scIdx]; if(!sc) return;
+  if(!sc.itemsDetalle) sc.itemsDetalle={};
+  if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'PENDIENTE',cantidad:'',justificacion:''};
+  sc.itemsDetalle[idx].cantidad=val;
+}
+function setItemJust(idx, val) {
+  const sc=scs[window._scIdx]; if(!sc) return;
+  if(!sc.itemsDetalle) sc.itemsDetalle={};
+  if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'PENDIENTE',cantidad:'',justificacion:''};
+  sc.itemsDetalle[idx].justificacion=val;
+  _saveItemDetalle(sc);
+}
+function adjuntarPresupuesto(idx) {
+  if(!esModoEditor()) return;
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,.jpg,.jpeg,.png,.doc,.docx';
+  inp.onchange=e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const sc=scs[window._scIdx]; if(!sc) return;
+    if(!sc.itemsDetalle) sc.itemsDetalle={};
+    if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'PRESUPUESTADO',cantidad:'',justificacion:''};
+    sc.itemsDetalle[idx].presupuestoNombre=f.name;
+    _saveItemDetalle(sc);
+    showToast('📎 Presupuesto adjuntado: '+f.name,'ok');
+  };
+  inp.click();
+}
+function adjuntarFactura(idx) {
+  if(!esModoEditor()) return;
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf,.jpg,.jpeg,.png';
+  inp.onchange=e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const sc=scs[window._scIdx]; if(!sc) return;
+    if(!sc.itemsDetalle) sc.itemsDetalle={};
+    if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'COMPRADO',cantidad:'',justificacion:''};
+    sc.itemsDetalle[idx].facturaNombre=f.name;
+    _saveItemDetalle(sc);
+    showToast('📄 Factura adjuntada: '+f.name,'ok');
+  };
+  inp.click();
+}
+function abrirComparacion() {
+  const url=localStorage.getItem('nielsen_comparacion_url')||'';
+  if(url) window.open(url,'_blank');
+  else showToast('Configurá el link de Comparación en ⚙️ Ajustes','error');
+}
+function _saveItemDetalle(sc) {
+  const det=sc.itemsDetalle||{};
+  const lineas=(sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
+  const tot=lineas.length;
+  const comprados={};
+  Object.entries(det).forEach(([i,d])=>{ comprados[i]=(d.estado==='COMPRADO'); });
+  sc.itemsComprados=comprados;
+  const comp=Object.values(det).filter(d=>d.estado==='COMPRADO').length;
+  const pres=Object.values(det).filter(d=>d.estado==='PRESUPUESTADO').length;
+  sc.pctComprado=tot>0?Math.round((comp+pres*0.5)/tot*100):0;
+  if(comp===tot&&tot>0) sc.estado='COMPLETADA';
+  else if(comp>0||pres>0) sc.estado='EN PROCESO';
+  localStorage.setItem('nielsen_scs_2026',JSON.stringify(scs));
+  if(sc.numSC) sbPatch('solicitudes_compra','num_sc',sc.numSC,{
+    estado:sc.estado,
+    items_comprados:JSON.stringify(sc.itemsComprados||{}),
+    items_detalle:JSON.stringify(sc.itemsDetalle||{}),
+    pct_comprado:sc.pctComprado
+  });
+  actualizarContadores();
+}
+function _recalcCI(det, total) {
+  if(!total) return;
+  const comp=Object.values(det).filter(d=>d.estado==='COMPRADO').length;
+  const pres=Object.values(det).filter(d=>d.estado==='PRESUPUESTADO').length;
+  const no  =Object.values(det).filter(d=>d.estado==='NO_COMPRADO').length;
+  const pct =Math.round((comp+pres*0.5)/total*100);
+  const color=pct===100?'var(--green)':pct>50?'var(--yellow)':pct>0?'var(--or)':'var(--muted)';
+  const numEl=document.getElementById('compra-pct-num');
+  const fillEl=document.getElementById('compra-progress-fill');
+  const detEl=document.getElementById('compra-pct-detalle');
+  if(numEl){numEl.textContent=pct+'%';numEl.style.color=color;}
+  if(fillEl){fillEl.style.width=pct+'%';fillEl.style.background=color;}
+  if(detEl) detEl.textContent=comp+' comprado'+( comp!==1?'s':'')+', '+pres+' presupuestado'+(pres!==1?'s':'')+', '+no+' no comprado'+(no!==1?'s':'')+' de '+total;
 }
 
 function confirmarCompra() {
