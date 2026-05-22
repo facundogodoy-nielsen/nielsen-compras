@@ -2710,7 +2710,7 @@ function abrirLimpiarSel() {
 }
 function cerrarLimpiarSel() { document.getElementById('limpiar-sel-ov').classList.remove('open'); }
 function toggleLimpiarOpt(k) {
-  if(k==='todo'){ _limpiarSel.clear(); _limpiarSel.add('todo'); }
+  if(k==='todo'){ _limpiarSel.clear(); ['sc','op','pa','todo'].forEach(o=>_limpiarSel.add(o)); }
   else { _limpiarSel.delete('todo'); if(_limpiarSel.has(k)) _limpiarSel.delete(k); else _limpiarSel.add(k); }
   ['sc','op','todo'].forEach(opt=>{
     const sel=_limpiarSel.has(opt);
@@ -2743,7 +2743,12 @@ function ejecutarLimpiar() {
     scs=[]; contadorPorArea={};
     localStorage.removeItem('nielsen_scs_2026');
     localStorage.removeItem('nielsen_sc_contadores');
+    // DELETE from Supabase (borra todo el historial SC de la base)
+    fetch(_SB_URL+'/rest/v1/solicitudes_compra?id=neq.00000000-0000-0000-0000-000000000000',{
+      method:'DELETE', headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
+    }).catch(()=>{});
     actualizarContadores();
+    renderPanel(); renderHistorial();
   }
   if(limpiarOP){
     opData=[];
@@ -2754,6 +2759,10 @@ function ejecutarLimpiar() {
   if(limpiarPA){
     paData=[];
     localStorage.removeItem('nielsen_pa_2026');
+    // DELETE from Supabase
+    fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?id=neq.00000000-0000-0000-0000-000000000000',{
+      method:'DELETE', headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
+    }).catch(()=>{});
     renderHistorialPA();
   }
   const items=[..._limpiarSel].map(k=>k==='sc'?'Historial SC':k==='op'?'Historial Pedidos':k==='pa'?'Historial PA':'Todo el historial').join(' + ');
@@ -3393,18 +3402,18 @@ function importarSCsExcel(event) {
 
       if (rows.length < 2) { showToast('El archivo no tiene datos', 'error'); return; }
 
-      // Headers en fila 5 del Excel (índice 4). Si no tiene headers ahí, detectar automáticamente
-      let headerRow = 3; // fila 4 (0-indexed) = fila 5 en Excel
-      const row4str = (rows[3]||[]).join('|').toLowerCase();
-      if (!row4str.includes('área') && !row4str.includes('area') && !row4str.includes('solicitante') && !row4str.includes('sc')) {
-        headerRow = 0; // fallback: primera fila
-        for (let i = 0; i < Math.min(rows.length, 8); i++) {
-          const rowStr = rows[i].join('|').toLowerCase();
-          if (rowStr.includes('área') || rowStr.includes('area') || rowStr.includes('solicitante')) {
-            headerRow = i; break;
-          }
-        }
+      // Detección inteligente de headers: buscar la fila que mapea más columnas
+      // Preferencia por fila 5 del Excel (índice 4), pero escanear 0-7
+      const HEADER_KEYWORDS = ['area','solicitante','criticidad','fecha','sc','os','estado','nombre'];
+      let headerRow = 4; // default: fila 5 del Excel (índice 4)
+      let bestScore = -1;
+      for (let i = 0; i <= Math.min(rows.length - 1, 7); i++) {
+        const rowLower = (rows[i]||[]).map(c=>String(c||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''));
+        const score = HEADER_KEYWORDS.filter(k => rowLower.some(c=>c.includes(k))).length;
+        if (score > bestScore) { bestScore = score; headerRow = i; }
       }
+      if (bestScore === 0) headerRow = Math.min(4, rows.length-1); // fallback si no hay match
+      console.log('Import: headerRow detectado en índice', headerRow, '(fila', headerRow+1, 'en Excel), score:', bestScore);
 
       const rawHdrs = rows[headerRow].map(h => String(h||'').trim().toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quitar tildes
@@ -3471,16 +3480,16 @@ function importarSCsExcel(event) {
         const sinOS = get('sinOS') === 'SI';
         const os = sinOS ? 'S/OS' : get('os');
 
-        // Validaciones básicas
-        const rowErrors = [];
-        if (!get('solicitante')) rowErrors.push('Solicitante vacío');
-        // Área: aceptar aunque no esté en lista (datos de otras áreas pueden existir)
-        // Solo rechazar si está vacía
-        if (!area) rowErrors.push('Área vacía');
-        // Criticidad: usar MEDIA como default si no se reconoce
-        // Fecha: auto-completar con hoy si vacía (no rechazar)
-        if (rowErrors.length > 0) {
-          errores.push(`Fila ${fila}: ${rowErrors.join(' | ')}`);
+        // Validación mínima: al menos un campo con datos útiles
+        const rawValues = row.filter(v => v !== '' && v !== null && v !== undefined);
+        if (rawValues.length === 0) continue; // fila realmente vacía
+
+        // Usar defaults para campos faltantes — nunca rechazar si hay algún dato
+        const solicitanteFinal = get('solicitante') || 'Sin nombre';
+        const areaFinal = area || get('destino') || 'SIN ÁREA';
+        // Log filas con datos mínimos (área y solicitante vacíos)
+        if (!area && !get('solicitante')) {
+          errores.push(`Fila ${fila}: sin área ni solicitante`);
           continue;
         }
 
@@ -3491,10 +3500,9 @@ function importarSCsExcel(event) {
         }
 
         nuevas.push({
-          num: numSC,
-          area,
-          subarea: get('subarea'),
-          solicitante: get('solicitante'),
+          num: numSC, numSC: numSC,
+          area: areaFinal, subarea: get('subarea')||'',
+          solicitante: solicitanteFinal,
           email: String(row[colIdx['email'] ?? -1] || '').trim().toLowerCase(),
           fecha: get('fecha'),
           fechaLimite: get('fechaLimite'),
@@ -4927,7 +4935,10 @@ function renderHistorialPedidos() {
   const area   = document.getElementById('fop-area')?.value || '';
 
   // Usar scs[] — cada SC tiene su PC asociado
-  let data = [...scs].reverse(); // más recientes primero
+  let data = [...scs].sort((a,b)=>{
+    const na=a.numOP||a.numPC||'', nb=b.numOP||b.numPC||'';
+    return na.localeCompare(nb,'es',{numeric:true}); // PC ascendente
+  });
   if (area) data = data.filter(s => s.area === area);
   if (buscar) data = data.filter(s =>
     ((s.numOP||s.numSC||'') + (s.area||'') + (s.solicitante||'') + (s.items||'')).toLowerCase().includes(buscar)
