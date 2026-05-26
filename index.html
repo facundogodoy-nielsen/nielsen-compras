@@ -1398,40 +1398,17 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 ══════════════════════════════════ -->
 <div id="view-kanban" class="view">
   <div class="pg-header">
-    <div class="pg-title">VISTA <span>KANBAN</span></div>
-    <div class="pg-sub">Estado visual de todas las solicitudes en curso</div>
+    <div class="pg-title">VISTA <span>KANBAN</span> — COMPRAS</div>
+    <div class="pg-sub">Estado visual de todas las Solicitudes de Compra en curso</div>
   </div>
-  <div class="kanban">
-    <div class="kb-col">
-      <div class="kb-col-title" style="color:var(--yellow)">
-        🟡 PENDIENTE <span class="badge badge-yellow" id="kb-cnt-pend">0</span>
-      </div>
-      <div id="kb-pend"></div>
-    </div>
-    <div class="kb-col">
-      <div class="kb-col-title" style="color:var(--blue)">
-        🔵 EN PROCESO <span class="badge badge-blue" id="kb-cnt-proc">0</span>
-      </div>
-      <div id="kb-proc"></div>
-    </div>
-    <div class="kb-col">
-      <div class="kb-col-title" style="color:var(--green)">
-        🟢 COMPLETADA <span class="badge badge-green" id="kb-cnt-comp">0</span>
-      </div>
-      <div id="kb-comp"></div>
-    </div>
-    <div class="kb-col">
-      <div class="kb-col-title" style="color:var(--muted)">
-        ⬛ CANCELADA <span class="badge badge-gray" id="kb-cnt-canc">0</span>
-      </div>
-      <div id="kb-canc"></div>
+  <div id="kanban-body">
+    <div style="padding:32px;text-align:center;color:var(--muted)">
+      <div style="font-size:22px;margin-bottom:8px">⏳</div>
+      <div style="font-size:13px">Cargando datos...</div>
     </div>
   </div>
 </div>
 
-<!-- ══════════════════════════════════
-     VIEW: HISTORIAL DE ÓRDENES DE PEDIDO
-══════════════════════════════════ -->
 <div id="view-historial-op" class="view">
   <div class="pg-header">
     <div>
@@ -2245,7 +2222,15 @@ function renderKanban() {
   ESTADOS.forEach(e=>{ groups[e]=[]; });
   scs.forEach((sc,idx)=>{ (groups[sc.estado||'PENDIENTE']||(groups[sc.estado]=[]) ) && groups[sc.estado||'PENDIENTE'].push({sc,idx}); });
   function pctSC(sc){
-    if(sc.pctComprado!=null) return sc.pctComprado;
+    // Prefer itemsDetalle for accurate calc
+    if(sc.itemsDetalle && Object.keys(sc.itemsDetalle).length>0){
+      const lineas=(sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
+      const tot=lineas.length||Object.keys(sc.itemsDetalle).length;
+      const comp=Object.values(sc.itemsDetalle).filter(d=>d.estado==='COMPRADO').length;
+      const pres=Object.values(sc.itemsDetalle).filter(d=>d.estado==='PRESUPUESTADO').length;
+      return tot>0?Math.round((comp+pres*0.5)/tot*100):0;
+    }
+    if(sc.pctComprado!=null && sc.pctComprado>0) return sc.pctComprado;
     if(sc.itemsComprados){ const v=Object.values(sc.itemsComprados); return v.length?Math.round(v.filter(Boolean).length/v.length*100):0; }
     if(sc.estado==='COMPLETADA') return 100;
     if(sc.estado==='EN PROCESO') return 50;
@@ -5069,6 +5054,7 @@ async function recargarSCsDesdeLS() {
     // Convertir snake_case → camelCase para compatibilidad con el resto del CC
     const fromDB = rows.map(r => ({
       numSC:      r.num_sc,
+      num:        r.num_sc,  // backward compat alias
       numOP:      r.num_op || '',
       area:       r.area || '',
       subarea:    r.subarea || '',
@@ -5090,7 +5076,12 @@ async function recargarSCsDesdeLS() {
       estado:     r.estado || 'PENDIENTE',
       origen:     r.origen || '',
       creado:     r.creado_at || '',
-      _sbId:      r.id   // UUID de Supabase, para PATCH/DELETE
+      // ── Campos de confirmación de compra ──
+      itemsDetalle:   r.items_detalle   ? (typeof r.items_detalle  ==='string' ? JSON.parse(r.items_detalle)  : r.items_detalle)  : {},
+      itemsComprados: r.items_comprados ? (typeof r.items_comprados==='string' ? JSON.parse(r.items_comprados) : r.items_comprados) : {},
+      pctComprado:    r.pct_comprado    || 0,
+      tipoCompra:     r.tipo_compra     || '',
+      _sbId:      r.id   // UUID de Supabase
     }));
     scs = fromDB;
     // Sincronizar también en localStorage como cache
