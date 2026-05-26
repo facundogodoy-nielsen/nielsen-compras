@@ -2479,6 +2479,24 @@ async function sbSelect(tabla, params='') {
   } catch(e) { console.warn('SB offline:', e.message); return null; }
 }
 
+async function sbUpsert(tabla, matchCol, datos) {
+  try {
+    const key = Object.keys(matchCol)[0];
+    const val = matchCol[key];
+    // Try to patch first; if not found (0 rows), insert
+    const patchR = await fetch(`${_SB_URL}/rest/v1/${tabla}?${key}=eq.${encodeURIComponent(val)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=representation' },
+      body: JSON.stringify(datos)
+    });
+    const patched = await patchR.json();
+    if (!patched || patched.length === 0) {
+      // Record doesn't exist — insert
+      await sbInsert(tabla, datos);
+    }
+  } catch(e) { console.warn('SB upsert error:', e.message); }
+}
+
 async function sbPatch(tabla, col, val, datos) {
   try {
     await fetch(`${_SB_URL}/rest/v1/${tabla}?${col}=eq.${encodeURIComponent(val)}`, {
@@ -3496,10 +3514,15 @@ function importarSCsExcel(event) {
           continue;
         }
 
-        // Generar N° SC si no tiene o es duplicado
-        let numSC = get('num');
-        if (!numSC || scs.some(s => (s.numSC||s.num) === numSC)) {
-          numSC = generarNumSC(area, get('subarea')) + '-IMP';
+        // Verificar duplicado: si ya existe ese N° SC, saltear la fila
+        let numSC = get('num') || get('numsc') || get('nsc') || '';
+        if (numSC && scs.some(s => (s.numSC||s.num||'').trim().toUpperCase() === numSC.trim().toUpperCase())) {
+          errores.push('Fila ' + fila + ': N° SC ' + numSC + ' ya existe — saltada');
+          continue; // NO importar — ya está cargada
+        }
+        // Si no tiene N° SC, generar uno nuevo
+        if (!numSC) {
+          numSC = generarNumSC(areaFinal, get('subarea')) + '-IMP';
         }
 
         nuevas.push({
@@ -3545,7 +3568,7 @@ function importarSCsExcel(event) {
       localStorage.setItem('nielsen_sc_contadores', JSON.stringify(contadorPorArea));
       // Sync imported SCs to Supabase
       nuevas.forEach(sc => {
-        sbInsert('solicitudes_compra', {
+        sbUpsert('solicitudes_compra', {'num_sc': sc.numSC||sc.num}, {
           num_sc: sc.numSC||sc.num, num_op: sc.numOP||sc.op||'',
           area: sc.area, subarea: sc.subarea||'', solicitante: sc.solicitante,
           email: sc.email||'', fecha: sc.fecha||null, fecha_limite: sc.fechaLimite||null,
@@ -3729,9 +3752,10 @@ function setItemQty(idx, val) {
   if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'PENDIENTE',cantidad:'',justificacion:''};
   sc.itemsDetalle[idx].cantidad=val;
 }
-function confirmarCompraFinal() {
+async function confirmarCompraFinal() {
   if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
   const sc = scs[window._scIdx]; if(!sc) return;
+  _pauseReload = true; // congelar polling durante el guardado
   const lineas = (sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
   const det = sc.itemsDetalle || {};
 
@@ -3765,7 +3789,7 @@ function confirmarCompraFinal() {
 
   // Guardar local + Supabase
   localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
-  if(sc.numSC) sbPatch('solicitudes_compra','num_sc',sc.numSC,{
+  if(sc.numSC) await sbPatch('solicitudes_compra','num_sc',sc.numSC,{
     estado:      sc.estado,
     pct_comprado:sc.pctComprado,
     items_comprados: JSON.stringify(sc.itemsComprados||{}),
@@ -3777,11 +3801,12 @@ function confirmarCompraFinal() {
   showToast('✅ Confirmación guardada — SC actualizada','ok');
   _recalcCI(det, total);
 
-  // Refrescar vistas activas
+  // Refrescar vistas activas sin pisar los datos recién guardados
   const av = document.querySelector('.view.active');
   if(av?.id==='view-panel')    renderPanel();
   if(av?.id==='view-historial') renderHistorial();
   if(av?.id==='view-kanban')    renderKanban();
+  _pauseReload = false; // reactivar polling
 }
 
 function setFacturaDato(idx, campo, val) {
@@ -3833,7 +3858,7 @@ function abrirComparacion() {
   if(url) window.open(url,'_blank');
   else showToast('Configurá el link de Comparación en ⚙️ Ajustes','error');
 }
-function _saveItemDetalle(sc) {
+async function _saveItemDetalle(sc) {
   const det=sc.itemsDetalle||{};
   const lineas=(sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
   const tot=lineas.length;
@@ -3846,7 +3871,7 @@ function _saveItemDetalle(sc) {
   if(comp===tot&&tot>0) sc.estado='COMPLETADA';
   else if(comp>0||pres>0) sc.estado='EN PROCESO';
   localStorage.setItem('nielsen_scs_2026',JSON.stringify(scs));
-  if(sc.numSC) sbPatch('solicitudes_compra','num_sc',sc.numSC,{
+  if(sc.numSC) await sbPatch('solicitudes_compra','num_sc',sc.numSC,{
     estado:sc.estado,
     items_comprados:JSON.stringify(sc.itemsComprados||{}),
     items_detalle:JSON.stringify(sc.itemsDetalle||{}),
@@ -5193,6 +5218,8 @@ function exportarPedidosOP() {
 }
 
 setInterval(async () => {
+  // No recargar si el modal de SC está abierto (evita sobreescribir cambios activos)
+  if (_pauseReload || document.getElementById('modal-sc')?.classList.contains('open')) return;
   const av = document.querySelector('.view.active');
   if (!av) return;
   if (['view-historial','view-panel','view-kanban'].includes(av.id)) {
