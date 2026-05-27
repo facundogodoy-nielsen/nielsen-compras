@@ -1071,6 +1071,37 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 .sc-edit-field label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);}
 .sc-edit-sel{background:var(--s2);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;color:var(--text);font-family:var(--ff);font-size:13px;outline:none;transition:border-color .15s;}
 .sc-edit-sel:focus{border-color:var(--or);}
+.kb-filter-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:var(--s1);border-radius:10px;border:1px solid var(--border);}
+.kb-filter-sel{background:var(--s2);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;color:var(--text);font-family:var(--ff);font-size:12px;outline:none;}
+.kb-pct-panel{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;}
+.kb-pct-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:14px;}
+.kb-pct-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.kb-pct-label{width:110px;font-size:12px;font-weight:600;flex-shrink:0;}
+.kb-pct-bar{flex:1;height:8px;background:var(--s3);border-radius:4px;overflow:hidden;}
+.kb-pct-fill{height:100%;border-radius:4px;transition:width .4s;}
+.kb-pct-num{width:60px;font-size:12px;font-weight:700;text-align:right;flex-shrink:0;}
+
+/* ── Collapsible + Draggable Sidebar ── */
+.sidebar-section { cursor: default; user-select: none; }
+.sidebar-section-hdr {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px 4px 14px; cursor: pointer;
+  border-radius: 6px; transition: background .15s;
+}
+.sidebar-section-hdr:hover { background: var(--s3); }
+.sidebar-toggle { font-size: 10px; color: var(--muted); transition: transform .2s; flex-shrink: 0; }
+.sidebar-section.collapsed .sidebar-toggle { transform: rotate(-90deg); }
+.sidebar-section-body { overflow: hidden; transition: max-height .25s ease, opacity .2s; max-height: 600px; opacity: 1; }
+.sidebar-section.collapsed .sidebar-section-body { max-height: 0; opacity: 0; pointer-events: none; }
+.sb-drag-handle {
+  display: flex; align-items: center; justify-content: center;
+  width: 16px; height: 20px; cursor: grab; color: var(--muted);
+  font-size: 12px; flex-shrink: 0; opacity: .4; transition: opacity .15s;
+  margin-left: auto;
+}
+.sb-drag-handle:hover { opacity: 1; cursor: grab; }
+.sidebar-section.dragging { opacity: .4; background: var(--s2); border-radius: 8px; }
+.sidebar-section.drag-over { border-top: 2px solid var(--or); }
 </style>
 </head>
 <body>
@@ -1099,8 +1130,16 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 <!-- ══ SIDEBAR ══ -->
 <aside id="main-aside">
   <!-- COMPRAS -->
-  <div class="sidebar-section">
-    <span class="sidebar-label">Compras</span>
+  <div class="sidebar-section" data-sid="compras">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Compras</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body">
     <button class="sidebar-btn-cta sc" onclick="abrirFormulario()" id="btn-nueva-sc">
       <span class="sb-icon">📝</span> Nueva SC
       <span class="cta-arrow">↗</span>
@@ -1114,11 +1153,20 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('kanban', this)">
       <span class="sb-icon">🗂</span> Vista Kanban
     </button>
-  </div>
+  </div><!-- /body -->
+  </div><!-- /section -->
   <div class="sidebar-divider"></div>
   <!-- ABASTECIMIENTO -->
-  <div class="sidebar-section">
-    <span class="sidebar-label">Abastecimiento</span>
+  <div class="sidebar-section" data-sid="abastecimiento">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Abastecimiento</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body">
     <button class="sidebar-btn-cta pa" onclick="abrirLinkPA()">
       <span class="sb-icon">🛒</span> Nuevo PA
       <span class="cta-arrow">↗</span>
@@ -1132,10 +1180,19 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('kanban-pa', this)">
       <span class="sb-icon">🗂</span> Vista Kanban
     </button>
-  </div>
+  </div><!-- /body -->
+  </div><!-- /section -->
   <div class="sidebar-divider"></div>
-  <div class="sidebar-section">
-    <span class="sidebar-label">Por Área</span>
+  <div class="sidebar-section" data-sid="por-area">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Por Área</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body">
     <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('TALLER')">
       <span class="sb-icon">🔧</span> Taller
     </button>
@@ -1172,23 +1229,64 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('CAMPAMENTOS')">
       <span class="sb-icon">⛺</span> Campamentos
     </button>
-  </div>
+  </div><!-- /body -->
+  </div><!-- /section -->
   <div class="sidebar-divider"></div>
-  <div class="sidebar-section">
-    <span class="sidebar-label">Registros</span>
+  <div class="sidebar-section" data-sid="registros">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Registros</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body">
     <button class="sidebar-btn" onclick="showView('historial-op', this)">
       <span class="sb-icon">📋</span> Historial Pedidos
     </button>
   </div>
-  <div class="sidebar-section">
-    <span class="sidebar-label">Herramientas</span>
+  <div class="sidebar-section" data-sid="presupuestos">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Presupuestos</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body">
+    <button class="sidebar-btn-cta" style="background:rgba(234,179,8,.12);border-left-color:#eab308;color:#fbbf24" onclick="abrirComparativoLink()">
+      <span class="sb-icon">📊</span> Cuadro Comparativo
+      <span class="cta-arrow">↗</span>
+    </button>
+    <button class="sidebar-btn" onclick="showView('comparativas', this)">
+      <span class="sb-icon">📋</span> Historial de Comparativas
+    </button>
+    <button class="sidebar-btn" onclick="showView('ahorro', this)">
+      <span class="sb-icon">💰</span> Ahorro Generado
+    </button>
+  </div><!-- /body -->
+  </div><!-- /section -->
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-section" data-sid="herramientas">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Herramientas</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body">
     <button class="sidebar-btn" onclick="exportarExcel()">
       <span class="sb-icon">⬇️</span> Exportar Excel
     </button>
     <button class="sidebar-btn" data-editor-only onclick="pedirPinLimpiar()">
       <span class="sb-icon">🗑</span> Limpiar Datos
     </button>
-  </div>
+  </div><!-- /body -->
+  </div><!-- /section -->
 </aside>
 
 <!-- ══════════════════════════════════
@@ -1406,8 +1504,33 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 <div id="view-kanban" class="view">
   <div class="pg-header">
     <div class="pg-title">VISTA <span>KANBAN</span> — COMPRAS</div>
-    <div class="pg-sub">Estado visual de todas las Solicitudes de Compra en curso</div>
+    <div class="pg-sub">Estado visual de todas las Solicitudes de Compra</div>
   </div>
+  <div class="kb-filter-bar">
+    <span style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap">Período:</span>
+    <select id="kb-filtro-tipo" class="kb-filter-sel" onchange="onKbFiltroChange()">
+      <option value="todo">Todas las fechas</option>
+      <option value="anio">Año</option>
+      <option value="mes">Mes</option>
+      <option value="periodo">Período personalizado</option>
+    </select>
+    <select id="kb-filtro-anio" class="kb-filter-sel" style="display:none" onchange="renderKanban()">
+      <option value="2024">2024</option><option value="2025">2025</option><option value="2026" selected>2026</option>
+    </select>
+    <select id="kb-filtro-mes" class="kb-filter-sel" style="display:none" onchange="renderKanban()">
+      <option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option>
+      <option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option>
+      <option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option>
+      <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+    </select>
+    <div id="kb-filtro-rango" style="display:none;gap:6px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--muted)">Desde</span>
+      <input type="date" id="kb-filtro-desde" class="kb-filter-sel" style="padding:5px 8px" onchange="renderKanban()">
+      <span style="font-size:11px;color:var(--muted)">Hasta</span>
+      <input type="date" id="kb-filtro-hasta" class="kb-filter-sel" style="padding:5px 8px" onchange="renderKanban()">
+    </div>
+  </div>
+  <div class="kb-pct-panel" id="kb-pct-panel"></div>
   <div id="kanban-body">
     <div style="padding:32px;text-align:center;color:var(--muted)">
       <div style="font-size:22px;margin-bottom:8px">⏳</div>
@@ -1648,6 +1771,114 @@ function tick() {
   const n = new Date();
   document.getElementById('clock').textContent = n.toLocaleTimeString('es-AR');
 }
+
+// ══════════════════════════════════════════════════════════════
+// SIDEBAR — Collapsible + Drag-to-reorder (desktop + touch)
+// ══════════════════════════════════════════════════════════════
+(function initSidebar(){
+  const SID_ORDER_KEY = 'nielsen_sb_order';
+  const SID_COLL_KEY  = 'nielsen_sb_collapsed';
+
+  // ── Restore collapsed state ──
+  const collapsed = JSON.parse(localStorage.getItem(SID_COLL_KEY)||'{}');
+  document.querySelectorAll('.sidebar-section[data-sid]').forEach(sec=>{
+    if(collapsed[sec.dataset.sid]) sec.classList.add('collapsed');
+  });
+
+  // ── Restore order ──
+  const order = JSON.parse(localStorage.getItem(SID_ORDER_KEY)||'null');
+  if(order) {
+    const aside = document.getElementById('main-aside');
+    const sections = [...aside.querySelectorAll('.sidebar-section[data-sid]')];
+    const dividers = [...aside.querySelectorAll('.sidebar-divider')];
+    // Remove all sections and dividers
+    [...sections,...dividers].forEach(el=>el.remove());
+    // Re-insert in saved order
+    order.forEach((sid,i)=>{
+      const sec = sections.find(s=>s.dataset.sid===sid);
+      if(sec){ aside.appendChild(sec); if(i<order.length-1){ const d=document.createElement('div');d.className='sidebar-divider';aside.appendChild(d); } }
+    });
+  }
+})();
+
+function toggleSidebarSection(hdr){
+  const sec=hdr.closest('.sidebar-section');
+  if(!sec) return;
+  sec.classList.toggle('collapsed');
+  const coll=JSON.parse(localStorage.getItem('nielsen_sb_collapsed')||'{}');
+  coll[sec.dataset.sid]=sec.classList.contains('collapsed');
+  localStorage.setItem('nielsen_sb_collapsed',JSON.stringify(coll));
+}
+
+// ── Drag & Drop (desktop) ──
+let _sbDragSrc=null;
+function sbDragStart(e,sec){
+  _sbDragSrc=sec;
+  sec.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move';
+  e.dataTransfer.setData('text/plain',sec.dataset.sid);
+}
+document.addEventListener('dragover',e=>{
+  e.preventDefault();
+  const target=e.target?.closest('.sidebar-section[data-sid]');
+  document.querySelectorAll('.sidebar-section').forEach(s=>s.classList.remove('drag-over'));
+  if(target&&target!==_sbDragSrc) target.classList.add('drag-over');
+});
+document.addEventListener('drop',e=>{
+  e.preventDefault();
+  const target=e.target?.closest('.sidebar-section[data-sid]');
+  document.querySelectorAll('.sidebar-section').forEach(s=>{s.classList.remove('drag-over');s.classList.remove('dragging');});
+  if(target&&_sbDragSrc&&target!==_sbDragSrc){
+    const aside=document.getElementById('main-aside');
+    const sections=[...aside.querySelectorAll('.sidebar-section[data-sid]')];
+    const ti=sections.indexOf(target), si=sections.indexOf(_sbDragSrc);
+    if(ti>si) target.after(_sbDragSrc); else target.before(_sbDragSrc);
+    _saveSbOrder();
+  }
+  _sbDragSrc=null;
+});
+document.addEventListener('dragend',()=>{
+  document.querySelectorAll('.sidebar-section').forEach(s=>{s.classList.remove('dragging');s.classList.remove('drag-over');});
+  _sbDragSrc=null;
+});
+
+// ── Touch drag (mobile) ──
+let _sbTouch=null,_sbTouchClone=null,_sbTouchTarget=null;
+function sbTouchStart(e,sec){
+  _sbTouch=sec;
+  const r=sec.getBoundingClientRect();
+  _sbTouchClone=sec.cloneNode(true);
+  _sbTouchClone.style.cssText='position:fixed;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;opacity:.7;pointer-events:none;z-index:1000;background:var(--s2);border-radius:8px;';
+  document.body.appendChild(_sbTouchClone);
+  sec.style.opacity='.3';
+}
+document.addEventListener('touchmove',e=>{
+  if(!_sbTouchClone||!_sbTouch) return;
+  const t=e.touches[0];
+  _sbTouchClone.style.top=(t.clientY-20)+'px';
+  const under=document.elementFromPoint(t.clientX,t.clientY)?.closest('.sidebar-section[data-sid]');
+  document.querySelectorAll('.sidebar-section').forEach(s=>s.classList.remove('drag-over'));
+  if(under&&under!==_sbTouch){_sbTouchTarget=under;under.classList.add('drag-over');}
+},{passive:true});
+document.addEventListener('touchend',()=>{
+  if(_sbTouchClone){ _sbTouchClone.remove();_sbTouchClone=null; }
+  if(_sbTouch) _sbTouch.style.opacity='';
+  if(_sbTouchTarget&&_sbTouch&&_sbTouchTarget!==_sbTouch){
+    const aside=document.getElementById('main-aside');
+    const secs=[...aside.querySelectorAll('.sidebar-section[data-sid]')];
+    const ti=secs.indexOf(_sbTouchTarget),si=secs.indexOf(_sbTouch);
+    if(ti>si) _sbTouchTarget.after(_sbTouch); else _sbTouchTarget.before(_sbTouch);
+    _saveSbOrder();
+  }
+  document.querySelectorAll('.sidebar-section').forEach(s=>{s.classList.remove('drag-over');});
+  _sbTouch=null;_sbTouchTarget=null;
+});
+
+function _saveSbOrder(){
+  const sids=[...document.querySelectorAll('#main-aside .sidebar-section[data-sid]')].map(s=>s.dataset.sid);
+  localStorage.setItem('nielsen_sb_order',JSON.stringify(sids));
+}
+
 setInterval(tick, 1000); tick();
 
 // ══ NAV ══
@@ -1663,7 +1894,9 @@ async function showView(id, btn) {
   if (id === 'panel')       { await recargarSCsDesdeLS(); renderPanel(); }
   if (id === 'historial')    { await recargarSCsDesdeLS(); renderHistorial(); }
   if (id === 'kanban')       { await recargarSCsDesdeLS(); renderKanban(); }
-  if (id === 'historial-op') { await recargarSCsDesdeLS(); renderHistorialPedidos(); }
+  if (id === 'historial-op')   { await recargarSCsDesdeLS(); renderHistorialPedidos(); }
+  if (id === 'comparativas')   renderComparativas();
+  if (id === 'ahorro')         renderAhorro();
   if (id === 'nueva-sc') resetWizard();
 }
 
@@ -2069,9 +2302,8 @@ function confirmarSC() {
 
 // ══ RENDER TABLAS ══
 function critBadge(c) {
-  const colors = { CRITICA:'badge-red', ALTA:'badge-yellow', MEDIA:'badge-blue', BAJA:'badge-green' };
-  const icons = { CRITICA:'🔴', ALTA:'🟠', MEDIA:'🟡', BAJA:'⚫' };
-  const labels = { CRITICA:'🔴 CRÍTICA', ALTA:'🟠 ALTA', MEDIA:'🟡 MEDIA', BAJA:'⚫ BAJA' };
+  const colors  = {CRITICA:'badge-red',URGENTE:'badge-orange',ALTA:'badge-yellow',MEDIA:'badge-green',BAJA:'badge-gray'};
+  const labels  = {CRITICA:'🔴 CRÍTICA',URGENTE:'🟠 URGENTE',ALTA:'🟡 ALTA',MEDIA:'🟢 MEDIA',BAJA:'⚪ BAJA'};
   return `<span class="badge ${colors[c]||'badge-gray'}">${labels[c]||c||'—'}</span>`;
 }
 function estBadge(e) {
@@ -2293,6 +2525,50 @@ async function confirmarPinEditSC(){
   if(av?.id==='view-historial') renderHistorial();
   if(av?.id==='view-kanban')   renderKanban();
   verSC(ch.idx);
+}
+
+
+function abrirComparativoLink(){
+  const url=localStorage.getItem('nielsen_comparacion_url')||'';
+  if(url) window.open(url,'_blank');
+  else showToast('Configurá el link del Cuadro Comparativo en ⚙️ Ajustes','error');
+}
+
+const _comparativas = JSON.parse(localStorage.getItem('nielsen_comparativas')||'[]');
+
+function renderComparativas(){
+  const list=document.getElementById('comp-list'); if(!list) return;
+  const q=(document.getElementById('fcomp-buscar')?.value||'').toLowerCase();
+  const data=_comparativas.filter(c=>!q||(c.numSC+c.area+c.proveedor).toLowerCase().includes(q));
+  if(!data.length){
+    list.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:32px;margin-bottom:12px">📊</div><div style="font-size:14px;font-weight:600;margin-bottom:6px">Sin comparativas registradas</div></div>';
+    return;
+  }
+  list.innerHTML='<div class="card"><div class="tbl-wrap"><table><thead><tr>'
+    +'<th>N° SC</th><th>Área</th><th>Descripción</th><th>Proveedores</th><th>Menor precio</th><th>Fecha</th></tr></thead>'
+    +'<tbody>'+data.map(c=>`<tr>
+      <td class="mono" style="color:var(--or)">${c.numSC||'—'}</td>
+      <td>${c.area||'—'}</td><td>${c.desc||'—'}</td>
+      <td>${c.proveedores||'—'}</td>
+      <td style="font-weight:700;color:var(--green)">${c.menorPrecio?'$'+c.menorPrecio:'—'}</td>
+      <td>${c.fecha||'—'}</td>
+    </tr>`).join('')+'</tbody></table></div></div>';
+}
+
+function renderAhorro(){
+  const data=_comparativas.filter(c=>c.ahorro>0);
+  const total=data.reduce((s,c)=>s+(c.ahorro||0),0);
+  const prom=data.length?Math.round(total/data.length):0;
+  const max=data.length?Math.max(...data.map(c=>c.ahorro||0)):0;
+  setEl('aho-total', total?'$'+total.toLocaleString('es-AR'):'—');
+  setEl('aho-comp',  data.length);
+  setEl('aho-prom',  prom?'$'+prom.toLocaleString('es-AR'):'—');
+  setEl('aho-max',   max?'$'+max.toLocaleString('es-AR'):'—');
+}
+
+function nuevaComparativa(){
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  showToast('Función en desarrollo — próximamente podrás cargar comparativas desde aquí','ok');
 }
 
 function onKbFiltroChange() {
