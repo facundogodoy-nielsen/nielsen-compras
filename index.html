@@ -100,8 +100,8 @@ aside.collapsed { width: 0; opacity: 0; padding: 0; border: none; pointer-events
 .layout > main { flex: 1; min-width: 0; }
 .sidebar-section { margin-bottom: 6px; }
 .sidebar-label {
-  font-size: 11px; font-weight: 500; letter-spacing: .3px; text-transform: none;
-  color: var(--muted); padding: 4px 0; display: block; white-space: nowrap;
+  font-size: 9px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted); display: block; white-space: nowrap; opacity: .8;
 }
 .sidebar-btn {
   display: flex; align-items: center; gap: 10px;
@@ -298,6 +298,7 @@ main { padding: 22px 24px; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: .5px; font-family: var(--fm); }
 .badge-or { background: rgba(232,93,37,.15); color: var(--or2); border: 1px solid rgba(232,93,37,.3); }
 .badge-red { background: rgba(239,68,68,.15); color: #f87171; border: 1px solid rgba(239,68,68,.3); }
+.badge-orange { background: rgba(249,115,22,.13); color: #f97316; border: 1px solid rgba(249,115,22,.35); }
 .badge-yellow { background: rgba(245,158,11,.15); color: #fbbf24; border: 1px solid rgba(245,158,11,.3); }
 .badge-blue { background: rgba(59,142,243,.15); color: #60a5fa; border: 1px solid rgba(59,142,243,.3); }
 .badge-green { background: rgba(34,197,94,.15); color: #4ade80; border: 1px solid rgba(34,197,94,.3); }
@@ -1084,20 +1085,33 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 /* ── Collapsible + Draggable Sidebar ── */
 .sidebar-section { cursor: default; user-select: none; }
 .sidebar-section-hdr {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 8px 4px 12px; cursor: pointer;
+  display: flex; align-items: center; gap: 4px;
+  padding: 5px 10px 5px 16px; cursor: pointer;
   border-radius: 6px; transition: background .15s;
 }
 .sidebar-section-hdr:hover { background: var(--s3); }
 .sidebar-toggle { font-size: 10px; color: var(--muted); transition: transform .2s; flex-shrink: 0; }
 .sidebar-section.collapsed .sidebar-toggle { transform: rotate(-90deg); }
-.sidebar-section-body { overflow: hidden; transition: max-height .25s ease, opacity .2s; max-height: 600px; opacity: 1; }
+.sidebar-section-body {
+  overflow: hidden; transition: max-height .25s ease, opacity .2s;
+  max-height: 600px; opacity: 1;
+}
+.sidebar-section-body-inner {
+  max-height: 152px; /* ~4 buttons × 38px */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+.sidebar-section-body-inner::-webkit-scrollbar { width: 3px; }
+.sidebar-section-body-inner::-webkit-scrollbar-track { background: transparent; }
+.sidebar-section-body-inner::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 .sidebar-section.collapsed .sidebar-section-body { max-height: 0; opacity: 0; pointer-events: none; }
 .sb-drag-handle {
   display: flex; align-items: center; justify-content: center;
   width: 16px; height: 20px; cursor: grab; color: var(--muted);
-  font-size: 12px; flex-shrink: 0; opacity: .4; transition: opacity .15s;
-  margin-left: auto;
+  font-size: 11px; flex-shrink: 0; opacity: .3; transition: opacity .15s;
+  margin-left: auto; order: 10;
 }
 .sb-drag-handle:hover { opacity: 1; cursor: grab; }
 .sidebar-section.dragging { opacity: .4; background: var(--s2); border-radius: 8px; }
@@ -1139,7 +1153,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Compras</span>
       <span class="sidebar-toggle">▾</span>
     </div>
-    <div class="sidebar-section-body">
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
     <button class="sidebar-btn-cta sc" onclick="abrirFormulario()" id="btn-nueva-sc">
       <span class="sb-icon">📝</span> Nueva SC
       <span class="cta-arrow">↗</span>
@@ -1153,7 +1167,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('kanban', this)">
       <span class="sb-icon">🗂</span> Vista Kanban
     </button>
-  </div><!-- /body -->
+  </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
   <!-- ABASTECIMIENTO -->
@@ -1166,7 +1180,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Abastecimiento</span>
       <span class="sidebar-toggle">▾</span>
     </div>
-    <div class="sidebar-section-body">
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
     <button class="sidebar-btn-cta pa" onclick="abrirLinkPA()">
       <span class="sb-icon">🛒</span> Nuevo PA
       <span class="cta-arrow">↗</span>
@@ -1180,7 +1194,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('kanban-pa', this)">
       <span class="sb-icon">🗂</span> Vista Kanban
     </button>
-  </div><!-- /body -->
+  </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
   <div class="sidebar-section" data-sid="por-area">
@@ -1192,7 +1206,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Por Área</span>
       <span class="sidebar-toggle">▾</span>
     </div>
-    <div class="sidebar-section-body">
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
     <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('TALLER')">
       <span class="sb-icon">🔧</span> Taller
     </button>
@@ -1229,7 +1243,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('CAMPAMENTOS')">
       <span class="sb-icon">⛺</span> Campamentos
     </button>
-  </div><!-- /body -->
+  </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
   <div class="sidebar-section" data-sid="registros">
@@ -1241,7 +1255,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Registros</span>
       <span class="sidebar-toggle">▾</span>
     </div>
-    <div class="sidebar-section-body">
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
     <button class="sidebar-btn" onclick="showView('historial-op', this)">
       <span class="sb-icon">📋</span> Historial Pedidos
     </button>
@@ -1255,7 +1269,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Presupuestos</span>
       <span class="sidebar-toggle">▾</span>
     </div>
-    <div class="sidebar-section-body">
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
     <button class="sidebar-btn-cta" style="background:rgba(234,179,8,.12);border-left-color:#eab308;color:#fbbf24" onclick="abrirComparativoLink()">
       <span class="sb-icon">📊</span> Nuevo CCP
       <span class="cta-arrow">↗</span>
@@ -1266,7 +1280,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('ahorro', this)">
       <span class="sb-icon">💰</span> Ahorro Generado
     </button>
-  </div><!-- /body -->
+  </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
   <div class="sidebar-section" data-sid="herramientas">
@@ -1278,14 +1292,14 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Herramientas</span>
       <span class="sidebar-toggle">▾</span>
     </div>
-    <div class="sidebar-section-body">
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
     <button class="sidebar-btn" onclick="exportarExcel()">
       <span class="sb-icon">⬇️</span> Exportar Excel
     </button>
     <button class="sidebar-btn" data-editor-only onclick="pedirPinLimpiar()">
       <span class="sb-icon">🗑</span> Limpiar Datos
     </button>
-  </div><!-- /body -->
+  </div></div><!-- /inner /body -->
   </div><!-- /section -->
 </aside>
 
@@ -1730,14 +1744,14 @@ const PREFIJOS = {
 };
 const SUBPREFIJOS = { ELECTRICIDAD:'MTE', PLOMERIA:'MTP', METALURGIA:'MTM', CAMPAMENTO:'MTC' };
 const MESES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
-const CRIT_COLORS = { CRITICA:'badge-red', ALTA:'badge-yellow', MEDIA:'badge-blue', BAJA:'badge-green' };
+const CRIT_COLORS = { CRITICA:'badge-red', URGENTE:'badge-orange', ALTA:'badge-yellow', MEDIA:'badge-green', BAJA:'badge-gray' };
 const ESTADO_COLORS = { PENDIENTE:'badge-yellow', 'EN PROCESO':'badge-blue', COMPLETADA:'badge-green', CANCELADA:'badge-gray' };
 function estBadge(sc_or_estado) {
   // Accept either a SC object or a estado string
   const estado  = (typeof sc_or_estado === 'string') ? sc_or_estado : (sc_or_estado?.estado || 'PENDIENTE');
   const alerta  = (typeof sc_or_estado === 'object') ? sc_or_estado?.tieneAlerta : false;
   if(estado==='COMPLETADA' && alerta)
-    return '<span class="badge badge-orange" style="background:rgba(249,115,22,.15);color:#f97316;border-color:rgba(249,115,22,.4)">⚠️ COMPLETADA</span>';
+    return '<span class="badge badge-orange">⚠️ COMPLETADA</span>';
   const cls = ESTADO_COLORS[estado] || 'badge-gray';
   return `<span class="badge ${cls}">${estado}</span>`;
 }
