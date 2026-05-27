@@ -1602,6 +1602,15 @@ const SUBPREFIJOS = { ELECTRICIDAD:'MTE', PLOMERIA:'MTP', METALURGIA:'MTM', CAMP
 const MESES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
 const CRIT_COLORS = { CRITICA:'badge-red', ALTA:'badge-yellow', MEDIA:'badge-blue', BAJA:'badge-green' };
 const ESTADO_COLORS = { PENDIENTE:'badge-yellow', 'EN PROCESO':'badge-blue', COMPLETADA:'badge-green', CANCELADA:'badge-gray' };
+function estBadge(sc_or_estado) {
+  // Accept either a SC object or a estado string
+  const estado  = (typeof sc_or_estado === 'string') ? sc_or_estado : (sc_or_estado?.estado || 'PENDIENTE');
+  const alerta  = (typeof sc_or_estado === 'object') ? sc_or_estado?.tieneAlerta : false;
+  if(estado==='COMPLETADA' && alerta)
+    return '<span class="badge badge-orange" style="background:rgba(249,115,22,.15);color:#f97316;border-color:rgba(249,115,22,.4)">⚠️ COMPLETADA</span>';
+  const cls = ESTADO_COLORS[estado] || 'badge-gray';
+  return `<span class="badge ${cls}">${estado}</span>`;
+}
 
 // ══ STATE ══
 let pasoActual = 0;
@@ -2319,6 +2328,9 @@ function verSC(idx) {
       </div>
 
       ${!esModoEditor() ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Lector — solo visualización. Ingresá como Editor para modificar estados.</div>' : '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Seleccioná el estado de cada ítem. Podés indicar cantidades parciales.</div>'}
+      <div id="compra-alerta-nocomp" style="display:none;margin-bottom:10px;padding:8px 12px;background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.35);border-radius:8px;font-size:12px;color:#f97316;font-weight:600">
+        ⚠️ Algunos ítems marcados como NO COMPRADO. La SC se completará en estado de alerta (naranja).
+      </div>
 
       <!-- Lista de ítems con estados -->
       <div id="compra-items-list">
@@ -3622,7 +3634,18 @@ function renderItemsCompra(lineas, sc) {
           +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Proveedor</div>'
           +'<input type="text" class="ci-qty" style="width:100%;padding:5px 8px;letter-spacing:normal" id="fprov-'+i+'"'
           +' value="'+(d.facturaProveedor||'')+'" placeholder="Nombre proveedor"'+dis+' oninput="setFacturaDato('+i+',\'proveedor\',this.value)"></div>'
-          +'</div></div>'
+          +'</div>'
+          // Si el ítem tenía presupuesto, mantenerlo visible debajo
+          +(d.presupuestoNombre||d.presupuestoLink
+            ? '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">'
+              +'<div class="ci-sub-lbl" style="color:var(--accent2)">Presupuesto previo (conservado)</div>'
+              +'<div class="ci-sub-row">'
+              +'<button class="btn btn-ghost btn-sm"'+dis+' onclick="adjuntarPresupuesto('+i+')">📎 Actualizar Presupuesto</button>'
+              +'<button class="btn btn-ghost btn-sm" onclick="abrirComparacion()">📊 Comparar Presupuestos ↗</button>'
+              +(d.presupuestoNombre?'<span style="font-size:11px;color:var(--accent2)">'+d.presupuestoNombre+'</span>':'')
+              +'</div></div>'
+            : '')
+          +'</div>'
       : est==='NO_COMPRADO'
         ? '<div class="ci-sub"><div class="ci-sub-lbl">Justificación</div>'
           +'<textarea class="ci-just"'+dis+' id="just-'+i+'" placeholder="Motivo..." oninput="setItemJust('+i+',this.value)">'+just+'</textarea>'
@@ -3761,13 +3784,21 @@ async function confirmarCompraFinal() {
   sc.itemsDetalle = det;
 
   // Calcular estado general y % de la SC
-  const comp   = Object.values(det).filter(d=>d.estado==='COMPRADO').length;
-  const pres   = Object.values(det).filter(d=>d.estado==='PRESUPUESTADO').length;
-  const total  = lineas.length;
-  sc.pctComprado = total>0 ? Math.round((comp+pres*0.5)/total*100) : 0;
-  if(comp===total && total>0)    sc.estado = 'COMPLETADA';
-  else if(comp>0||pres>0)        sc.estado = 'EN PROCESO';
-  // backward compat
+  const comp    = Object.values(det).filter(d=>d.estado==='COMPRADO').length;
+  const pres    = Object.values(det).filter(d=>d.estado==='PRESUPUESTADO').length;
+  const noComp  = Object.values(det).filter(d=>d.estado==='NO_COMPRADO').length;
+  const total   = lineas.length;
+  const resolved= comp + noComp;
+  sc.pctComprado = total>0 ? Math.round((comp + pres*0.5 + noComp)/total*100) : 0;
+  if(comp===total && total>0){
+    sc.estado='COMPLETADA'; sc.tieneAlerta=false;
+  } else if(resolved===total && total>0 && noComp>0){
+    sc.estado='COMPLETADA'; sc.tieneAlerta=true;
+  } else if(comp>0||pres>0||noComp>0){
+    sc.estado='EN PROCESO'; sc.tieneAlerta=false;
+  } else {
+    sc.estado='PENDIENTE'; sc.tieneAlerta=false;
+  }
   const comprados={};
   Object.entries(det).forEach(([i,d])=>{ comprados[i]=(d.estado==='COMPRADO'); });
   sc.itemsComprados = comprados;
@@ -3775,8 +3806,9 @@ async function confirmarCompraFinal() {
   // Guardar local + Supabase
   localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
   if(sc.numSC) await sbPatch('solicitudes_compra','num_sc',sc.numSC,{
-    estado:      sc.estado,
-    pct_comprado:sc.pctComprado,
+    estado:        sc.estado,
+    tiene_alerta:  sc.tieneAlerta ? true : false,
+    pct_comprado:  sc.pctComprado,
     items_comprados: JSON.stringify(sc.itemsComprados||{}),
     items_detalle:   JSON.stringify(sc.itemsDetalle||{})
   });
@@ -3852,12 +3884,35 @@ async function _saveItemDetalle(sc) {
   sc.itemsComprados=comprados;
   const comp=Object.values(det).filter(d=>d.estado==='COMPRADO').length;
   const pres=Object.values(det).filter(d=>d.estado==='PRESUPUESTADO').length;
-  sc.pctComprado=tot>0?Math.round((comp+pres*0.5)/tot*100):0;
-  if(comp===tot&&tot>0) sc.estado='COMPLETADA';
-  else if(comp>0||pres>0) sc.estado='EN PROCESO';
+  const noComp=Object.values(det).filter(d=>d.estado==='NO_COMPRADO').length;
+  const resolved=comp+noComp; // decisión tomada (comprado o descartado)
+
+  // % de avance: COMPRADO=100%, PRESUPUESTADO=50%, NO_COMPRADO=100% (decisión tomada), PENDIENTE=0%
+  sc.pctComprado = tot>0 ? Math.round((comp + pres*0.5 + noComp) / tot * 100) : 0;
+
+  // Estado SC:
+  //  COMPLETADA  → todos COMPRADO (sin ningún NO_COMPRADO)
+  //  EN PROCESO  → hay algo PRESUPUESTADO o en tránsito, o hay NO_COMPRADO (alerta)
+  //  PENDIENTE   → nadie tiene estado aún
+  if(comp===tot && tot>0) {
+    sc.estado='COMPLETADA';
+    sc.tieneAlerta=false;
+  } else if(resolved===tot && tot>0 && noComp>0) {
+    // Todo resuelto pero algunos no se compraron → completada con alerta naranja
+    sc.estado='COMPLETADA';
+    sc.tieneAlerta=true; // señal visual de alerta
+  } else if(comp>0||pres>0||noComp>0) {
+    sc.estado='EN PROCESO';
+    sc.tieneAlerta=false;
+  } else {
+    sc.estado='PENDIENTE';
+    sc.tieneAlerta=false;
+  }
+
   localStorage.setItem('nielsen_scs_2026',JSON.stringify(scs));
   if(sc.numSC) await sbPatch('solicitudes_compra','num_sc',sc.numSC,{
     estado:sc.estado,
+    tiene_alerta: sc.tieneAlerta ? true : false,
     items_comprados:JSON.stringify(sc.itemsComprados||{}),
     items_detalle:JSON.stringify(sc.itemsDetalle||{}),
     pct_comprado:sc.pctComprado
@@ -3869,14 +3924,28 @@ function _recalcCI(det, total) {
   const comp=Object.values(det).filter(d=>d.estado==='COMPRADO').length;
   const pres=Object.values(det).filter(d=>d.estado==='PRESUPUESTADO').length;
   const no  =Object.values(det).filter(d=>d.estado==='NO_COMPRADO').length;
-  const pct =Math.round((comp+pres*0.5)/total*100);
-  const color=pct===100?'var(--green)':pct>50?'var(--yellow)':pct>0?'var(--or)':'var(--muted)';
+  const resolved=comp+no;
+  // NO_COMPRADO cuenta como resuelto (decisión tomada) para el % de avance
+  const pct=Math.round((comp+pres*0.5+no)/total*100);
+  // Color: verde solo si todo COMPRADO; naranja si hay NO_COMPRADO aunque esté al 100%
+  const hayAlerta = no > 0;
+  const color = (pct===100 && !hayAlerta) ? 'var(--green)'
+              : (pct===100 && hayAlerta)  ? '#f97316'  // naranja — completado con alertas
+              : pct>50                    ? 'var(--yellow)'
+              : pct>0                    ? 'var(--or)'
+              :                            'var(--muted)';
   const numEl=document.getElementById('compra-pct-num');
   const fillEl=document.getElementById('compra-progress-fill');
   const detEl=document.getElementById('compra-pct-detalle');
-  if(numEl){numEl.textContent=pct+'%';numEl.style.color=color;}
+  const alertEl=document.getElementById('compra-alerta-nocomp');
+  if(numEl){
+    numEl.textContent = (pct===100 && hayAlerta) ? '⚠️ '+pct+'%' : pct+'%';
+    numEl.style.color=color;
+  }
   if(fillEl){fillEl.style.width=pct+'%';fillEl.style.background=color;}
-  if(detEl) detEl.textContent=comp+' comprado'+( comp!==1?'s':'')+', '+pres+' presupuestado'+(pres!==1?'s':'')+', '+no+' no comprado'+(no!==1?'s':'')+' de '+total;
+  if(detEl) detEl.textContent=comp+' comprado'+(comp!==1?'s':'')+', '+pres+' presupuestado'+(pres!==1?'s':'')+', '+no+' no comprado'+(no!==1?'s':'')+' de '+total;
+  // Mostrar/ocultar banner de alerta
+  if(alertEl) alertEl.style.display = hayAlerta ? '' : 'none';
 }
 
 function confirmarCompra() {
@@ -5081,6 +5150,7 @@ async function recargarSCsDesdeLS() {
       itemsComprados: r.items_comprados ? (typeof r.items_comprados==='string' ? JSON.parse(r.items_comprados) : r.items_comprados) : {},
       pctComprado:    r.pct_comprado    || 0,
       tipoCompra:     r.tipo_compra     || '',
+      tieneAlerta:    r.tiene_alerta    || false,
       _sbId:      r.id   // UUID de Supabase
     }));
     scs = fromDB;
