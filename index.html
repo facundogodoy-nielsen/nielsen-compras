@@ -100,8 +100,8 @@ aside.collapsed { width: 0; opacity: 0; padding: 0; border: none; pointer-events
 .layout > main { flex: 1; min-width: 0; }
 .sidebar-section { margin-bottom: 6px; }
 .sidebar-label {
-  font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
-  color: var(--muted); padding: 6px 20px 4px; display: block; white-space: nowrap;
+  font-size: 11px; font-weight: 500; letter-spacing: .3px; text-transform: none;
+  color: var(--muted); padding: 4px 0; display: block; white-space: nowrap;
 }
 .sidebar-btn {
   display: flex; align-items: center; gap: 10px;
@@ -1085,7 +1085,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 .sidebar-section { cursor: default; user-select: none; }
 .sidebar-section-hdr {
   display: flex; align-items: center; gap: 6px;
-  padding: 4px 8px 4px 14px; cursor: pointer;
+  padding: 4px 8px 4px 12px; cursor: pointer;
   border-radius: 6px; transition: background .15s;
 }
 .sidebar-section-hdr:hover { background: var(--s3); }
@@ -1257,11 +1257,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     </div>
     <div class="sidebar-section-body">
     <button class="sidebar-btn-cta" style="background:rgba(234,179,8,.12);border-left-color:#eab308;color:#fbbf24" onclick="abrirComparativoLink()">
-      <span class="sb-icon">📊</span> Cuadro Comparativo
+      <span class="sb-icon">📊</span> Nuevo CCP
       <span class="cta-arrow">↗</span>
     </button>
     <button class="sidebar-btn" onclick="showView('comparativas', this)">
-      <span class="sb-icon">📋</span> Historial de Comparativas
+      <span class="sb-icon">📋</span> Historial de CCP
     </button>
     <button class="sidebar-btn" onclick="showView('ahorro', this)">
       <span class="sb-icon">💰</span> Ahorro Generado
@@ -2528,42 +2528,106 @@ async function confirmarPinEditSC(){
 }
 
 
+
+function abrirComparacionConSC(idx){
+  const sc=scs[window._scIdx]; if(!sc) { abrirComparativoLink(); return; }
+  const base=localStorage.getItem('nielsen_comparacion_url')||'https://nielsen-compras.vercel.app/comparativo';
+  const params=new URLSearchParams({
+    sc_num:       sc.numSC||sc.num||'',
+    sc_asunto:    sc.osAsunto||sc.os||'',
+    sc_solicitante:sc.solicitante||'',
+    sc_area:      sc.area||'',
+    sc_fecha:     sc.fecha||'',
+    sc_obs:       sc.obs||'',
+    sc_items:     sc.items||''
+  });
+  window.open(base+'?'+params.toString(),'_blank');
+}
 function abrirComparativoLink(){
-  const url=localStorage.getItem('nielsen_comparacion_url')||'';
+  const url=localStorage.getItem('nielsen_comparacion_url')||'https://nielsen-compras.vercel.app/comparativo';
   if(url) window.open(url,'_blank');
   else showToast('Configurá el link del Cuadro Comparativo en ⚙️ Ajustes','error');
 }
 
 const _comparativas = JSON.parse(localStorage.getItem('nielsen_comparativas')||'[]');
 
-function renderComparativas(){
+async function renderComparativas(){
   const list=document.getElementById('comp-list'); if(!list) return;
-  const q=(document.getElementById('fcomp-buscar')?.value||'').toLowerCase();
-  const data=_comparativas.filter(c=>!q||(c.numSC+c.area+c.proveedor).toLowerCase().includes(q));
-  if(!data.length){
-    list.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:32px;margin-bottom:12px">📊</div><div style="font-size:14px;font-weight:600;margin-bottom:6px">Sin comparativas registradas</div></div>';
+  list.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted)"><div style="font-size:20px">⏳</div><div style="font-size:12px;margin-top:8px">Cargando comparativas...</div></div>';
+  let rows=[];
+  try{
+    const q=(document.getElementById('fcomp-buscar')?.value||'').toLowerCase();
+    const url=_SB_URL+'/rest/v1/comparativas?order=creado_at.desc&limit=100';
+    const r=await fetch(url,{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}});
+    if(r.ok) rows=await r.json();
+    if(q) rows=rows.filter(c=>(c.num_comp+c.num_sc+c.area+c.asunto+c.solicitante).toLowerCase().includes(q));
+  }catch(e){}
+  if(!rows.length){
+    list.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:32px;margin-bottom:12px">📊</div>'
+      +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">Sin comparativas registradas</div>'
+      +'<div style="font-size:12px;max-width:360px;margin:0 auto">Las comparativas guardadas desde el Cuadro Comparativo aparecerán aquí.</div></div>';
     return;
   }
   list.innerHTML='<div class="card"><div class="tbl-wrap"><table><thead><tr>'
-    +'<th>N° SC</th><th>Área</th><th>Descripción</th><th>Proveedores</th><th>Menor precio</th><th>Fecha</th></tr></thead>'
-    +'<tbody>'+data.map(c=>`<tr>
-      <td class="mono" style="color:var(--or)">${c.numSC||'—'}</td>
-      <td>${c.area||'—'}</td><td>${c.desc||'—'}</td>
-      <td>${c.proveedores||'—'}</td>
-      <td style="font-weight:700;color:var(--green)">${c.menorPrecio?'$'+c.menorPrecio:'—'}</td>
-      <td>${c.fecha||'—'}</td>
-    </tr>`).join('')+'</tbody></table></div></div>';
+    +'<th>N° Comp.</th><th>N° SC</th><th>Asunto</th><th>Área</th><th>Solicitante</th>'
+    +'<th>Proveedor elegido</th><th>Precio elegido</th><th>Ahorro</th><th>Fecha</th><th>Acciones</th>'
+    +'</tr></thead><tbody>'
+    +rows.map(c=>{
+      const pMin=c.precio_elegido?c.divisa+' '+Number(c.precio_elegido).toLocaleString('es-AR',{minimumFractionDigits:2}):'—';
+      const aho =c.ahorro>0?'<span style="color:var(--green);font-weight:700">'+c.divisa+' '+Number(c.ahorro).toLocaleString('es-AR',{minimumFractionDigits:2})+'</span>':'—';
+      const link=localStorage.getItem('nielsen_comparacion_url')||'https://nielsen-compras.vercel.app/comparativo';
+      const scLink=c.num_sc?`<span class="mono" style="color:var(--or)">${c.num_sc}</span>`:'—';
+      return '<tr>'
+        +`<td class="mono" style="color:var(--or);font-weight:700">${c.num_comp||'—'}</td>`
+        +`<td>${scLink}</td>`
+        +`<td style="max-width:180px">${c.asunto||'—'}</td>`
+        +`<td>${c.area||'—'}</td>`
+        +`<td>${c.solicitante||'—'}</td>`
+        +`<td style="font-weight:600">${c.proveedor_elegido||'—'}</td>`
+        +`<td>${pMin}</td><td>${aho}</td>`
+        +`<td>${c.fecha?formatFecha(c.fecha):'—'}</td>`
+        +`<td><button class="btn btn-ghost btn-sm" style="font-size:10px" onclick="window.open('${link}?comp_id=${c.id}','_blank')">📊 Abrir</button></td>`
+        +'</tr>';
+    }).join('')
+    +'</tbody></table></div></div>';
 }
 
-function renderAhorro(){
-  const data=_comparativas.filter(c=>c.ahorro>0);
-  const total=data.reduce((s,c)=>s+(c.ahorro||0),0);
-  const prom=data.length?Math.round(total/data.length):0;
-  const max=data.length?Math.max(...data.map(c=>c.ahorro||0)):0;
-  setEl('aho-total', total?'$'+total.toLocaleString('es-AR'):'—');
-  setEl('aho-comp',  data.length);
-  setEl('aho-prom',  prom?'$'+prom.toLocaleString('es-AR'):'—');
-  setEl('aho-max',   max?'$'+max.toLocaleString('es-AR'):'—');
+async function renderAhorro(){
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/comparativas?ahorro=gt.0&order=ahorro.desc&select=num_comp,num_sc,asunto,area,proveedor_elegido,precio_elegido,precio_max,ahorro,divisa,fecha',
+      {headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}});
+    if(!r.ok) throw new Error();
+    const data=await r.json();
+    const total=data.reduce((s,c)=>s+(Number(c.ahorro)||0),0);
+    const prom=data.length?Math.round(total/data.length):0;
+    const max=data.length?Math.max(...data.map(c=>Number(c.ahorro)||0)):0;
+    const divisa=data.length?data[0].divisa:'$';
+    setEl('aho-total', total?(divisa+' '+total.toLocaleString('es-AR',{minimumFractionDigits:2})):'—');
+    setEl('aho-comp',  data.length);
+    setEl('aho-prom',  prom?(divisa+' '+prom.toLocaleString('es-AR',{minimumFractionDigits:2})):'—');
+    setEl('aho-max',   max?(divisa+' '+max.toLocaleString('es-AR',{minimumFractionDigits:2})):'—');
+    // Show top savings list
+    const list=document.getElementById('ahorro-list');
+    if(list&&data.length){
+      list.innerHTML='<div class="card"><div class="tbl-wrap"><table><thead><tr>'
+        +'<th>N° Comp.</th><th>N° SC</th><th>Asunto</th><th>Proveedor elegido</th><th>Precio elegido</th><th>Precio máx.</th><th>Ahorro</th></tr></thead><tbody>'
+        +data.slice(0,20).map(c=>{
+          const fmt=v=>c.divisa+' '+Number(v||0).toLocaleString('es-AR',{minimumFractionDigits:2});
+          return '<tr>'
+            +`<td class="mono" style="color:var(--or);font-weight:700">${c.num_comp||'—'}</td>`
+            +`<td class="mono">${c.num_sc||'—'}</td>`
+            +`<td>${c.asunto||'—'}</td>`
+            +`<td style="font-weight:600">${c.proveedor_elegido||'—'}</td>`
+            +`<td>${fmt(c.precio_elegido)}</td>`
+            +`<td style="color:var(--muted)">${fmt(c.precio_max)}</td>`
+            +`<td style="font-weight:700;color:var(--green)">${fmt(c.ahorro)}</td>`
+            +'</tr>';
+        }).join('')
+        +'</tbody></table></div></div>';
+    }
+  }catch(e){
+    setEl('aho-total','—');setEl('aho-comp',0);setEl('aho-prom','—');setEl('aho-max','—');
+  }
 }
 
 function nuevaComparativa(){
@@ -3024,7 +3088,7 @@ function abrirSettings() {
     'cfg-ejs-svc': { key: 'nielsen_emailjs_service', def: '' },
     'cfg-ejs-tsc': { key: 'nielsen_emailjs_tmpl_sc', def: '' },
     'cfg-ejs-tpa': { key: 'nielsen_emailjs_tmpl_pa', def: '' },
-  'cfg-comp-url': { key: 'nielsen_comparacion_url', def: '' }
+  'cfg-comp-url': { key: 'nielsen_comparacion_url', def: 'https://nielsen-compras.vercel.app/comparativo' }
   };
   Object.entries(fieldDefaults).forEach(([id, {key, def}]) => {
     const inp = document.getElementById(id);
@@ -4045,7 +4109,7 @@ function renderItemsCompra(lineas, sc) {
     const subPanel = est==='PRESUPUESTADO'
       ? '<div class="ci-sub"><div class="ci-sub-lbl">Presupuesto recibido</div><div class="ci-sub-row">'
         +'<button class="btn btn-ghost btn-sm"'+dis+' onclick="adjuntarPresupuesto('+i+')">📎 Adjuntar Presupuesto</button>'
-        +'<button class="btn btn-ghost btn-sm" onclick="abrirComparacion()">📊 Comparar Presupuestos ↗</button>'
+        +'<button class="btn btn-ghost btn-sm" onclick="abrirComparacionConSC('+i+')">📊 Comparar Presupuestos ↗</button>'
         +(d.presupuestoNombre?'<span style="font-size:11px;color:var(--accent2)">'+d.presupuestoNombre+'</span>':'')
         +'</div></div>'
       : est==='COMPRADO'
@@ -4067,7 +4131,7 @@ function renderItemsCompra(lineas, sc) {
               +'<div class="ci-sub-lbl" style="color:var(--accent2)">Presupuesto previo (conservado)</div>'
               +'<div class="ci-sub-row">'
               +'<button class="btn btn-ghost btn-sm"'+dis+' onclick="adjuntarPresupuesto('+i+')">📎 Actualizar Presupuesto</button>'
-              +'<button class="btn btn-ghost btn-sm" onclick="abrirComparacion()">📊 Comparar Presupuestos ↗</button>'
+              +'<button class="btn btn-ghost btn-sm" onclick="abrirComparacionConSC('+i+')">📊 Comparar Presupuestos ↗</button>'
               +(d.presupuestoNombre?'<span style="font-size:11px;color:var(--accent2)">'+d.presupuestoNombre+'</span>':'')
               +'</div></div>'
             : '')
@@ -4297,7 +4361,7 @@ function adjuntarFactura(idx) {
   inp.click();
 }
 function abrirComparacion() {
-  const url=localStorage.getItem('nielsen_comparacion_url')||'';
+  const url=localStorage.getItem('nielsen_comparacion_url')||'https://nielsen-compras.vercel.app/comparativo';
   if(url) window.open(url,'_blank');
   else showToast('Configurá el link de Comparación en ⚙️ Ajustes','error');
 }
