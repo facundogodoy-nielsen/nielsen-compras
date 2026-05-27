@@ -1064,6 +1064,13 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 .vale-detail-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:10px;}
 .vale-detail-item{background:var(--s2);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--muted);}
 .vale-detail-item strong{display:block;font-size:12px;color:var(--text);margin-bottom:2px;}
+
+.sc-edit-panel{background:rgba(232,93,37,.06);border:1px solid rgba(232,93,37,.2);border-radius:10px;padding:14px 16px;margin-bottom:16px;}
+.sc-edit-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;}
+.sc-edit-field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:140px;}
+.sc-edit-field label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);}
+.sc-edit-sel{background:var(--s2);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;color:var(--text);font-family:var(--ff);font-size:13px;outline:none;transition:border-color .15s;}
+.sc-edit-sel:focus{border-color:var(--or);}
 </style>
 </head>
 <body>
@@ -2221,15 +2228,130 @@ function filtrarPorArea(area) {
   if (sel) { sel.value = area; renderHistorial(); }
 }
 
+
+function guardarCambiosSC(idx) {
+  if(!esModoEditor()) return;
+  window._pendingScChanges = {
+    idx,
+    nuevaEstado:     document.getElementById('edit-estado')?.value,
+    nuevaCriticidad: document.getElementById('edit-criticidad')?.value,
+    nuevaFecha:      document.getElementById('edit-fechalimite')?.value,
+    nuevaObs:        document.getElementById('edit-obs')?.value
+  };
+  abrirPinEditSC();
+}
+function abrirPinEditSC() {
+  let ov=document.getElementById('pin-edit-sc-ov');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='pin-edit-sc-ov';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML='<div style="background:var(--s1);border:1.5px solid var(--border2);border-radius:14px;padding:28px 24px;width:100%;max-width:320px;text-align:center">'
+      +'<div style="font-size:16px;font-weight:800;letter-spacing:2px;color:var(--or);margin-bottom:8px">✏️ CONFIRMAR CAMBIOS</div>'
+      +'<div style="font-size:12px;color:var(--muted);margin-bottom:18px">Ingresá el PIN de Editor para aplicar</div>'
+      +'<input type="password" id="pin-edit-sc-inp" maxlength="10" autocomplete="off"'
+      +' style="width:100%;background:var(--s2);border:1.5px solid var(--border2);border-radius:8px;padding:10px;color:var(--text);font-size:18px;text-align:center;letter-spacing:4px;outline:none;box-sizing:border-box;margin-bottom:8px"'
+      +' placeholder="••••" onkeydown="if(event.key===\'Enter\')confirmarPinEditSC()">'
+      +'<div id="pin-edit-sc-err" style="color:var(--red);font-size:11px;min-height:16px;margin-bottom:12px"></div>'
+      +'<div style="display:flex;gap:8px">'
+      +'<button class="btn btn-ghost btn-sm" style="flex:1" onclick="cerrarPinEditSC()">Cancelar</button>'
+      +'<button class="btn btn-sm" style="flex:1;background:var(--or);color:#fff;border:none;font-weight:700" onclick="confirmarPinEditSC()">Confirmar</button>'
+      +'</div></div>';
+    document.body.appendChild(ov);
+  }
+  ov.style.display='flex';
+  setTimeout(()=>{const inp=document.getElementById('pin-edit-sc-inp');if(inp){inp.value='';inp.focus();}},100);
+}
+function cerrarPinEditSC(){
+  const ov=document.getElementById('pin-edit-sc-ov');
+  if(ov) ov.style.display='none';
+}
+async function confirmarPinEditSC(){
+  const pin=document.getElementById('pin-edit-sc-inp')?.value||'';
+  if(pin!==EDITOR_PIN){
+    document.getElementById('pin-edit-sc-err').textContent='❌ PIN incorrecto';
+    document.getElementById('pin-edit-sc-inp').value='';
+    document.getElementById('pin-edit-sc-inp').focus();
+    return;
+  }
+  cerrarPinEditSC();
+  const ch=window._pendingScChanges; if(!ch) return;
+  const sc=scs[ch.idx]; if(!sc) return;
+  if(ch.nuevaEstado)     sc.estado=ch.nuevaEstado;
+  if(ch.nuevaCriticidad) sc.criticidad=ch.nuevaCriticidad;
+  if(ch.nuevaFecha!==undefined) sc.fechaLimite=ch.nuevaFecha;
+  if(ch.nuevaObs!==undefined)   sc.obs=ch.nuevaObs;
+  localStorage.setItem('nielsen_scs_2026',JSON.stringify(scs));
+  if(sc.numSC) await sbPatch('solicitudes_compra','num_sc',sc.numSC,{
+    estado:sc.estado, criticidad:sc.criticidad,
+    fecha_limite:sc.fechaLimite||null, obs:sc.obs||''
+  });
+  actualizarContadores();
+  showToast('✅ Cambios guardados','ok');
+  const av=document.querySelector('.view.active');
+  if(av?.id==='view-panel')    renderPanel();
+  if(av?.id==='view-historial') renderHistorial();
+  if(av?.id==='view-kanban')   renderKanban();
+  verSC(ch.idx);
+}
+
+function onKbFiltroChange() {
+  const tipo=document.getElementById('kb-filtro-tipo')?.value;
+  const anioEl=document.getElementById('kb-filtro-anio');
+  const mesEl=document.getElementById('kb-filtro-mes');
+  const rangoEl=document.getElementById('kb-filtro-rango');
+  if(anioEl) anioEl.style.display=(tipo==='anio'||tipo==='mes')?'':'none';
+  if(mesEl)  mesEl.style.display=tipo==='mes'?'':'none';
+  if(rangoEl) rangoEl.style.display=tipo==='periodo'?'flex':'none';
+  renderKanban();
+}
+function getKbFilteredSCs() {
+  const tipo=document.getElementById('kb-filtro-tipo')?.value||'todo';
+  const anio=document.getElementById('kb-filtro-anio')?.value||new Date().getFullYear()+'';
+  const mes=document.getElementById('kb-filtro-mes')?.value||'';
+  const desde=document.getElementById('kb-filtro-desde')?.value||'';
+  const hasta=document.getElementById('kb-filtro-hasta')?.value||'';
+  return scs.filter(sc=>{
+    const f=(sc.fecha||sc.creado||'').slice(0,10);
+    if(tipo==='todo') return true;
+    if(tipo==='anio') return f.startsWith(anio);
+    if(tipo==='mes')  return f.startsWith(anio+'-'+mes);
+    if(tipo==='periodo'){if(desde&&f<desde)return false;if(hasta&&f>hasta)return false;return true;}
+    return true;
+  });
+}
+function renderKbPctPanel(data){
+  const panel=document.getElementById('kb-pct-panel');if(!panel)return;
+  const total=data.length;
+  if(!total){panel.innerHTML='<div style="font-size:12px;color:var(--muted);padding:10px 0">Sin solicitudes en el período seleccionado</div>';return;}
+  const cnts={PENDIENTE:0,'EN PROCESO':0,COMPLETADA:0,CANCELADA:0};
+  data.forEach(sc=>{const e=sc.estado||'PENDIENTE';if(cnts[e]!==undefined)cnts[e]++;else cnts['EN PROCESO']++;});
+  const cumulPct=Math.round(cnts.COMPLETADA/total*100);
+  const colors={PENDIENTE:'var(--yellow)','EN PROCESO':'var(--accent2)',COMPLETADA:'var(--green)',CANCELADA:'var(--muted)'};
+  panel.innerHTML='<div class="kb-pct-title">📊 Cumplimiento del Período — '+total+' SC en total</div>'
+    +'<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">'
+    +'<div style="text-align:center"><div style="font-family:var(--fd);font-size:36px;font-weight:800;color:var(--green);line-height:1">'+cumulPct+'%</div>'
+    +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px">Completado</div></div>'
+    +'<div style="flex:1;min-width:200px">'
+    +Object.entries(cnts).map(([est,n])=>{
+      const pct=total?Math.round(n/total*100):0;
+      return '<div class="kb-pct-row"><span class="kb-pct-label">'+est+'</span>'
+        +'<div class="kb-pct-bar"><div class="kb-pct-fill" style="width:'+pct+'%;background:'+colors[est]+'"></div></div>'
+        +'<span class="kb-pct-num" style="color:'+colors[est]+'">'+pct+'% <span style="font-size:10px;opacity:.6">('+n+')</span></span></div>';
+    }).join('')+'</div></div>';
+}
+
 function renderKanban() {
   const cont = document.getElementById('kanban-body');
   if (!cont) return;
-  const ESTADOS = ['PENDIENTE','EN PROCESO','CONFIRMADA','COMPLETADA','CANCELADA'];
-  const COLORS  = {'PENDIENTE':'var(--yellow)','EN PROCESO':'var(--accent2)','CONFIRMADA':'var(--accent3)','COMPLETADA':'var(--green)','CANCELADA':'var(--muted)'};
+  const ESTADOS = ['PENDIENTE','EN PROCESO','COMPLETADA','CANCELADA'];
+  const COLORS  = {'PENDIENTE':'var(--yellow)','EN PROCESO':'var(--accent2)','COMPLETADA':'var(--green)','CANCELADA':'var(--muted)'};
   const CRIT_C  = {'CRITICA':'#cc2200','URGENTE':'#E85D26','ALTA':'#d4a000','MEDIA':'#22c55e','BAJA':'#888'};
   const groups  = {};
   ESTADOS.forEach(e=>{ groups[e]=[]; });
-  scs.forEach((sc,idx)=>{ (groups[sc.estado||'PENDIENTE']||(groups[sc.estado]=[]) ) && groups[sc.estado||'PENDIENTE'].push({sc,idx}); });
+  const filteredScs=getKbFilteredSCs();
+  renderKbPctPanel(filteredScs);
+  filteredScs.forEach(sc=>{const idx=scs.indexOf(sc);(groups[sc.estado||'PENDIENTE']||(groups[sc.estado]=[])) && groups[sc.estado||'PENDIENTE'].push({sc,idx});});
   function pctSC(sc){
     // Prefer itemsDetalle for accurate calc
     if(sc.itemsDetalle && Object.keys(sc.itemsDetalle).length>0){
@@ -2288,8 +2410,36 @@ function verSC(idx) {
     : sc.area;
   const lineas = (sc.items || '').split('\n').map(l => l.trim()).filter(l => l);
   document.getElementById('modal-sc-body').innerHTML = `
+    ${esModoEditor() ? `<div class="sc-edit-panel">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:12px">✏️ Editar Solicitud — PIN requerido al guardar</div>
+      <div class="sc-edit-row">
+        <div class="sc-edit-field"><label>Estado</label>
+          <select class="sc-edit-sel" id="edit-estado">
+            <option value="PENDIENTE" ${sc.estado==='PENDIENTE'?'selected':''}>🟡 PENDIENTE</option>
+            <option value="EN PROCESO" ${sc.estado==='EN PROCESO'?'selected':''}>🔵 EN PROCESO</option>
+            <option value="COMPLETADA" ${sc.estado==='COMPLETADA'?'selected':''}>✅ COMPLETADA</option>
+            <option value="CANCELADA" ${sc.estado==='CANCELADA'?'selected':''}>⬛ CANCELADA</option>
+          </select></div>
+        <div class="sc-edit-field"><label>Criticidad</label>
+          <select class="sc-edit-sel" id="edit-criticidad">
+            <option value="CRITICA"  ${sc.criticidad==='CRITICA' ?'selected':''}>🔴 CRÍTICA</option>
+            <option value="URGENTE"  ${sc.criticidad==='URGENTE' ?'selected':''}>🟠 URGENTE</option>
+            <option value="ALTA"     ${sc.criticidad==='ALTA'    ?'selected':''}>🟡 ALTA</option>
+            <option value="MEDIA"    ${sc.criticidad==='MEDIA'   ?'selected':''}>🟢 MEDIA</option>
+            <option value="BAJA"     ${sc.criticidad==='BAJA'    ?'selected':''}>⚪ BAJA</option>
+          </select></div>
+        <div class="sc-edit-field"><label>Fecha límite</label>
+          <input type="date" class="sc-edit-sel" id="edit-fechalimite" value="${sc.fechaLimite||''}"></div>
+      </div>
+      <div class="sc-edit-row" style="margin-bottom:0">
+        <div class="sc-edit-field" style="flex:2;min-width:200px"><label>Observaciones</label>
+          <input type="text" class="sc-edit-sel" id="edit-obs" value="${sc.obs||''}" placeholder="Observaciones internas..."></div>
+        <button class="btn btn-sm" style="background:var(--or);color:#fff;border:none;font-weight:700;padding:8px 18px;align-self:flex-end;white-space:nowrap" onclick="guardarCambiosSC(${idx})">
+          💾 Guardar cambios</button>
+      </div>
+    </div>` : ''}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-      <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Estado</div>${estBadge(sc.estado)} ${critBadge(sc.criticidad)}</div>
+      <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Estado</div>${estBadge(sc)} ${critBadge(sc.criticidad)}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Tipo</div><span class="badge badge-or">${sc.tipo||'—'}</span></div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Área</div><strong>${areaLabel}</strong></div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Solicitante</div>${sc.solicitante}</div>
@@ -5183,6 +5333,7 @@ window.addEventListener('storage', function(e) {
   }
 });
 
+(function(){const m=String(new Date().getMonth()+1).padStart(2,'0');const el=document.getElementById('kb-filtro-mes');if(el)el.value=m;})();
 // Activar MODO LECTOR al cargar
 recargarSCsDesdeLS();
 renderHistorialPA();
