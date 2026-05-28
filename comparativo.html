@@ -1727,16 +1727,10 @@ function processPaste() {
 // PROVIDERS
 // ═══════════════════════════════════════════════════
 function addProvider(prefillName) {
-  // Original addProvider is called, then pre-fills name if given
-  addProviderOriginal();
-  if (prefillName) {
-    var cards = document.querySelectorAll('.prov-card');
-    var last = cards[cards.length-1];
-    if (last) {
-      var nameInput = last.querySelector('.prov-name');
-      if (nameInput) nameInput.value = prefillName;
-    }
-  }
+  provCounter++;
+  providers.push({ id: provCounter, name: prefillName||'', contact:'', phone:'', email:'',
+    cuit:'', deliveryDays:'', shippingCost:'', paymentTerms:'' });
+  renderProviders();
 }
 
 

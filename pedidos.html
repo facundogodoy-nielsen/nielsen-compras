@@ -740,21 +740,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
         <div class="hist-bar-wrap" style="height:12px"><div id="histDetBar" class="hist-bar" style="width:0%"></div></div>
       </div>
       <!-- Importar facturas -->
-      <div style="margin-bottom:16px">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:.82rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--G2);margin-bottom:8px;display:flex;align-items:center;gap:7px">
-          <span style="display:inline-block;width:4px;height:14px;background:var(--N);border-radius:2px"></span>
-          Importar Factura / Remito
-        </div>
-        <div class="fact-dropzone" onclick="document.getElementById('factInput').click()"
-          ondragover="event.preventDefault();this.style.borderColor='var(--N)'"
-          ondragleave="this.style.borderColor='var(--G4)'"
-          ondrop="handleFactDrop(event)">
-          <p>📄 <strong>Hacé clic o arrastrá</strong> la factura o remito</p>
-          <p>PDF, imagen (JPG/PNG) o texto</p>
-        </div>
-        <input type="file" id="factInput" style="display:none" accept=".pdf,.jpg,.jpeg,.png,.txt" multiple onchange="handleFactFiles(this.files)">
-        <div id="factList" style="margin-top:8px"></div>
-      </div>
       <!-- Tabla de items -->
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:.82rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--G2);margin-bottom:8px;display:flex;align-items:center;gap:7px">
         <span style="display:inline-block;width:4px;height:14px;background:var(--N);border-radius:2px"></span>
@@ -2652,25 +2637,8 @@ function cambiarEstadoItem(pidx,iidx,estado){
 }
 
 // ─── FACTURAS ────────────────────────────────────────────
-function renderFacturas(){
-  const p = historial[histDetActual];
-  const fl = document.getElementById('factList');
-  fl.innerHTML = p.facturas.map((f,i)=>`<div class="fact-item">
-    <span>📄</span>
-    <div class="fi-name">${esc(f.nombre)}</div>
-    <div class="fi-status">${f.procesada?'✅ Procesada':'⏳ Sin procesar'}</div>
-    <button onclick="eliminarFactura(${i})" style="background:none;border:none;cursor:pointer;color:#CCC;font-size:.88rem" onmouseover="this.style.color='#e74c3c'" onmouseout="this.style.color='#CCC'">✕</button>
-  </div>`).join('');
-}
 
-function handleFactDrop(e){
-  e.preventDefault();
-  handleFactFiles(e.dataTransfer.files);
-}
 
-function handleFactFiles(files){
-  Array.from(files).forEach(f=>procesarFactura(f));
-}
 
 async function procesarFactura(file){
   if(histDetActual===null) return;
@@ -2678,7 +2646,6 @@ async function procesarFactura(file){
   const ext = file.name.split('.').pop().toLowerCase();
   const factObj = {nombre:file.name, procesada:false, items:[]};
   p.facturas.push(factObj);
-  renderFacturas();
   
   try {
     const reader = new FileReader();
@@ -2727,25 +2694,17 @@ async function procesarFactura(file){
     // Sync items actualizados a Supabase
     const _pfp = historial[histDetActual];
     if(_pfp && _pfp.oc) sbPatch('pedidos_abastecimiento','num_pa',_pfp.oc,{items:_pfp.items});
-    renderFacturas();
-    renderDetTabla();
+      renderDetTabla();
     renderDetBarra();
     renderHistorial();
     toast(`Factura procesada: ${matchCount} ítems marcados como recibidos.`,'ok');
   } catch(e){
     factObj.nombre += ' (error)';
-    renderFacturas();
-    toast('Error al procesar la factura.','err');
+      toast('Error al procesar la factura.','err');
     console.error(e);
   }
 }
 
-function eliminarFactura(fidx){
-  if(histDetActual===null) return;
-  historial[histDetActual].facturas.splice(fidx,1);
-  localStorage.setItem(HIST_KEY,JSON.stringify(historial));
-  renderFacturas();
-}
 
 
 // ── Vista Previa del pedido histórico (usa el modal #modal existente) ──
