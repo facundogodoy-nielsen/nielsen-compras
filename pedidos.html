@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nielsen — Sistema de Pedidos</title>
-  <!-- build: 202605281436 -->
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -546,10 +545,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
     <div class="pb">
       <div class="fgrid">
         <div class="fg"><label class="lbl">N° Orden de Compra</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="nroPedido" readonly style="background:#FFF8F5;border-color:rgba(232,93,38,.35);color:var(--N);font-weight:700;font-size:.9rem;cursor:default;flex:1"/><button data-editor-only onclick="resetearNumero()" title="Reiniciar numeración" style="background:none;border:1.5px solid var(--G4);border-radius:6px;padding:5px 8px;cursor:pointer;font-size:.85rem;color:var(--G3);transition:all .2s;line-height:1" onmouseover="this.style.borderColor='var(--N)';this.style.color='var(--N)'" onmouseout="this.style.borderColor='var(--G4)';this.style.color='var(--G3)'">↺</button></div></div>
-        <div class="fg"><label class="lbl">Fecha de Pedido</label><input type="date" id="fechaPedido"/></div>
-        <div class="fg"><label class="lbl">Entrega Requerida</label><input type="date" id="fechaEntrega"/></div>
-        <div class="fg"><label class="lbl">Solicitado por</label><input type="text" id="solicitante" placeholder="Nombre" oninput="this.value=toTitleCase(this.value)"/></div>
-        <div class="fg"><label class="lbl">Email del solicitante</label><input type="email" id="emailSolicitante" placeholder="nombre@empresa.com.ar"/></div>
+        <div class="fg"><label class="lbl">Fecha de Pedido</label><input type="date" id="fechaPedido" required/></div>
+        <div class="fg"><label class="lbl">Entrega Requerida</label><input type="date" id="fechaEntrega" required/></div>
+        <div class="fg"><label class="lbl">Solicitado por</label><input type="text" id="solicitante" placeholder="Nombre" required oninput="this.value=toTitleCase(this.value)"/></div>
+        <div class="fg"><label class="lbl">Email del solicitante</label><input type="email" id="emailSolicitante" placeholder="nombre@empresa.com.ar" required list="emailSugeridos"/>
+        <datalist id="emailSugeridos">
+          <option value="elio@nielsenexpediciones.com.ar">
+          <option value="dario@nielsenexpediciones.com.ar">
+        </datalist></div>
         <div class="fg" style="grid-column:1/-1">
           <label class="lbl">Campamento / Área</label>
           <select id="centroCostoSel" onchange="onCampChange()" style="margin-bottom:6px">
@@ -595,7 +598,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
         <div class="ac-inp" style="width:115px">
           <label>Medida</label>
           <select id="acMed">
-            <option>Unidad</option><option>Caja</option><option>Pack</option><option>Pallet</option>
+            <option>Unidad</option><option>Pieza</option><option>Cartón</option><option>Caja</option><option>Pack</option><option>Pallet</option>
             <option>Bolsa</option><option>Litro</option><option>Kilo</option><option>Rollo</option>
             <option>Docena</option><option>Par</option><option>Bidón</option><option>Otro</option>
           </select>
@@ -902,7 +905,7 @@ Tomate triturado 1Kg</pre>
 // ═══════════════════════════════════════
 // CATÁLOGO REAL DE PRODUCTOS NIELSEN
 // ═══════════════════════════════════════
-const MEDIDAS = ['Unidad','Caja','Pack','Pallet','Bolsa','Litro','Kilo','Rollo','Docena','Par','Bidón','Atado','Jaula','Cajón','Pieza','Otro'];
+const MEDIDAS = ['Unidad','Caja','Pack','Pallet','Bolsa','Litro','Kilo','Rollo','Docena','Par','Bidón','Atado','Jaula','Cajón','Pieza','Cartón','Otro'];
 
 const CAT_M = 'M'; // Mercadería
 const CAT_L = 'L'; // Limpieza y Descartables
@@ -2479,7 +2482,6 @@ function abrirHistDet(idx){
   
   renderDetBarra();
   renderDetTabla();
-  renderFacturas();
   document.getElementById('modalHistDet').classList.add('open');
 }
 
@@ -2503,22 +2505,104 @@ function renderDetTabla(){
     no:'<span class="tag-no">✗ No recibido</span>',
     pendiente:'<span class="tag-pend">⏳ Pendiente</span>'
   };
-  document.getElementById('histDetBody').innerHTML = p.items.map((it,i)=>`<tr>
-    <td style="color:var(--G3);font-size:.72rem;text-align:center">${i+1}</td>
-    <td><strong>${esc(it.nombre)}</strong>${it.marca?`<br><em style="font-size:.72rem;color:var(--G3)">${esc(it.marca)}</em>`:''}</td>
-    <td style="text-align:center;font-weight:600">${it.cant}</td>
-    <td style="font-size:.78rem">${esc(it.medida)}</td>
-    <td>
-      ${estadoTag[it.estado]||estadoTag.pendiente}
-      <select onchange="cambiarEstadoItem(${histDetActual},${i},this.value)" style="font-size:.7rem;border:1px solid var(--G4);border-radius:5px;padding:2px 5px;margin-left:4px;outline:none;cursor:pointer;background:var(--W)">
-        <option value="pendiente" ${it.estado==='pendiente'?'selected':''}>Pendiente</option>
-        <option value="ok" ${it.estado==='ok'?'selected':''}>Recibido ✔</option>
-        <option value="parcial" ${it.estado==='parcial'?'selected':''}>Parcial ⚡</option>
-        <option value="no" ${it.estado==='no'?'selected':''}>No recibido ✗</option>
-      </select>
-    </td>
-  </tr>`).join('');
+  // Sel masiva header button
+  const selMasivaBtn = modoAdmin
+    ? `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <button onclick="seleccionarTodosItems()" style="background:rgba(232,93,37,.1);border:1px solid rgba(232,93,37,.3);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:11px;color:var(--N);font-family:var(--F)">☑ Selección masiva</button>
+        <button onclick="asignarFacturaMasiva()" style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:11px;color:green;font-family:var(--F);display:none" id="btnFactMasiva">📄 Asignar factura</button>
+        <span id="selMasivaCount" style="font-size:11px;color:var(--G3)"></span>
+      </div>` : '';
+  document.getElementById('histDetBody').innerHTML = selMasivaBtn + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
+    +'<th style="width:28px;text-align:center;font-size:.7rem;color:var(--G3)">#</th>'
+    +(modoAdmin?'<th style="width:26px"></th>':'')
+    +'<th style="font-size:.78rem;text-align:left">Producto</th>'
+    +'<th style="width:60px;font-size:.78rem">Cant.</th>'
+    +'<th style="width:60px;font-size:.78rem">U.M.</th>'
+    +'<th style="font-size:.78rem">Estado</th>'
+    +'</tr></thead><tbody>'
+    + p.items.map((it,i)=>{
+        const inv = it.factura||{};
+        const invRow = it.estado==='ok' ? `<tr class="inv-row" id="inv-row-${i}">
+          <td colspan="${modoAdmin?6:5}" style="padding:4px 8px 8px 32px;background:rgba(34,197,94,.04)">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:green">📄 Factura asociada</span>
+              <input type="date" value="${inv.fecha||''}" placeholder="Fecha comprobante" ${modoAdmin?`onchange="setFacturaItem(${i},'fecha',this.value)"`:'disabled'}
+                style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;${modoAdmin?'':'opacity:.6'}">
+              <input type="text" value="${esc(inv.num||'')}" placeholder="N° Comprobante"  ${modoAdmin?`oninput="setFacturaItem(${i},'num',this.value)"`:'disabled'}
+                style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;width:130px;${modoAdmin?'':'opacity:.6'}">
+              <input type="text" value="${esc(inv.proveedor||'')}" placeholder="Proveedor" ${modoAdmin?`oninput="setFacturaItem(${i},'proveedor',this.value)"`:'disabled'}
+                style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;width:140px;${modoAdmin?'':'opacity:.6'}">
+            </div>
+          </td></tr>` : '';
+        return `<tr style="border-bottom:1px solid var(--G5)">
+          <td style="color:var(--G3);font-size:.72rem;text-align:center;padding:6px 4px">${i+1}</td>
+          ${modoAdmin?`<td style="text-align:center;padding:4px"><input type="checkbox" class="sel-masiva-chk" data-idx="${i}" onchange="onSelMasivaChange()" style="cursor:pointer"></td>`:''}
+          <td style="padding:6px 4px"><strong>${esc(it.nombre)}</strong>${it.marca?`<br><em style="font-size:.72rem;color:var(--G3)">${esc(it.marca)}</em>`:''}</td>
+          <td style="text-align:center;font-weight:600;font-size:.82rem;padding:6px 4px">${it.cant}</td>
+          <td style="font-size:.78rem;padding:6px 4px">${esc(it.medida)}</td>
+          <td style="padding:6px 4px">
+            ${estadoTag[it.estado]||estadoTag.pendiente}
+            ${modoAdmin?`<select onchange="cambiarEstadoItem(${histDetActual},${i},this.value)" style="font-size:.7rem;border:1px solid var(--G4);border-radius:5px;padding:2px 5px;margin-left:4px;outline:none;cursor:pointer;background:var(--W)">
+              <option value="pendiente" ${it.estado==='pendiente'?'selected':''}>Pendiente</option>
+              <option value="ok" ${it.estado==='ok'?'selected':''}>Recibido ✔</option>
+              <option value="parcial" ${it.estado==='parcial'?'selected':''}>Parcial ⚡</option>
+              <option value="no" ${it.estado==='no'?'selected':''}>No recibido ✗</option>
+            </select>`:''}
+          </td>
+        </tr>${invRow}`;
+      }).join('')
+    + '</tbody></table>';
 }
+
+function setFacturaItem(iidx, campo, val){
+  if(!modoAdmin) return;
+  const p = historial[histDetActual]; if(!p) return;
+  if(!p.items[iidx].factura) p.items[iidx].factura = {};
+  p.items[iidx].factura[campo] = val;
+  localStorage.setItem(HIST_KEY, JSON.stringify(historial));
+  if(p.oc) sbPatch('pedidos_abastecimiento','num_pa',p.oc,{items:p.items});
+}
+
+function onSelMasivaChange(){
+  const chks = document.querySelectorAll('.sel-masiva-chk:checked');
+  const total = document.querySelectorAll('.sel-masiva-chk').length;
+  const countEl = document.getElementById('selMasivaCount');
+  const btnFact = document.getElementById('btnFactMasiva');
+  if(countEl) countEl.textContent = chks.length > 0 ? chks.length + ' seleccionado' + (chks.length!==1?'s':'') : '';
+  if(btnFact) btnFact.style.display = chks.length >= 2 ? '' : 'none';
+}
+
+function seleccionarTodosItems(){
+  const chks = document.querySelectorAll('.sel-masiva-chk');
+  const anyUnchecked = [...chks].some(c=>!c.checked);
+  chks.forEach(c=>{ c.checked = anyUnchecked; });
+  onSelMasivaChange();
+}
+
+function asignarFacturaMasiva(){
+  const selIdxs = [...document.querySelectorAll('.sel-masiva-chk:checked')].map(c=>parseInt(c.dataset.idx));
+  if(selIdxs.length < 2){ toast('Seleccioná al menos 2 ítems','err'); return; }
+  // Show a small dialog to enter factura data once for all selected
+  const fecha    = prompt('Fecha del comprobante (YYYY-MM-DD):', new Date().toISOString().split('T')[0]) || '';
+  const num      = prompt('N° Comprobante:', '') || '';
+  const proveedor= prompt('Proveedor:', '') || '';
+  const p = historial[histDetActual]; if(!p) return;
+  selIdxs.forEach(i=>{
+    if(!p.items[i].factura) p.items[i].factura = {};
+    p.items[i].factura.fecha     = fecha;
+    p.items[i].factura.num       = num;
+    p.items[i].factura.proveedor = proveedor;
+    p.items[i].estado = 'ok';
+  });
+  localStorage.setItem(HIST_KEY, JSON.stringify(historial));
+  if(p.oc) sbPatch('pedidos_abastecimiento','num_pa',p.oc,{items:p.items});
+  renderDetBarra();
+  renderDetTabla();
+  renderHistorial();
+  toast('✓ Factura asignada a ' + selIdxs.length + ' ítems','ok');
+}
+
+
 
 function cambiarEstadoItem(pidx,iidx,estado){
   if(!modoAdmin){ toast('⛔ Solo disponible en Modo Editor','err'); return; }

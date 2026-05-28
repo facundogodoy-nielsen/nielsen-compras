@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cuadro Comparativo de Presupuestos — Nielsen</title>
-  <!-- build: 202605281436 -->
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -1045,9 +1044,12 @@ function setCompMode(editor) {
     // Hide editor-only buttons ONLY — form fields remain editable in lector mode
     document.querySelectorAll('.comp-editor-only').forEach(function(el){ el.style.display='none'; });
     document.querySelectorAll('.comp-editor-only-block').forEach(function(el){ el.style.display='none'; });
-    // Re-enable form inputs that may have been incorrectly disabled
-    document.querySelectorAll('input:not(#comp-pin-inp):not([data-structural]),textarea:not([data-structural]),select:not([data-structural])').forEach(function(el){
-      el.removeAttribute('disabled');
+    // Ensure no inputs are accidentally disabled
+    document.querySelectorAll('input,textarea,select').forEach(function(el){
+      if(el.id !== 'comp-pin-inp' && el.id !== 'reset-ccp-pin' && !el.hasAttribute('data-structural')){
+        el.removeAttribute('disabled');
+        el.removeAttribute('readonly');
+      }
     });
   }
 }
@@ -1345,6 +1347,13 @@ var UNITS = ['UN','KG','LT','MT','M2','M3','HS','DÍA','MES','CAJA','PAQ','JGO',
 // ═══════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════
+
+// Safe getElementById helper to prevent null errors from stopping init
+function _safeOn(id, evt, fn) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener(evt, fn);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('fechaDoc').valueAsDate = new Date();
   // Start in lector mode
@@ -1374,7 +1383,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!asunto) errs.push('Asunto');
     if (!solicitante) errs.push('Solicitante');
     if (!area) errs.push('Área');
-    if (!scVal && !sinSC) errs.push('SC Asociada (o tildar S/SC Asociada)');
+    if (!scVal && !sinSC) errs.push('SC Asociada (o marcar S/SC Asociada)');
     if (errs.length) { showToast('Completá los campos obligatorios: '+errs.join(', '),'err'); return; }
     switchTab('proveedores');
   });
@@ -1518,13 +1527,13 @@ document.addEventListener('DOMContentLoaded', function() {
     btn.addEventListener('click', function(){ switchDbTab(btn.dataset.dbtab); });
   });
   document.getElementById('dbSearch').addEventListener('input', function(){ renderDBTable(this.value); });
-  document.getElementById('btnDbSaveNew').addEventListener('click', saveNewDBProvider);
-  document.getElementById('btnDbClearForm').addEventListener('click', clearDBForm);
-  document.getElementById('btnDbCancelEdit').addEventListener('click', clearDBForm);
-  document.getElementById('btnDbMasivoImport').addEventListener('click', importMasivo);
+  _safeOn('btnDbSaveNew', 'click', saveNewDBProvider);
+  _safeOn('btnDbClearForm', 'click', clearDBForm);
+  _safeOn('btnDbCancelEdit', 'click', clearDBForm);
+  _safeOn('btnDbMasivoImport', 'click', importMasivo);
   document.getElementById('btnDbMasivoClear').addEventListener('click', function(){ document.getElementById('dbMasivoArea').value=''; document.getElementById('dbMasivoResult').textContent=''; });
-  document.getElementById('btnUseSelected').addEventListener('click', useSelectedDBProviders);
-  document.getElementById('btnDbExport').addEventListener('click', exportDBCSV);
+  _safeOn('btnUseSelected', 'click', useSelectedDBProviders);
+  _safeOn('btnDbExport', 'click', exportDBCSV);
   document.getElementById('btnDbClearAll').addEventListener('click', function(){
     if(!confirm('¿Eliminar TODOS los proveedores de la base de datos?')) return;
     provDB=[]; dbSave(); renderDBTable(); showToast('Base de datos limpiada','ok');
@@ -1718,11 +1727,18 @@ function processPaste() {
 // PROVIDERS
 // ═══════════════════════════════════════════════════
 function addProvider(prefillName) {
-  provCounter++;
-  providers.push({ id: provCounter, name:'', contact:'', phone:'', email:'',
-    cuit:'', deliveryDays:'', shippingCost:'', paymentTerms:'' });
-  renderProviders();
+  // Original addProvider is called, then pre-fills name if given
+  addProviderOriginal();
+  if (prefillName) {
+    var cards = document.querySelectorAll('.prov-card');
+    var last = cards[cards.length-1];
+    if (last) {
+      var nameInput = last.querySelector('.prov-name');
+      if (nameInput) nameInput.value = prefillName;
+    }
+  }
 }
+
 
 function renderProviders() {
   var grid = document.getElementById('provGrid');
@@ -2054,12 +2070,7 @@ function updateDBSelCount() {
   if (el) el.textContent = checked ? checked + ' seleccionado(s)' : '';
 }
 
-function saveNewDBProvider_orig() { /* replaced */ }
 function saveNewDBProvider() {
-  // Original logic runs, then sync to Supabase
-  _saveNewDBProvider_impl();
-}
-function _saveNewDBProvider_impl() {
   var name = (document.getElementById('dbn-name').value||'').trim();
   if (!name) { showToast('⚠️ El nombre es obligatorio.', 'err'); return; }
 
