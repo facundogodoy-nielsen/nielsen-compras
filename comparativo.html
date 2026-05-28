@@ -450,6 +450,11 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
       <label>N° Expediente</label>
       <input type="text" id="nroExp" placeholder="GC-23-001"/>
     </div>
+    <div id="comp-mode-badge" class="comp-mode-badge lector" onclick="abrirPinComp()" style="cursor:pointer;flex-shrink:0">🔒 Modo Lector</div>
+    <button onclick="guardarEnSupabase(true)" class="comp-editor-only"
+      style="background:rgba(232,97,26,.2);border:1.5px solid rgba(232,97,26,.5);color:var(--orange);padding:7px 14px;border-radius:7px;cursor:pointer;font-family:'Barlow',sans-serif;font-size:12px;font-weight:700;white-space:nowrap;display:none">
+      💾 Guardar
+    </button>
   </div>
 </div>
 
@@ -1020,23 +1025,27 @@ function setCompMode(editor) {
   var body   = document.body;
   if (editor) {
     body.classList.add('comp-mode-editor');
-    if (badge) { badge.className='comp-mode-badge editor'; badge.textContent='✏️ Modo Editor'; badge.onclick=function(){ setCompMode(false); }; }
+    if (badge) {
+      badge.className='comp-mode-badge editor';
+      badge.innerHTML='✏️ Modo Editor';
+      badge.onclick = function(){ setCompMode(false); };
+    }
     // Show editor-only buttons
     document.querySelectorAll('.comp-editor-only').forEach(function(el){ el.style.display='flex'; });
     document.querySelectorAll('.comp-editor-only-block').forEach(function(el){ el.style.display='block'; });
-    // Make inputs editable
-    document.querySelectorAll('input,textarea,select').forEach(function(el){
-      if(!el.classList.contains('always-readonly')) el.removeAttribute('disabled');
-    });
   } else {
     body.classList.remove('comp-mode-editor');
-    if (badge) { badge.className='comp-mode-badge lector'; badge.textContent='🔒 Modo Lector'; badge.onclick=abrirPinComp; }
-    // Hide editor-only buttons
+    if (badge) {
+      badge.className='comp-mode-badge lector';
+      badge.innerHTML='🔒 Modo Lector';
+      badge.onclick = abrirPinComp;
+    }
+    // Hide editor-only buttons ONLY — form fields remain editable in lector mode
     document.querySelectorAll('.comp-editor-only').forEach(function(el){ el.style.display='none'; });
     document.querySelectorAll('.comp-editor-only-block').forEach(function(el){ el.style.display='none'; });
-    // Make inputs readonly
-    document.querySelectorAll('input:not(#comp-pin-inp),textarea,select').forEach(function(el){
-      el.setAttribute('disabled','disabled');
+    // Re-enable form inputs that may have been incorrectly disabled
+    document.querySelectorAll('input:not(#comp-pin-inp):not([data-structural]),textarea:not([data-structural]),select:not([data-structural])').forEach(function(el){
+      el.removeAttribute('disabled');
     });
   }
 }
@@ -1278,7 +1287,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // EXPORT
   document.getElementById('btnCopyText').addEventListener('click', copyConclusion);
-  document.getElementById('btnExportJSON').addEventListener('click', exportSession);
+  document.getElementById('btnExportJSON').addEventListener('click', function(){
+    exportSession();           // keep local JSON save
+    guardarEnSupabase(true);   // also save to Supabase → appears in Historial de CCP
+  });
   // Volver CC button
   (function(){
     var ref = document.referrer;
