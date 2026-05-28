@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cuadro Comparativo de Presupuestos — Nielsen</title>
+  <!-- build: 202605281436 -->
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -447,10 +448,11 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
       <input type="date" id="fechaDoc"/>
     </div>
     <div class="meta-field">
-      <label>N° Expediente</label>
-      <input type="text" id="nroExp" placeholder="GC-23-001"/>
+      <label>N° CCP</label>
+      <input type="text" id="nroExp" placeholder="CC-2026-0001"/>
     </div>
     <div id="comp-mode-badge" class="comp-mode-badge lector" onclick="abrirPinComp()" style="cursor:pointer;flex-shrink:0">🔒 Modo Lector</div>
+    <button onclick="abrirAjustesCCP()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:5px 12px;color:rgba(255,220,180,.6);cursor:pointer;font-size:12px;font-family:'Barlow',sans-serif;white-space:nowrap;flex-shrink:0">⚙️ Ajustes</button>
     <button onclick="guardarEnSupabase(true)" class="comp-editor-only"
       style="background:rgba(232,97,26,.2);border:1.5px solid rgba(232,97,26,.5);color:var(--orange);padding:7px 14px;border-radius:7px;cursor:pointer;font-family:'Barlow',sans-serif;font-size:12px;font-weight:700;white-space:nowrap;display:none">
       💾 Guardar
@@ -557,7 +559,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" id="btnOpenDB">🗄️ Base de datos</button>
         <button class="btn btn-outline btn-sm comp-editor-only" id="btnAddProv" style="display:none">+ Proveedor</button>
-        <button class="btn btn-outline btn-sm comp-editor-only" id="btnCargaMasiva" style="display:none">⬆️ Carga masiva</button>
+        <button class="btn btn-outline btn-sm comp-editor-only" id="btnCargaMasiva" style="display:none">📥 Importar Planilla XLS</button>
         <button class="btn btn-outline btn-sm comp-editor-only" id="btnDescPlantilla" onclick="descargarPlantillaProveedores()" style="display:none;font-size:11px">⬇️ Plantilla XLS</button>
       </div>
     </div>
@@ -1068,6 +1070,11 @@ function confirmarPinComp() {
     cerrarPinComp();
     setCompMode(true);
     showToast('✓ Modo Editor activado','ok');
+    // If ajustes was pending, open it now
+    if (window._ajustesPending) {
+      window._ajustesPending = false;
+      setTimeout(abrirAjustesCCP, 200);
+    }
   } else {
     var err=document.getElementById('comp-pin-err'); if(err) err.textContent='❌ PIN incorrecto';
     var inp=document.getElementById('comp-pin-inp'); if(inp){inp.value='';inp.focus();}
@@ -1083,6 +1090,66 @@ function toggleSinSC() {
   inp.style.opacity = cb.checked ? '.4' : '';
   inp.style.pointerEvents = cb.checked ? 'none' : '';
   if (cb.checked) inp.value = '';
+}
+
+
+
+// ─── AJUSTES CCP ───
+function abrirAjustesCCP() {
+  if (!_compModoEditor) {
+    // Request PIN first
+    window._ajustesPending = true;
+    abrirPinComp();
+    return;
+  }
+  var ov = document.getElementById('ajustes-ccp-ov');
+  if (ov) {
+    ov.classList.add('open');
+    document.getElementById('reset-ccp-confirm').style.display = 'none';
+    document.getElementById('reset-ccp-err') && (document.getElementById('reset-ccp-err').textContent = '');
+  }
+}
+function cerrarAjustesCCP() {
+  var ov=document.getElementById('ajustes-ccp-ov');
+  if(ov) ov.classList.remove('open');
+  cancelarReiniciarCCP();
+}
+function pedirPinReiniciarCCP() {
+  document.getElementById('reset-ccp-confirm').style.display = 'block';
+  document.getElementById('reset-ccp-pin').value = '';
+  document.getElementById('reset-ccp-pin').focus();
+}
+function cancelarReiniciarCCP() {
+  var el = document.getElementById('reset-ccp-confirm');
+  if(el) el.style.display = 'none';
+  var inp = document.getElementById('reset-ccp-pin');
+  if(inp) inp.value = '';
+}
+async function confirmarReiniciarCCP() {
+  var pin = (document.getElementById('reset-ccp-pin')||{}).value||'';
+  var errEl = document.getElementById('reset-ccp-err');
+  if (pin !== _COMP_PIN) {
+    if(errEl) errEl.textContent = '❌ PIN incorrecto';
+    document.getElementById('reset-ccp-pin').value = '';
+    document.getElementById('reset-ccp-pin').focus();
+    return;
+  }
+  // Reset counter in Supabase
+  var anio = new Date().getFullYear();
+  try {
+    await fetch(_SB_URL+'/rest/v1/counters?name=eq.cc_'+anio, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
+      body:JSON.stringify({value:0})
+    });
+  } catch(e) {}
+  // Reset local
+  localStorage.removeItem('cc_cnt_'+anio);
+  _currentCompNum = null;
+  var nroEl = document.getElementById('nroExp');
+  if(nroEl) nroEl.value = '';
+  cerrarAjustesCCP();
+  showToast('✓ Numeración CCP reiniciada — próximo será CC-'+anio+'-0001','ok');
 }
 
 
@@ -1153,14 +1220,67 @@ function guardarNuevoProv() {
 
 // ─── CARGA MASIVA PROVEEDORES (Excel import) ───
 function descargarPlantillaProveedores() {
-  var rows = [['Nombre / Razón Social','CUIT','Rubro / Sector','Email','Teléfono','Dirección','Contacto']];
-  var csv = rows.map(function(r){ return r.join(','); }).join('\r\n');
-  var blob = new Blob([csv], {type:'text/csv'});
+  // Build a proper XLS file using simple HTML table method (opens in Excel)
+  var header = ['Nombre / Razón Social','CUIT / RUC','Rubro / Sector','Email','Teléfono','Dirección','Persona de Contacto'];
+  var example = ['Ej: Proveedor S.A.','20-12345678-9','Ej: Metalurgia','contacto@proveedor.com','0264-4123456','Av. Principal 123, San Juan','Juan Pérez'];
+
+  // Build HTML table that Excel reads perfectly with proper column widths
+  var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">'
+    + '<head><meta charset="UTF-8"><meta name=ProgId content=Excel.Sheet>'
+    + '<style>'
+    + 'th { background:#D96B1A; color:white; font-weight:bold; padding:6px 12px; text-align:left; white-space:nowrap; }'
+    + 'td { padding:5px 12px; border:1px solid #ccc; white-space:nowrap; }'
+    + 'tr.example td { background:#FFF3E0; color:#555; font-style:italic; }'
+    + '</style></head><body>'
+    + '<table><thead><tr>'
+    + header.map(function(h){ return '<th>'+h+'</th>'; }).join('')
+    + '</tr></thead><tbody>'
+    + '<tr class="example">' + example.map(function(e){ return '<td>'+e+'</td>'; }).join('') + '</tr>'
+    + '<tr>' + header.map(function(){ return '<td></td>'; }).join('') + '</tr>'
+    + '<tr>' + header.map(function(){ return '<td></td>'; }).join('') + '</tr>'
+    + '</tbody></table>
+<!-- ══ AJUSTES CCP MODAL ══ -->
+<div class="comp-pin-ov" id="ajustes-ccp-ov" onclick="if(event.target===this)cerrarAjustesCCP()">
+  <div class="comp-pin-box" style="max-width:360px;text-align:left">
+    <div style="font-size:14px;font-weight:800;letter-spacing:2px;color:var(--orange);margin-bottom:16px">⚙️ AJUSTES</div>
+
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--orange);margin-bottom:8px">Numeración CCP</div>
+      <div style="font-size:12px;color:rgba(255,220,180,.6);margin-bottom:12px;line-height:1.5">
+        El próximo N°CCP generado comenzará desde <strong style="color:var(--cream)">CC-YYYY-0001</strong>.<br>
+        Esta acción no puede deshacerse.
+      </div>
+      <button onclick="pedirPinReiniciarCCP()" style="background:rgba(239,68,68,.15);border:1.5px solid rgba(239,68,68,.4);border-radius:7px;padding:8px 16px;cursor:pointer;color:#f87171;font-family:'Barlow',sans-serif;font-size:12px;font-weight:700;width:100%">
+        🔄 Reiniciar Numeración CCP
+      </button>
+    </div>
+
+    <!-- Double-PIN confirmation for reset -->
+    <div id="reset-ccp-confirm" style="display:none;background:rgba(239,68,68,.08);border:1.5px solid rgba(239,68,68,.3);border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:#f87171;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">⚠️ Confirmar Reinicio</div>
+      <div style="font-size:11px;color:rgba(255,220,180,.6);margin-bottom:10px">Ingresá el PIN nuevamente para confirmar:</div>
+      <input type="password" id="reset-ccp-pin" maxlength="10" autocomplete="off"
+        style="width:100%;background:rgba(255,255,255,.06);border:1.5px solid rgba(239,68,68,.4);border-radius:7px;padding:9px;color:var(--cream);font-size:18px;text-align:center;letter-spacing:6px;outline:none;box-sizing:border-box;margin-bottom:8px"
+        placeholder="••••" onkeydown="if(event.key==='Enter')confirmarReiniciarCCP()">
+      <div id="reset-ccp-err" style="color:#f87171;font-size:11px;min-height:16px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px">
+        <button onclick="cancelarReiniciarCCP()" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:8px;cursor:pointer;color:rgba(255,220,180,.6);font-family:'Barlow',sans-serif;font-size:12px">Cancelar</button>
+        <button onclick="confirmarReiniciarCCP()" style="flex:1;background:rgba(239,68,68,.2);border:1.5px solid rgba(239,68,68,.4);border-radius:7px;padding:8px;cursor:pointer;color:#f87171;font-family:'Barlow',sans-serif;font-size:12px;font-weight:700">Confirmar Reinicio</button>
+      </div>
+    </div>
+
+    <button onclick="cerrarAjustesCCP()" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:9px;cursor:pointer;color:rgba(255,220,180,.6);font-family:'Barlow',sans-serif;font-size:13px">Cerrar</button>
+  </div>
+</div>
+
+</body></html>';
+
+  var blob = new Blob([html], {type:'application/vnd.ms-excel;charset=utf-8'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'plantilla_proveedores_nielsen.csv';
+  a.download = 'plantilla_proveedores_nielsen.xls';
   a.click();
-  showToast('Plantilla descargada','ok');
+  showToast('Plantilla descargada — abrila en Excel y completá los datos','ok');
 }
 
 function cargaMasivaProveedores(file) {
@@ -1168,34 +1288,43 @@ function cargaMasivaProveedores(file) {
   var reader = new FileReader();
   reader.onload = function(e) {
     try {
-      var lines = e.target.result.split(/\r?\n/).filter(function(l){return l.trim();});
+      var text = e.target.result;
+      // Detect delimiter: tab (XLS/TSV) or comma (CSV)
+      var delim = (text.indexOf('\t') !== -1) ? '\t' : ',';
+      var lines = text.split(/\r?\n/).filter(function(l){return l.trim();});
+      // Skip rows that look like HTML tags (from .xls template)
+      lines = lines.filter(function(l){ return !l.trim().startsWith('<') && !l.trim().startsWith('>'); });
       if (lines.length < 2) { showToast('El archivo debe tener encabezado y al menos un proveedor','err'); return; }
-      var headers = lines[0].split(',').map(function(h){return h.trim().toLowerCase().replace(/['"]/g,'');});
-      var added = 0;
-      for (var i=1;i<lines.length;i++) {
-        var cols = lines[i].split(',').map(function(c){return c.trim().replace(/^["']|["']$/g,'');});
+      var added = 0, skipped = 0;
+      // First line = headers, rest = data (skip example row if it starts with "Ej:")
+      for (var i=1; i<lines.length; i++) {
+        var cols;
+        if (delim === '\t') {
+          cols = lines[i].split('\t').map(function(c){ return c.trim().replace(/^["']|["']$/g,''); });
+        } else {
+          // Handle quoted CSV values
+          cols = []; var inQ=false, cur='', row=lines[i];
+          for(var j=0;j<row.length;j++){
+            if(row[j]==='"'){inQ=!inQ;}
+            else if(row[j]===',' && !inQ){cols.push(cur.trim());cur='';}
+            else cur+=row[j];
+          }
+          cols.push(cur.trim());
+        }
         var name = cols[0]||'';
-        if (!name) continue;
-        // Check duplicate
+        // Skip example rows
+        if (!name || name.toLowerCase().startsWith('ej:') || name.toLowerCase().startsWith('nombre')) continue;
         var exists = provDB.some(function(p){ return p.name&&p.name.toLowerCase()===name.toLowerCase(); });
         if (!exists) {
-          provDB.push({
-            name: name,
-            cuit: cols[1]||'',
-            rubro: cols[2]||'',
-            email: cols[3]||'',
-            tel: cols[4]||'',
-            dir: cols[5]||'',
-            contacto: cols[6]||''
-          });
+          provDB.push({ name:name, cuit:cols[1]||'', rubro:cols[2]||'', email:cols[3]||'', tel:cols[4]||'', dir:cols[5]||'', contacto:cols[6]||'' });
           added++;
-        }
+        } else { skipped++; }
       }
       dbSave();
       renderDBTable();
-      showToast('✓ '+added+' proveedores importados ('+( lines.length-1-added)+' duplicados saltados)','ok');
+      showToast('✓ '+added+' proveedor'+(added!==1?'es':'')+' importado'+(added!==1?'s':'')+' · '+skipped+' duplicado'+(skipped!==1?'s':'')+' saltado'+(skipped!==1?'s':''), 'ok');
     } catch(err) {
-      showToast('Error al procesar el archivo','err');
+      showToast('Error al procesar el archivo: '+err.message,'err');
     }
   };
   reader.readAsText(file, 'UTF-8');
@@ -2171,6 +2300,41 @@ function tryMatchPDFtoProvider(pdfEntry) {
   </div>
 </div>
 
-<input type="file" id="carga-masiva-input" accept=".csv,.xlsx,.xls" style="display:none" onchange="cargaMasivaProveedores(this.files[0])">
+<input type="file" id="carga-masiva-input" accept=".xls,.xlsx,.csv,.tsv" style="display:none" onchange="cargaMasivaProveedores(this.files[0])">
+
+<!-- ══ AJUSTES CCP MODAL ══ -->
+<div class="comp-pin-ov" id="ajustes-ccp-ov" onclick="if(event.target===this)cerrarAjustesCCP()">
+  <div class="comp-pin-box" style="max-width:360px;text-align:left">
+    <div style="font-size:14px;font-weight:800;letter-spacing:2px;color:var(--orange);margin-bottom:16px">⚙️ AJUSTES</div>
+
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--orange);margin-bottom:8px">Numeración CCP</div>
+      <div style="font-size:12px;color:rgba(255,220,180,.6);margin-bottom:12px;line-height:1.5">
+        El próximo N°CCP generado comenzará desde <strong style="color:var(--cream)">CC-YYYY-0001</strong>.<br>
+        Esta acción no puede deshacerse.
+      </div>
+      <button onclick="pedirPinReiniciarCCP()" style="background:rgba(239,68,68,.15);border:1.5px solid rgba(239,68,68,.4);border-radius:7px;padding:8px 16px;cursor:pointer;color:#f87171;font-family:'Barlow',sans-serif;font-size:12px;font-weight:700;width:100%">
+        🔄 Reiniciar Numeración CCP
+      </button>
+    </div>
+
+    <!-- Double-PIN confirmation for reset -->
+    <div id="reset-ccp-confirm" style="display:none;background:rgba(239,68,68,.08);border:1.5px solid rgba(239,68,68,.3);border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:#f87171;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">⚠️ Confirmar Reinicio</div>
+      <div style="font-size:11px;color:rgba(255,220,180,.6);margin-bottom:10px">Ingresá el PIN nuevamente para confirmar:</div>
+      <input type="password" id="reset-ccp-pin" maxlength="10" autocomplete="off"
+        style="width:100%;background:rgba(255,255,255,.06);border:1.5px solid rgba(239,68,68,.4);border-radius:7px;padding:9px;color:var(--cream);font-size:18px;text-align:center;letter-spacing:6px;outline:none;box-sizing:border-box;margin-bottom:8px"
+        placeholder="••••" onkeydown="if(event.key==='Enter')confirmarReiniciarCCP()">
+      <div id="reset-ccp-err" style="color:#f87171;font-size:11px;min-height:16px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px">
+        <button onclick="cancelarReiniciarCCP()" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:8px;cursor:pointer;color:rgba(255,220,180,.6);font-family:'Barlow',sans-serif;font-size:12px">Cancelar</button>
+        <button onclick="confirmarReiniciarCCP()" style="flex:1;background:rgba(239,68,68,.2);border:1.5px solid rgba(239,68,68,.4);border-radius:7px;padding:8px;cursor:pointer;color:#f87171;font-family:'Barlow',sans-serif;font-size:12px;font-weight:700">Confirmar Reinicio</button>
+      </div>
+    </div>
+
+    <button onclick="cerrarAjustesCCP()" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:9px;cursor:pointer;color:rgba(255,220,180,.6);font-family:'Barlow',sans-serif;font-size:13px">Cerrar</button>
+  </div>
+</div>
+
 </body>
 </html>
