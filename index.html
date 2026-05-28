@@ -2759,6 +2759,15 @@ function verSC(idx) {
   if (!sc) return;
   window._scIdx = idx;
   document.getElementById('modal-sc-num').textContent = sc.numSC || sc.num || '—';
+  // Show osAsunto as subtitle below the SC number
+  let subEl = document.getElementById('modal-sc-sub');
+  if (!subEl) {
+    subEl = document.createElement('div');
+    subEl.id = 'modal-sc-sub';
+    subEl.style.cssText = 'font-size:12px;color:var(--muted);font-weight:400;letter-spacing:.5px;margin-top:2px;font-family:var(--ff)';
+    document.getElementById('modal-sc-num').after(subEl);
+  }
+  subEl.textContent = sc.osAsunto || sc.os || '';
   const areaLabel = sc.subarea
     ? (sc.area === 'MANTENIMIENTO' ? `MANTENIMIENTO › ${sc.subarea}` : `${sc.area} › ${sc.subarea}`)
     : sc.area;

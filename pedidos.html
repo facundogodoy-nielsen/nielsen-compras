@@ -2505,13 +2505,7 @@ function renderDetTabla(){
     no:'<span class="tag-no">✗ No recibido</span>',
     pendiente:'<span class="tag-pend">⏳ Pendiente</span>'
   };
-  // Sel masiva header button
-  const selMasivaBtn = modoAdmin
-    ? `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-        <button onclick="seleccionarTodosItems()" style="background:rgba(232,93,37,.1);border:1px solid rgba(232,93,37,.3);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:11px;color:var(--N);font-family:var(--F)">☑ Selección masiva</button>
-        <button onclick="asignarFacturaMasiva()" style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:11px;color:green;font-family:var(--F);display:none" id="btnFactMasiva">📄 Asignar factura</button>
-        <span id="selMasivaCount" style="font-size:11px;color:var(--G3)"></span>
-      </div>` : '';
+  const selMasivaBtn = '';  // toolbar rendered separately via updateMasivaBar()
   document.getElementById('histDetBody').innerHTML = selMasivaBtn + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
     +'<th style="width:28px;text-align:center;font-size:.7rem;color:var(--G3)">#</th>'
     +(modoAdmin?'<th style="width:26px"></th>':'')
@@ -2552,6 +2546,55 @@ function renderDetTabla(){
         </tr>${invRow}`;
       }).join('')
     + '</tbody></table>';
+  // Render masiva toolbar
+  updateMasivaBar();
+}
+
+function updateMasivaBar() {
+  const bar = document.getElementById('masiva-bar');
+  if (!bar) return;
+  const chks = document.querySelectorAll('.sel-masiva-chk:checked');
+  const total = document.querySelectorAll('.sel-masiva-chk').length;
+  if (!modoAdmin || chks.length === 0) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  bar.innerHTML = '<span style="font-size:12px;font-weight:600;color:var(--N)">'
+    + chks.length + ' ítem' + (chks.length!==1?'s':'') + ' seleccionado' + (chks.length!==1?'s':'')
+    + '</span>'
+    + '<button onclick="cambiarEstadoMasivo()" style="background:rgba(232,93,37,.15);border:1px solid rgba(232,93,37,.4);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:11px;color:var(--N);font-family:var(--F)">Cambiar estado</button>'
+    + (chks.length>=2?'<button onclick="asignarFacturaMasiva()" style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:11px;color:green;font-family:var(--F)">📄 Asignar factura</button>':'')
+    + '<button onclick="eliminarFacturaMasiva()" style="background:rgba(220,50,50,.1);border:1px solid rgba(220,50,50,.3);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:11px;color:#e05050;font-family:var(--F)">✕ Quitar factura</button>'
+    + '<button onclick="deseleccionarTodo()" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--G3);font-family:var(--F);padding:4px 6px">✕ Cancelar</button>';
+}
+
+function deseleccionarTodo() {
+  document.querySelectorAll('.sel-masiva-chk').forEach(c=>{ c.checked=false; });
+  updateMasivaBar();
+}
+
+function cambiarEstadoMasivo() {
+  const selIdxs = [...document.querySelectorAll('.sel-masiva-chk:checked')].map(c=>parseInt(c.dataset.idx));
+  if(!selIdxs.length) return;
+  const estado = confirm('¿Marcar como RECIBIDO?\n\nAceptar = Recibido ✔\nCancelar = Pendiente ⏳')? 'ok':'pendiente';
+  const p=historial[histDetActual]; if(!p) return;
+  selIdxs.forEach(i=>{ p.items[i].estado=estado; });
+  localStorage.setItem(HIST_KEY,JSON.stringify(historial));
+  if(p.oc) sbPatch('pedidos_abastecimiento','num_pa',p.oc,{items:p.items});
+  renderDetBarra(); renderDetTabla(); renderHistorial();
+  toast('✓ Estado actualizado','ok');
+}
+
+function eliminarFacturaMasiva() {
+  const selIdxs=[...document.querySelectorAll('.sel-masiva-chk:checked')].map(c=>parseInt(c.dataset.idx));
+  if(!selIdxs.length) return;
+  const p=historial[histDetActual]; if(!p) return;
+  selIdxs.forEach(i=>{ delete p.items[i].factura; });
+  localStorage.setItem(HIST_KEY,JSON.stringify(historial));
+  if(p.oc) sbPatch('pedidos_abastecimiento','num_pa',p.oc,{items:p.items});
+  renderDetTabla();
+  toast('Factura eliminada de '+selIdxs.length+' ítems','ok');
 }
 
 function setFacturaItem(iidx, campo, val){
@@ -2563,20 +2606,13 @@ function setFacturaItem(iidx, campo, val){
   if(p.oc) sbPatch('pedidos_abastecimiento','num_pa',p.oc,{items:p.items});
 }
 
-function onSelMasivaChange(){
-  const chks = document.querySelectorAll('.sel-masiva-chk:checked');
-  const total = document.querySelectorAll('.sel-masiva-chk').length;
-  const countEl = document.getElementById('selMasivaCount');
-  const btnFact = document.getElementById('btnFactMasiva');
-  if(countEl) countEl.textContent = chks.length > 0 ? chks.length + ' seleccionado' + (chks.length!==1?'s':'') : '';
-  if(btnFact) btnFact.style.display = chks.length >= 2 ? '' : 'none';
-}
+function onSelMasivaChange(){ updateMasivaBar(); }
 
 function seleccionarTodosItems(){
-  const chks = document.querySelectorAll('.sel-masiva-chk');
-  const anyUnchecked = [...chks].some(c=>!c.checked);
-  chks.forEach(c=>{ c.checked = anyUnchecked; });
-  onSelMasivaChange();
+  const chks=document.querySelectorAll('.sel-masiva-chk');
+  const anyUnchecked=[...chks].some(c=>!c.checked);
+  chks.forEach(c=>{ c.checked=anyUnchecked; });
+  updateMasivaBar();
 }
 
 function asignarFacturaMasiva(){
