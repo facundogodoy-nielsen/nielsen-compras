@@ -336,6 +336,60 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
 @keyframes splashSlide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @keyframes splashLine{from{width:0}to{width:50px}}
 
+
+/* ══ MOBILE RESPONSIVE ══ */
+@media (max-width: 640px) {
+  body { font-size: 13px; }
+  .container { padding: 0 10px 20px; }
+  .header { padding: 12px 14px; }
+  .header-meta { flex-wrap: wrap; gap: 6px; }
+  .tabs-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; gap: 0; }
+  .tab-btn { padding: 10px 12px; font-size: 12px; flex-shrink: 0; }
+  .form-grid { grid-template-columns: 1fr !important; }
+  .form-group.span2 { grid-column: 1 !important; }
+  .card-header { flex-wrap: wrap; gap: 8px; }
+  .card-header > div { flex-wrap: wrap; gap: 6px; }
+  .prov-grid { grid-template-columns: 1fr !important; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tbl { min-width: 520px; }
+  .pdf-drop { padding: 20px 14px; }
+  .analysis-block { overflow: hidden; }
+  .db-modal-inner { padding: 16px; max-height: 90vh; }
+  .btn { font-size: 12px; padding: 7px 12px; }
+  .btn-row { flex-wrap: wrap; gap: 6px; }
+  .comp-result-card { padding: 14px; }
+}
+@media (max-width: 420px) {
+  .tab-btn { padding: 8px 10px; font-size: 11px; }
+  .card { padding: 0; }
+  .card-body { padding: 12px; }
+}
+
+
+/* ══ MODE BADGE ══ */
+.comp-mode-badge {
+  display: flex; align-items: center; gap: 6px; padding: 5px 12px;
+  border-radius: 6px; cursor: pointer; font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+  transition: all .2s; user-select: none; border: 1.5px solid; white-space: nowrap;
+}
+.comp-mode-badge.lector { background: rgba(200,120,0,.12); border-color: rgba(200,120,0,.4); color: #ca9010; }
+.comp-mode-badge.editor { background: rgba(232,93,37,.15); border-color: rgba(232,93,37,.5); color: var(--orange); }
+/* Pin modal */
+.comp-pin-ov { display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:10000;align-items:center;justify-content:center;padding:20px; }
+.comp-pin-ov.open { display:flex; }
+.comp-pin-box { background:#1a1614;border:1.5px solid rgba(232,97,26,.4);border-radius:14px;padding:28px 24px;width:100%;max-width:320px;text-align:center; }
+/* Editor-only elements hidden in lector mode */
+.comp-editor-only { display: none !important; }
+.comp-mode-editor .comp-editor-only { display: flex !important; }
+.comp-mode-editor .comp-editor-only-block { display: block !important; }
+.comp-editor-only-block { display: none !important; }
+.comp-mode-editor button.comp-lector-only { display: none !important; }
+/* SC field */
+.sc-assoc-row { display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap; }
+.sc-assoc-field { flex:1;min-width:200px; }
+.sc-assoc-check { display:flex;align-items:center;gap:8px;padding-bottom:8px;white-space:nowrap;font-size:13px;color:var(--cream); }
+
 </style>
 </head>
 <body>
@@ -415,20 +469,32 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
     <div class="card-header"><h3>📋 Datos de la Solicitud</h3></div>
     <div class="card-body">
       <div class="form-grid">
+        <!-- SC Asociada -->
+        <div class="form-group span2">
+          <label>Solicitud de Compra Asociada <span style="color:var(--orange)">*</span></label>
+          <div class="sc-assoc-row">
+            <div class="sc-assoc-field">
+              <input type="text" id="scAsociada" placeholder="Ej: SCTL-202605-0001" style="width:100%"/>
+            </div>
+            <label class="sc-assoc-check">
+              <input type="checkbox" id="sinSC" onchange="toggleSinSC()"> S/SC Asociada
+            </label>
+          </div>
+        </div>
         <div class="form-group">
-          <label>Asunto / Descripción del pedido</label>
+          <label>Asunto / Descripción del pedido <span style="color:var(--orange)">*</span></label>
           <input type="text" id="asunto" placeholder="Ej: Adquisición de materiales de oficina"/>
         </div>
         <div class="form-group">
-          <label>Solicitante</label>
+          <label>Solicitante <span style="color:var(--orange)">*</span></label>
           <input type="text" id="solicitante" placeholder="Nombre del solicitante"/>
         </div>
         <div class="form-group">
-          <label>Área / Departamento</label>
+          <label>Área / Departamento <span style="color:var(--orange)">*</span></label>
           <input type="text" id="area" placeholder="Ej: Operaciones"/>
         </div>
         <div class="form-group">
-          <label>Moneda de cotización</label>
+          <label>Moneda de cotización <span style="color:#888;font-size:11px">(opcional)</span></label>
           <select id="divisa">
             <option value="ARS">ARS — Peso Argentino</option>
             <option value="USD">USD — Dólar Estadounidense</option>
@@ -437,7 +503,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
           </select>
         </div>
         <div class="form-group span2">
-          <label>Observaciones</label>
+          <label>Observaciones <span style="color:#888;font-size:11px">(opcional)</span></label>
           <textarea id="observaciones" placeholder="Condiciones especiales, restricciones de presupuesto..."></textarea>
         </div>
       </div>
@@ -483,9 +549,11 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
   <div class="card">
     <div class="card-header">
       <h3>🏢 Proveedores</h3>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" id="btnOpenDB">🗄️ Base de datos</button>
-        <button class="btn btn-outline btn-sm" id="btnAddProv">+ Proveedor</button>
+        <button class="btn btn-outline btn-sm comp-editor-only" id="btnAddProv" style="display:none">+ Proveedor</button>
+        <button class="btn btn-outline btn-sm comp-editor-only" id="btnCargaMasiva" style="display:none">⬆️ Carga masiva</button>
+        <button class="btn btn-outline btn-sm comp-editor-only" id="btnDescPlantilla" onclick="descargarPlantillaProveedores()" style="display:none;font-size:11px">⬇️ Plantilla XLS</button>
       </div>
     </div>
     <div class="card-body">
@@ -939,6 +1007,192 @@ async function guardarEnSupabase(showMsg) {
 }
 
 
+
+// ══════════════════════════════════════════════════════════════════
+// MODO LECTOR / EDITOR
+// ══════════════════════════════════════════════════════════════════
+var _compModoEditor = false;
+var _COMP_PIN = '2026';
+
+function setCompMode(editor) {
+  _compModoEditor = editor;
+  var badge  = document.getElementById('comp-mode-badge');
+  var body   = document.body;
+  if (editor) {
+    body.classList.add('comp-mode-editor');
+    if (badge) { badge.className='comp-mode-badge editor'; badge.textContent='✏️ Modo Editor'; badge.onclick=function(){ setCompMode(false); }; }
+    // Show editor-only buttons
+    document.querySelectorAll('.comp-editor-only').forEach(function(el){ el.style.display='flex'; });
+    document.querySelectorAll('.comp-editor-only-block').forEach(function(el){ el.style.display='block'; });
+    // Make inputs editable
+    document.querySelectorAll('input,textarea,select').forEach(function(el){
+      if(!el.classList.contains('always-readonly')) el.removeAttribute('disabled');
+    });
+  } else {
+    body.classList.remove('comp-mode-editor');
+    if (badge) { badge.className='comp-mode-badge lector'; badge.textContent='🔒 Modo Lector'; badge.onclick=abrirPinComp; }
+    // Hide editor-only buttons
+    document.querySelectorAll('.comp-editor-only').forEach(function(el){ el.style.display='none'; });
+    document.querySelectorAll('.comp-editor-only-block').forEach(function(el){ el.style.display='none'; });
+    // Make inputs readonly
+    document.querySelectorAll('input:not(#comp-pin-inp),textarea,select').forEach(function(el){
+      el.setAttribute('disabled','disabled');
+    });
+  }
+}
+
+function abrirPinComp() {
+  if (_compModoEditor) { setCompMode(false); return; }
+  var ov = document.getElementById('comp-pin-ov');
+  if (ov) {
+    ov.classList.add('open');
+    setTimeout(function(){ var inp=document.getElementById('comp-pin-inp'); if(inp){inp.value='';inp.focus();} },100);
+  }
+}
+function cerrarPinComp() {
+  var ov=document.getElementById('comp-pin-ov'); if(ov) ov.classList.remove('open');
+  var err=document.getElementById('comp-pin-err'); if(err) err.textContent='';
+}
+function confirmarPinComp() {
+  var pin=(document.getElementById('comp-pin-inp')||{}).value||'';
+  if (pin === _COMP_PIN) {
+    cerrarPinComp();
+    setCompMode(true);
+    showToast('✓ Modo Editor activado','ok');
+  } else {
+    var err=document.getElementById('comp-pin-err'); if(err) err.textContent='❌ PIN incorrecto';
+    var inp=document.getElementById('comp-pin-inp'); if(inp){inp.value='';inp.focus();}
+  }
+}
+
+// ─── SC ASOCIADA toggle ───
+function toggleSinSC() {
+  var cb  = document.getElementById('sinSC');
+  var inp = document.getElementById('scAsociada');
+  if (!inp) return;
+  inp.disabled = cb.checked;
+  inp.style.opacity = cb.checked ? '.4' : '';
+  inp.style.pointerEvents = cb.checked ? 'none' : '';
+  if (cb.checked) inp.value = '';
+}
+
+
+// ─── Search / Add Provider ───
+function abrirSearchProv() {
+  if (!_compModoEditor) { showToast('Requiere Modo Editor','err'); return; }
+  var ov = document.getElementById('search-prov-ov');
+  if (ov) {
+    ov.classList.add('open');
+    renderSearchProvList('');
+    document.getElementById('new-prov-form').style.display='none';
+    setTimeout(function(){ document.getElementById('search-prov-inp').focus(); },100);
+  }
+}
+function cerrarSearchProv() {
+  var ov=document.getElementById('search-prov-ov'); if(ov) ov.classList.remove('open');
+}
+function renderSearchProvList(q) {
+  var list = document.getElementById('search-prov-list'); if(!list) return;
+  var lq = (q||'').toLowerCase();
+  var filtered = provDB.filter(function(p){
+    return !lq || (p.name||'').toLowerCase().includes(lq) || (p.cuit||'').includes(lq) || (p.rubro||'').toLowerCase().includes(lq);
+  });
+  if (!filtered.length) {
+    list.innerHTML = '<div style="padding:12px;color:rgba(255,220,180,.4);font-size:12px;text-align:center">Sin resultados — usá "+ Nuevo proveedor" para agregar</div>';
+    return;
+  }
+  list.innerHTML = filtered.slice(0,20).map(function(p,i){
+    var idx = provDB.indexOf(p);
+    return '<div onclick="seleccionarProvDB('+idx+')" style="padding:10px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06);transition:background .15s" onmouseover="this.style.background=\'rgba(232,97,26,.1)\'" onmouseout="this.style.background=\'\'">'
+      +'<div style="font-size:13px;font-weight:600;color:var(--cream)">'+(p.name||'—')+'</div>'
+      +(p.rubro?'<div style="font-size:11px;color:rgba(255,220,180,.4)">'+p.rubro+(p.cuit?' · '+p.cuit:'')+'</div>':'')
+      +'</div>';
+  }).join('');
+}
+function seleccionarProvDB(idx) {
+  var p = provDB[idx]; if(!p) return;
+  addProvider(p.name);
+  cerrarSearchProv();
+  showToast('Proveedor '+p.name+' agregado','ok');
+}
+function mostrarNuevoProv() {
+  document.getElementById('new-prov-form').style.display='block';
+  document.getElementById('btn-nuevo-prov').style.display='none';
+  document.getElementById('np-nombre').focus();
+}
+function cancelNuevoProv() {
+  document.getElementById('new-prov-form').style.display='none';
+  document.getElementById('btn-nuevo-prov').style.display='flex';
+}
+function guardarNuevoProv() {
+  var name = document.getElementById('np-nombre').value.trim();
+  if (!name) { showToast('El nombre es obligatorio','err'); return; }
+  var exists = provDB.some(function(p){ return p.name&&p.name.toLowerCase()===name.toLowerCase(); });
+  if (!exists) {
+    provDB.push({
+      name:name, cuit:document.getElementById('np-cuit').value.trim(),
+      rubro:document.getElementById('np-rubro').value.trim(), email:document.getElementById('np-email').value.trim(),
+      tel:document.getElementById('np-tel').value.trim(), contacto:document.getElementById('np-contacto').value.trim()
+    });
+    dbSave();
+  }
+  addProvider(name);
+  cerrarSearchProv();
+  showToast('Proveedor '+name+' '+(exists?'ya existía —':'agregado y') +' seleccionado','ok');
+}
+
+
+// ─── CARGA MASIVA PROVEEDORES (Excel import) ───
+function descargarPlantillaProveedores() {
+  var rows = [['Nombre / Razón Social','CUIT','Rubro / Sector','Email','Teléfono','Dirección','Contacto']];
+  var csv = rows.map(function(r){ return r.join(','); }).join('\r\n');
+  var blob = new Blob([csv], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'plantilla_proveedores_nielsen.csv';
+  a.click();
+  showToast('Plantilla descargada','ok');
+}
+
+function cargaMasivaProveedores(file) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var lines = e.target.result.split(/\r?\n/).filter(function(l){return l.trim();});
+      if (lines.length < 2) { showToast('El archivo debe tener encabezado y al menos un proveedor','err'); return; }
+      var headers = lines[0].split(',').map(function(h){return h.trim().toLowerCase().replace(/['"]/g,'');});
+      var added = 0;
+      for (var i=1;i<lines.length;i++) {
+        var cols = lines[i].split(',').map(function(c){return c.trim().replace(/^["']|["']$/g,'');});
+        var name = cols[0]||'';
+        if (!name) continue;
+        // Check duplicate
+        var exists = provDB.some(function(p){ return p.name&&p.name.toLowerCase()===name.toLowerCase(); });
+        if (!exists) {
+          provDB.push({
+            name: name,
+            cuit: cols[1]||'',
+            rubro: cols[2]||'',
+            email: cols[3]||'',
+            tel: cols[4]||'',
+            dir: cols[5]||'',
+            contacto: cols[6]||''
+          });
+          added++;
+        }
+      }
+      dbSave();
+      renderDBTable();
+      showToast('✓ '+added+' proveedores importados ('+( lines.length-1-added)+' duplicados saltados)','ok');
+    } catch(err) {
+      showToast('Error al procesar el archivo','err');
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+
 var items = [];
 var providers = [];
 var pdfData = [];
@@ -955,6 +1209,8 @@ var UNITS = ['UN','KG','LT','MT','M2','M3','HS','DÍA','MES','CAJA','PAQ','JGO',
 // ═══════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('fechaDoc').valueAsDate = new Date();
+  // Start in lector mode
+  setCompMode(false);
   // Load provider DB from Supabase
   sbLoadProvDB();
 
@@ -970,7 +1226,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ITEMS
   document.getElementById('btnAddItem').addEventListener('click', function() { addItem(); });
-  document.getElementById('btnGoProviders').addEventListener('click', function() { switchTab('proveedores'); });
+  document.getElementById('btnGoProviders').addEventListener('click', function() {
+    var asunto = document.getElementById('asunto').value.trim();
+    var solicitante = document.getElementById('solicitante').value.trim();
+    var area = document.getElementById('area').value.trim();
+    var scVal = document.getElementById('scAsociada').value.trim();
+    var sinSC = document.getElementById('sinSC').checked;
+    var errs = [];
+    if (!asunto) errs.push('Asunto');
+    if (!solicitante) errs.push('Solicitante');
+    if (!area) errs.push('Área');
+    if (!scVal && !sinSC) errs.push('SC Asociada (o tildar S/SC Asociada)');
+    if (errs.length) { showToast('Completá los campos obligatorios: '+errs.join(', '),'err'); return; }
+    switchTab('proveedores');
+  });
   document.getElementById('btnSelectAll').addEventListener('click', toggleSelectAll);
   document.getElementById('btnDelSelected').addEventListener('click', deleteSelected);
   document.getElementById('chkAll').addEventListener('change', function() { checkAll(this.checked); });
@@ -986,7 +1255,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // PROVIDERS
-  document.getElementById('btnAddProv').addEventListener('click', addProvider);
+  document.getElementById('btnAddProv').addEventListener('click', abrirSearchProv);
 
   // API KEY
   // PDF
@@ -1100,6 +1369,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // DB
   dbLoad();
   document.getElementById('btnOpenDB').addEventListener('click', openDB);
+  var cmBtn = document.getElementById('btnCargaMasiva');
+  if (cmBtn) cmBtn.addEventListener('click', function(){ document.getElementById('carga-masiva-input').click(); });
   document.getElementById('btnDbClose').addEventListener('click', closeDB);
   document.getElementById('dbOverlay').addEventListener('click', function(e){ if(e.target===this) closeDB(); });
   document.querySelectorAll('.db-tab').forEach(function(btn){
@@ -1305,7 +1576,7 @@ function processPaste() {
 // ═══════════════════════════════════════════════════
 // PROVIDERS
 // ═══════════════════════════════════════════════════
-function addProvider() {
+function addProvider(prefillName) {
   provCounter++;
   providers.push({ id: provCounter, name:'', contact:'', phone:'', email:'',
     cuit:'', deliveryDays:'', shippingCost:'', paymentTerms:'' });
@@ -1838,5 +2109,56 @@ function tryMatchPDFtoProvider(pdfEntry) {
 }
 
 </script>
+
+<!-- ══ PIN MODAL ══ -->
+<div class="comp-pin-ov" id="comp-pin-ov">
+  <div class="comp-pin-box">
+    <div style="font-size:15px;font-weight:800;letter-spacing:2px;color:var(--orange);margin-bottom:8px">🔓 MODO EDITOR</div>
+    <div style="font-size:12px;color:rgba(255,220,180,.6);margin-bottom:18px">Ingresá el PIN para editar</div>
+    <input type="password" id="comp-pin-inp" maxlength="10" autocomplete="off"
+      style="width:100%;background:rgba(255,255,255,.06);border:1.5px solid rgba(232,97,26,.4);border-radius:8px;padding:10px;color:var(--cream);font-size:20px;text-align:center;letter-spacing:6px;outline:none;box-sizing:border-box;margin-bottom:8px"
+      placeholder="••••" onkeydown="if(event.key==='Enter')confirmarPinComp()">
+    <div id="comp-pin-err" style="color:#f87171;font-size:11px;min-height:16px;margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cerrarPinComp()" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:9px;cursor:pointer;color:rgba(255,220,180,.6);font-family:'Barlow',sans-serif;font-size:13px">Cancelar</button>
+      <button onclick="confirmarPinComp()" style="flex:1;background:rgba(232,97,26,.25);border:1px solid rgba(232,97,26,.5);border-radius:7px;padding:9px;cursor:pointer;color:var(--orange);font-family:'Barlow',sans-serif;font-size:13px;font-weight:700">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══ SEARCH / ADD PROVEEDOR MODAL ══ -->
+<div class="comp-pin-ov" id="search-prov-ov" onclick="if(event.target===this)cerrarSearchProv()">
+  <div class="comp-pin-box" style="max-width:480px;text-align:left;padding:20px 22px">
+    <div style="font-size:13px;font-weight:700;letter-spacing:1.5px;color:var(--orange);margin-bottom:12px">SELECCIONAR O AGREGAR PROVEEDOR</div>
+    <input type="text" id="search-prov-inp"
+      placeholder="Buscar en base de datos..."
+      style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(232,97,26,.3);border-radius:7px;padding:9px 12px;color:var(--cream);font-size:13px;outline:none;box-sizing:border-box;margin-bottom:10px"
+      oninput="renderSearchProvList(this.value)">
+    <div id="search-prov-list" style="max-height:200px;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:7px;margin-bottom:14px"></div>
+    <!-- New provider form -->
+    <div id="new-prov-form" style="display:none">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--orange);margin-bottom:8px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1)">Nuevo proveedor</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input type="text" id="np-nombre" placeholder="Nombre / Razón Social *" style="grid-column:1/-1;padding:8px;background:rgba(255,255,255,.06);border:1px solid rgba(232,97,26,.3);border-radius:6px;color:var(--cream);font-size:12px;outline:none">
+        <input type="text" id="np-cuit"   placeholder="CUIT" style="padding:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--cream);font-size:12px;outline:none">
+        <input type="text" id="np-rubro"  placeholder="Rubro / Sector" style="padding:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--cream);font-size:12px;outline:none">
+        <input type="email" id="np-email" placeholder="Email" style="padding:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--cream);font-size:12px;outline:none">
+        <input type="text" id="np-tel"   placeholder="Teléfono" style="padding:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--cream);font-size:12px;outline:none">
+        <input type="text" id="np-contacto" placeholder="Persona de contacto" style="padding:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--cream);font-size:12px;outline:none">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button onclick="cancelNuevoProv()" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:8px;cursor:pointer;color:rgba(255,220,180,.6);font-size:12px">Cancelar</button>
+        <button onclick="guardarNuevoProv()" style="flex:1;background:rgba(232,97,26,.25);border:1px solid rgba(232,97,26,.5);border-radius:7px;padding:8px;cursor:pointer;color:var(--orange);font-size:12px;font-weight:700">Guardar y agregar</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="cerrarSearchProv()" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:8px;cursor:pointer;color:rgba(255,220,180,.6);font-size:13px">Cerrar</button>
+      <button onclick="mostrarNuevoProv()" id="btn-nuevo-prov" style="flex:1;background:rgba(232,97,26,.15);border:1px solid rgba(232,97,26,.4);border-radius:7px;padding:8px;cursor:pointer;color:var(--orange);font-size:12px;font-weight:700">+ Nuevo proveedor</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="carga-masiva-input" accept=".csv,.xlsx,.xls" style="display:none" onchange="cargaMasivaProveedores(this.files[0])">
 </body>
 </html>
