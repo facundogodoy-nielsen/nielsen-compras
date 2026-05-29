@@ -749,9 +749,7 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
       <button class="btn btn-primary btn-sm" onclick="abrirInventario()" style="white-space:nowrap">
         📦 Abrir Stock Global
       </button>
-      <button class="btn btn-sm" onclick="importarReservaInventario()" style="background:rgba(232,93,37,.15);color:var(--or);border:1px solid rgba(232,93,37,.35);white-space:nowrap" id="btn-importar-reserva">
-        🔗 Importar Reserva
-      </button>
+
       <span style="font-size:11px;color:var(--muted)" id="inv-url-status">—</span>
     </div>
   </div>
@@ -808,7 +806,12 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
     <div class="row2">
       <div class="fg">
         <label>Pañolero responsable <span class="req">*</span></label>
-        <input type="text" id="panolero" placeholder="Nombre del pañolero">
+        <select id="panolero-sel" onchange="onPanoleroChange()" style="width:100%;padding:9px 12px;background:var(--s3);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--ff);font-size:14px;outline:none">
+          <option value="">— Seleccionar —</option>
+          <option value="JORGE PEREYRA" selected>Jorge Pereyra</option>
+          <option value="OTRO">Otro</option>
+        </select>
+        <input type="text" id="panolero" placeholder="Nombre y Apellido completo" style="display:none;margin-top:6px;width:100%;padding:9px 12px;background:var(--s3);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--ff);font-size:14px;outline:none;box-sizing:border-box">
       </div>
       <div class="fg">
         <label>Fecha y hora de consulta <span class="req">*</span></label>
@@ -1339,6 +1342,23 @@ function showPaso() {
 }
 
 // ══ VALIDACIONES ══
+
+// ══ PAÑOLERO SELECT ══
+function onPanoleroChange() {
+  const sel = document.getElementById('panolero-sel');
+  const inp = document.getElementById('panolero');
+  if (!sel || !inp) return;
+  if (sel.value === 'OTRO') {
+    inp.style.display = 'block';
+    inp.value = '';
+    inp.focus();
+    inp.setAttribute('placeholder','Nombre y Apellido completo');
+  } else {
+    inp.style.display = 'none';
+    inp.value = sel.value; // set the hidden input to selected value
+  }
+}
+
 function validar(n) {
   const err = m => { toast(m, true); return false; };
   if (n === 0) {
@@ -1347,10 +1367,21 @@ function validar(n) {
     if (!v('os-resp')) return err('Ingresá el responsable de la OS');
     if (!v('os-destino')) return err('Seleccioná el destino');
     if (!pedidoItems.length) return err('Ingresá el listado del pedido original');
+    // Verify all items have both ARTICULO and CANTIDAD filled
+    for (var _ii=0; _ii<pedidoItems.length; _ii++) {
+      var _it = pedidoItems[_ii];
+      if (!(_it.art||'').trim()) return err('El ítem ' + (_ii+1) + ' no tiene ARTÍCULO — completalo antes de continuar');
+      if (!(_it.cant||'').trim()) return err('El ítem ' + (_ii+1) + ' (' + (_it.art||'').slice(0,20) + ') no tiene CANTIDAD — completala antes de continuar');
+    }
   }
   if (n === 1) {
     if (!juroOk) return err('Confirmá que consultaste el tablero de inventario');
-    if (!v('panolero')) return err('Ingresá el nombre del pañolero responsable');
+    // Pañolero validation: if OTRO is selected, require the text input
+    var _panSel = document.getElementById('panolero-sel');
+    var _panInp = document.getElementById('panolero');
+    if (_panSel && _panSel.value === '') return err('Seleccioná el pañolero responsable');
+    if (_panSel && _panSel.value === 'OTRO' && (!_panInp || !_panInp.value.trim())) return err('Ingresá el nombre y apellido del pañolero');
+    if (_panSel && _panSel.value !== 'OTRO') { if(_panInp) _panInp.value = _panSel.value; }
     if (!v('panolero-fecha')) return err('Ingresá la fecha y hora de consulta al Pañol');
   }
   if (n === 2) {
@@ -1368,6 +1399,13 @@ function validar(n) {
   return true;
 }
 function v(id) { const e = document.getElementById(id); return e && e.value && e.value.trim() !== ''; }
+
+// ══ PAÑOLERO INIT ══
+// Called at page load to set default value
+(function initPanolero() {
+  var inp = document.getElementById('panolero');
+  if (inp) inp.value = 'JORGE PEREYRA';  // pre-set hidden input to default
+})();
 
 // ══ TOGGLE SOS ══
 function toggleSOS() {
@@ -1651,6 +1689,39 @@ function buildPreview() {
 const _SB_URL_FM = 'https://qivvewvgqlsptydftlhx.supabase.co';
 const _SB_KEY_FM = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
 
+
+// ══ SYNC SC COUNTER WITH SUPABASE MAX ══
+// Ensures the counter is never behind existing records
+async function syncSCCounter(prefix, anio) {
+  try {
+    const SB_URL = (typeof _SB_URL_FM !== 'undefined') ? _SB_URL_FM : '';
+    const SB_KEY = (typeof _SB_KEY_FM !== 'undefined') ? _SB_KEY_FM : '';
+    if (!SB_URL) return;
+    const likePrefix = prefix + '-' + anio;
+    const r = await fetch(SB_URL + '/rest/v1/solicitudes_compra?select=num_sc&num_sc=like.' + likePrefix + '*&order=num_sc.desc&limit=1', {
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+    });
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (rows && rows.length && rows[0].num_sc) {
+      const lastNum = parseInt(rows[0].num_sc.split('-').pop()) || 0;
+      const cntKey = 'sc_cnt_' + prefix + '_' + anio;
+      const localVal = parseInt(localStorage.getItem(cntKey) || '0');
+      if (lastNum > localVal) {
+        // Update local counter AND Supabase counter to MAX
+        localStorage.setItem(cntKey, lastNum);
+        // Patch the counter in Supabase so next increment gives lastNum+1
+        await fetch(SB_URL + '/rest/v1/counters?name=eq.sc_' + prefix + '_' + anio, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY },
+          body: JSON.stringify({ value: lastNum })
+        });
+        console.log('SC counter synced:', prefix, '->', lastNum);
+      }
+    }
+  } catch(e) { console.warn('syncSCCounter:', e.message); }
+}
+
 async function sbGetNextNum(counterName, localKey, prefix, digits) {
   try {
     const r = await fetch(_SB_URL_FM + '/rest/v1/rpc/increment_counter', {
@@ -1691,12 +1762,16 @@ async function enviar() {
     let pref = PREFS[area] || 'SC';
     if (area === 'MANTENIMIENTO' && subarea && SUBP[subarea]) pref = SUBP[subarea];
     // ── Números desde Supabase → sin duplicados en cualquier dispositivo ──
+    // Sync SC counter with Supabase MAX before generating
+    await syncSCCounter(pref, anio);
+    // Also sync PC counter (reads MAX at submission)
+    await cargarNumOP();
     const numSC = await sbGetNextNum(
       'sc_' + pref + '_' + anio,
       'sc_cnt_' + pref + '_' + anio,
       pref + '-' + anio + mes + '-', 4
     );
-    const numOP = await sbGetNextNum(
+    const numOP = opNum || await sbGetNextNum(
       'op_' + anio,
       'op_cnt_' + anio,
       'PC-' + anio + '-', 4

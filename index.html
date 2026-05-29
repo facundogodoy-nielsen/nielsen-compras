@@ -1770,13 +1770,13 @@ function generarNumOP() {
   const anio = new Date().getFullYear();
   contadorOP++;
   localStorage.setItem('nielsen_op_contador', contadorOP);
-  return 'OP-' + anio + '-' + String(contadorOP).padStart(4, '0');
+  return 'PC-' + anio + '-' + String(contadorOP).padStart(4, '0');
 }
 
 
 function peekNumOP() {
   const anio = new Date().getFullYear();
-  return 'OP-' + anio + '-' + String(contadorOP + 1).padStart(4, '0');
+  return 'PC-' + anio + '-' + String(contadorOP + 1).padStart(4, '0');
 }
 
 
@@ -4833,13 +4833,13 @@ let contadorOPManual = parseInt(localStorage.getItem('nielsen_op_manual_cnt') ||
 
 function peekNumOPManual() {
   const anio = new Date().getFullYear();
-  return 'OP-' + anio + '-' + String(contadorOPManual + 1).padStart(4, '0');
+  return 'PC-' + anio + '-' + String(contadorOPManual + 1).padStart(4, '0');
 }
 function generarNumOPManual() {
   contadorOPManual++;
   localStorage.setItem('nielsen_op_manual_cnt', contadorOPManual);
   const anio = new Date().getFullYear();
-  return 'OP-' + anio + '-' + String(contadorOPManual).padStart(4, '0');
+  return 'PC-' + anio + '-' + String(contadorOPManual).padStart(4, '0');
 }
 
 // Cuando se confirma una SC, registrar automáticamente la OP correspondiente
