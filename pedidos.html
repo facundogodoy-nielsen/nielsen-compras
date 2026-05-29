@@ -739,15 +739,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
         </div>
         <div class="hist-bar-wrap" style="height:12px"><div id="histDetBar" class="hist-bar" style="width:0%"></div></div>
       </div>
-      <!-- Importar facturas -->
       <!-- Tabla de items -->
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:.82rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--G2);margin-bottom:8px;display:flex;align-items:center;gap:7px">
         <span style="display:inline-block;width:4px;height:14px;background:var(--N);border-radius:2px"></span>
         Ítems del Pedido
       </div>
+      <div id="masiva-bar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:rgba(232,93,37,.06);border:1px solid rgba(232,93,37,.25);border-radius:7px;margin-bottom:10px"></div>
       <div style="overflow-x:auto">
         <table class="hist-det-table" id="histDetTabla">
-          <thead><tr><th>#</th><th>Producto</th><th>Cant. Pedida</th><th>Medida</th><th>Estado</th></tr></thead>
+          <thead><tr><th style="width:30px"><input type="checkbox" id="chkAllItems" onchange="toggleAllItems(this.checked)" style="cursor:pointer"></th><th>#</th><th>Producto</th><th>Cant. Pedida</th><th>Medida</th><th>Estado</th></tr></thead>
           <tbody id="histDetBody"></tbody>
         </table>
       </div>
@@ -2485,53 +2485,45 @@ function renderDetBarra(){
 function renderDetTabla(){
   const p = historial[histDetActual];
   const estadoTag = {
-    ok:'<span class="tag-ok">✔ Recibido</span>',
-    parcial:'<span class="tag-parcial">⚡ Parcial</span>',
-    no:'<span class="tag-no">✗ No recibido</span>',
-    pendiente:'<span class="tag-pend">⏳ Pendiente</span>'
+    ok:'<span class="tag-ok">\u2714 Recibido</span>',
+    parcial:'<span class="tag-parcial">\u26a1 Parcial</span>',
+    no:'<span class="tag-no">\u2717 No recibido</span>',
+    pendiente:'<span class="tag-pend">\u23f3 Pendiente</span>'
   };
-  const selMasivaBtn = '';  // toolbar rendered separately via updateMasivaBar()
-  document.getElementById('histDetBody').innerHTML = selMasivaBtn + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
-    +'<th style="width:28px;text-align:center;font-size:.7rem;color:var(--G3)">#</th>'
-    +(modoAdmin?'<th style="width:26px"></th>':'')
-    +'<th style="font-size:.78rem;text-align:left">Producto</th>'
-    +'<th style="width:60px;font-size:.78rem">Cant.</th>'
-    +'<th style="width:60px;font-size:.78rem">U.M.</th>'
-    +'<th style="font-size:.78rem">Estado</th>'
-    +'</tr></thead><tbody>'
-    + p.items.map((it,i)=>{
-        const inv = it.factura||{};
-        const invRow = it.estado==='ok' ? `<tr class="inv-row" id="inv-row-${i}">
-          <td colspan="${modoAdmin?6:5}" style="padding:4px 8px 8px 32px;background:rgba(34,197,94,.04)">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:green">📄 Factura asociada</span>
-              <input type="date" value="${inv.fecha||''}" placeholder="Fecha comprobante" ${modoAdmin?`onchange="setFacturaItem(${i},'fecha',this.value)"`:'disabled'}
-                style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;${modoAdmin?'':'opacity:.6'}">
-              <input type="text" value="${esc(inv.num||'')}" placeholder="N° Comprobante"  ${modoAdmin?`oninput="setFacturaItem(${i},'num',this.value)"`:'disabled'}
-                style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;width:130px;${modoAdmin?'':'opacity:.6'}">
-              <input type="text" value="${esc(inv.proveedor||'')}" placeholder="Proveedor" ${modoAdmin?`oninput="setFacturaItem(${i},'proveedor',this.value)"`:'disabled'}
-                style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;width:140px;${modoAdmin?'':'opacity:.6'}">
-            </div>
-          </td></tr>` : '';
-        return `<tr style="border-bottom:1px solid var(--G5)">
-          <td style="color:var(--G3);font-size:.72rem;text-align:center;padding:6px 4px">${i+1}</td>
-          ${modoAdmin?`<td style="text-align:center;padding:4px"><input type="checkbox" class="sel-masiva-chk" data-idx="${i}" onchange="onSelMasivaChange()" style="cursor:pointer"></td>`:''}
-          <td style="padding:6px 4px"><strong>${esc(it.nombre)}</strong>${it.marca?`<br><em style="font-size:.72rem;color:var(--G3)">${esc(it.marca)}</em>`:''}</td>
-          <td style="text-align:center;font-weight:600;font-size:.82rem;padding:6px 4px">${it.cant}</td>
-          <td style="font-size:.78rem;padding:6px 4px">${esc(it.medida)}</td>
-          <td style="padding:6px 4px">
-            ${estadoTag[it.estado]||estadoTag.pendiente}
-            ${modoAdmin?`<select onchange="cambiarEstadoItem(${histDetActual},${i},this.value)" style="font-size:.7rem;border:1px solid var(--G4);border-radius:5px;padding:2px 5px;margin-left:4px;outline:none;cursor:pointer;background:var(--W)">
-              <option value="pendiente" ${it.estado==='pendiente'?'selected':''}>Pendiente</option>
-              <option value="ok" ${it.estado==='ok'?'selected':''}>Recibido ✔</option>
-              <option value="parcial" ${it.estado==='parcial'?'selected':''}>Parcial ⚡</option>
-              <option value="no" ${it.estado==='no'?'selected':''}>No recibido ✗</option>
-            </select>`:''}
-          </td>
-        </tr>${invRow}`;
-      }).join('')
-    + '</tbody></table>';
-  // Render masiva toolbar
+  const colCount = 6;
+  document.getElementById('histDetBody').innerHTML = p.items.map((it,i)=>{
+    const inv = it.factura||{};
+    const invRow = it.estado==='ok' ? `<tr class="inv-row">
+      <td colspan="${colCount}" style="padding:4px 8px 8px 38px;background:rgba(34,197,94,.05)">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:green">\ud83d\udcc4 Factura asociada</span>
+          <input type="date" value="${inv.fecha||''}" ${modoAdmin?`onchange="setFacturaItem(${i},'fecha',this.value)"`:'disabled'} style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px">
+          <input type="text" value="${esc(inv.num||'')}" placeholder="N\u00b0 Comprobante" ${modoAdmin?`oninput="setFacturaItem(${i},'num',this.value)"`:'disabled'} style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;width:130px">
+          <input type="text" value="${esc(inv.proveedor||'')}" placeholder="Proveedor" ${modoAdmin?`oninput="setFacturaItem(${i},'proveedor',this.value)"`:'disabled'} style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;width:140px">
+        </div>
+      </td></tr>` : '';
+    return `<tr>
+      <td style="text-align:center">${modoAdmin?`<input type="checkbox" class="sel-masiva-chk" data-idx="${i}" onchange="onSelMasivaChange()" style="cursor:pointer">`:''}</td>
+      <td style="color:var(--G3);font-size:.72rem;text-align:center">${i+1}</td>
+      <td><strong>${esc(it.nombre)}</strong>${it.marca?`<br><em style="font-size:.72rem;color:var(--G3)">${esc(it.marca)}</em>`:''}</td>
+      <td style="text-align:center;font-weight:600">${it.cant}</td>
+      <td style="font-size:.78rem">${esc(it.medida)}</td>
+      <td>
+        ${estadoTag[it.estado]||estadoTag.pendiente}
+        ${modoAdmin?`<select onchange="cambiarEstadoItem(${histDetActual},${i},this.value)" style="font-size:.7rem;border:1px solid var(--G4);border-radius:5px;padding:2px 5px;margin-left:4px;outline:none;cursor:pointer;background:var(--W)">
+          <option value="pendiente" ${it.estado==='pendiente'?'selected':''}>Pendiente</option>
+          <option value="ok" ${it.estado==='ok'?'selected':''}>Recibido \u2714</option>
+          <option value="parcial" ${it.estado==='parcial'?'selected':''}>Parcial \u26a1</option>
+          <option value="no" ${it.estado==='no'?'selected':''}>No recibido \u2717</option>
+        </select>`:''}
+      </td>
+    </tr>${invRow}`;
+  }).join('');
+  updateMasivaBar();
+}
+
+function toggleAllItems(checked){
+  document.querySelectorAll('.sel-masiva-chk').forEach(c=>{ c.checked=checked; });
   updateMasivaBar();
 }
 

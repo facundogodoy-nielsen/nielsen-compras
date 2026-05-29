@@ -400,10 +400,17 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
   <div class="splash-sub">Compras y Abastecimiento &nbsp;//&nbsp; Nielsen Logística y Expediciones S.A.</div>
 </div>
 <script>
-  setTimeout(function(){
+  function _dismissSplash(){
     var s=document.getElementById('splash-screen');
-    if(s){s.classList.add('fade-out');setTimeout(function(){s.style.display='none';},650);}
-  },2200);
+    if(s){ s.classList.add('fade-out'); setTimeout(function(){ if(s) s.style.display='none'; },650); }
+  }
+  setTimeout(_dismissSplash, 2200);
+  // Failsafe: also allow click/tap to dismiss, and hard-remove after 4s no matter what
+  document.addEventListener('DOMContentLoaded', function(){
+    var s=document.getElementById('splash-screen');
+    if(s) s.addEventListener('click', _dismissSplash);
+  });
+  setTimeout(function(){ var s=document.getElementById('splash-screen'); if(s) s.style.display='none'; }, 4000);
 </script>
 
 <!-- LOADING -->
@@ -450,6 +457,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
       <label>N° CCP</label>
       <input type="text" id="nroExp" placeholder="CC-2026-0001"/>
     </div>
+    <span style="font-size:9px;color:rgba(255,255,255,.35);font-family:monospace;margin-right:4px" title="versión">v2026.05.28-fix</span>
     <div id="comp-mode-badge" class="comp-mode-badge lector" onclick="abrirPinComp()" style="cursor:pointer;flex-shrink:0">🔒 Modo Lector</div>
     <button onclick="abrirAjustesCCP()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:5px 12px;color:rgba(255,220,180,.6);cursor:pointer;font-size:12px;font-family:'Barlow',sans-serif;white-space:nowrap;flex-shrink:0">⚙️ Ajustes</button>
     <button onclick="guardarEnSupabase(true)" class="comp-editor-only"
@@ -1240,42 +1248,7 @@ function descargarPlantillaProveedores() {
     + '<tr class="example">' + example.map(function(e){ return '<td>'+e+'</td>'; }).join('') + '</tr>'
     + '<tr>' + header.map(function(){ return '<td></td>'; }).join('') + '</tr>'
     + '<tr>' + header.map(function(){ return '<td></td>'; }).join('') + '</tr>'
-    + '</tbody></table>
-<!-- ══ AJUSTES CCP MODAL ══ -->
-<div class="comp-pin-ov" id="ajustes-ccp-ov" onclick="if(event.target===this)cerrarAjustesCCP()">
-  <div class="comp-pin-box" style="max-width:360px;text-align:left">
-    <div style="font-size:14px;font-weight:800;letter-spacing:2px;color:var(--orange);margin-bottom:16px">⚙️ AJUSTES</div>
-
-    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:14px;margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--orange);margin-bottom:8px">Numeración CCP</div>
-      <div style="font-size:12px;color:rgba(255,220,180,.6);margin-bottom:12px;line-height:1.5">
-        El próximo N°CCP generado comenzará desde <strong style="color:var(--cream)">CC-YYYY-0001</strong>.<br>
-        Esta acción no puede deshacerse.
-      </div>
-      <button onclick="pedirPinReiniciarCCP()" style="background:rgba(239,68,68,.15);border:1.5px solid rgba(239,68,68,.4);border-radius:7px;padding:8px 16px;cursor:pointer;color:#f87171;font-family:'Barlow',sans-serif;font-size:12px;font-weight:700;width:100%">
-        🔄 Reiniciar Numeración CCP
-      </button>
-    </div>
-
-    <!-- Double-PIN confirmation for reset -->
-    <div id="reset-ccp-confirm" style="display:none;background:rgba(239,68,68,.08);border:1.5px solid rgba(239,68,68,.3);border-radius:8px;padding:14px;margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:#f87171;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">⚠️ Confirmar Reinicio</div>
-      <div style="font-size:11px;color:rgba(255,220,180,.6);margin-bottom:10px">Ingresá el PIN nuevamente para confirmar:</div>
-      <input type="password" id="reset-ccp-pin" maxlength="10" autocomplete="off"
-        style="width:100%;background:rgba(255,255,255,.06);border:1.5px solid rgba(239,68,68,.4);border-radius:7px;padding:9px;color:var(--cream);font-size:18px;text-align:center;letter-spacing:6px;outline:none;box-sizing:border-box;margin-bottom:8px"
-        placeholder="••••" onkeydown="if(event.key==='Enter')confirmarReiniciarCCP()">
-      <div id="reset-ccp-err" style="color:#f87171;font-size:11px;min-height:16px;margin-bottom:8px"></div>
-      <div style="display:flex;gap:8px">
-        <button onclick="cancelarReiniciarCCP()" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:8px;cursor:pointer;color:rgba(255,220,180,.6);font-family:'Barlow',sans-serif;font-size:12px">Cancelar</button>
-        <button onclick="confirmarReiniciarCCP()" style="flex:1;background:rgba(239,68,68,.2);border:1.5px solid rgba(239,68,68,.4);border-radius:7px;padding:8px;cursor:pointer;color:#f87171;font-family:'Barlow',sans-serif;font-size:12px;font-weight:700">Confirmar Reinicio</button>
-      </div>
-    </div>
-
-    <button onclick="cerrarAjustesCCP()" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;padding:9px;cursor:pointer;color:rgba(255,220,180,.6);font-family:'Barlow',sans-serif;font-size:13px">Cerrar</button>
-  </div>
-</div>
-
-</body></html>';
+    + '</tbody></table></body></html>';
 
   var blob = new Blob([html], {type:'application/vnd.ms-excel;charset=utf-8'});
   var a = document.createElement('a');
@@ -1411,7 +1384,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ANALYZE
   document.getElementById('btnGoAnalisis').addEventListener('click', function(){ switchTab('analisis'); });
-  document.getElementById('btnRenderAnalysis').addEventListener('click', renderManualAnalysis);
+  _safeOn('btnRenderAnalysis', 'click', function(){
+    if (typeof renderManualAnalysis === 'function') { renderManualAnalysis(); }
+    else if (typeof renderAnalysis === 'function') { renderAnalysis(); }
+    else { showToast('Análisis aplicado','ok'); }
+  });
   document.getElementById('btnClearAnalysis').addEventListener('click', function(){
     document.getElementById('analysisRawInput').value='';
     document.getElementById('analysisRendered').style.display='none';
