@@ -2,6 +2,10 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Centro de Control — Solicitudes de Compra | Nielsen Logística</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -2108,7 +2112,7 @@ async function showView(id, btn) {
   if (btn) btn.classList.add('active');
   // Await fresh data before rendering
   if (id === 'panel')       { await recargarSCsDesdeLS(); renderPanel(); }
-  if (id === 'historial')    { await recargarSCsDesdeLS(); renderHistorial(); }
+  if (id === 'historial')    { await recargarSCsDesdeLS(); renderHistorial(); renderHistorialPedidos(); }
   if (id === 'kanban')       { await recargarSCsDesdeLS(); renderKanban(); }
   if (id === 'historial-op')   { await recargarSCsDesdeLS(); renderHistorialPedidos(); }
   if (id === 'comparativas')   renderComparativas();
@@ -2201,7 +2205,13 @@ function intentarLogin() {
       // Lector: mostrar la pantalla de acceso rápido
       recargarSCsDesdeLS();
       renderHistorialPA();
-      document.getElementById('lector-landing').classList.add('show');
+      const _ll = document.getElementById('lector-landing');
+      if (_ll) {
+        _ll.classList.add('show');
+        // Ensure buttons are visible
+        const _btns = _ll.querySelectorAll('.landing-btn');
+        _btns.forEach(b => { b.style.display = ''; b.style.visibility = ''; });
+      }
     }
   } else {
     const err = document.getElementById('login-err');
@@ -3311,7 +3321,7 @@ async function sbInsert(tabla, obj) {
 
 async function sbSelect(tabla, params='') {
   try {
-    const r = await fetch(_SB_URL + '/rest/v1/' + tabla + '?order=creado_at.desc' + params, {
+    const r = await fetch(_SB_URL + '/rest/v1/' + tabla + '?order=creado_at.desc.nullslast&limit=1000' + params, {
       headers: { 'apikey': _SB_KEY, 'Authorization': 'Bearer ' + _SB_KEY }
     });
     if (!r.ok) return null;
