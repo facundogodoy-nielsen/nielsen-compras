@@ -533,7 +533,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
   <button class="cat-btn" data-cat="H" onclick="switchCat('H')"><span class="dot"></span>🛏 Hotelería</button>
   <button class="cat-btn" data-cat="A" onclick="switchCat('A')"><span class="dot"></span>💧 Agua, Gas y Leña</button>
   <button class="cat-btn" data-cat="K" onclick="switchCat('K')"><span class="dot"></span>🏪 Kiosco La Brea</button>
-  <button class="cat-btn" data-cat="X" onclick="switchCat('X')" style="margin-left:auto"><span class="dot"></span>📊 Historial</button>
+
 </div>
 </div><!-- /sticky-top -->
 
@@ -677,51 +677,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
   </div>
 
 
-  <!-- PANEL HISTORIAL -->
-  <div class="panel" id="panelHistorial" style="display:none">
-    <div class="ph">
-      <div class="pt">Historial de Solicitudes</div>
-    </div>
-    <div class="pb">
-      <!-- Stats generales -->
-      <div class="stat-strip" id="histStats">
-        <div class="stat-card sc-full"><div class="stat-num" id="stFull">0</div><div class="stat-lbl">Concretados</div></div>
-        <div class="stat-card sc-partial"><div class="stat-num" id="stPartial">0</div><div class="stat-lbl">Parciales</div></div>
-        <div class="stat-card sc-none"><div class="stat-num" id="stNone">0</div><div class="stat-lbl">Sin comprar</div></div>
-        <div class="stat-card sc-pend"><div class="stat-num" id="stPend">0</div><div class="stat-lbl">Pendientes</div></div>
-      </div>
-      <div id="histContainer">
-        <div class="hist-empty" id="histEmpty"><span>📋</span><p>Aún no hay pedidos guardados.</p><p style="font-size:.76rem;margin-top:6px">Completá un pedido y hacé clic en "REVISAR PEDIDO" para confirmar.</p></div>
-        <div class="hist-grid" id="histGrid" style="display:none"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- REVIEW SECTION -->
-  <div class="review-section" id="reviewSection">
-    <div class="ph">
-      <div class="pt">✅ Revisión del Pedido</div>
-      <span style="font-size:.76rem;color:#888">Verificá los productos antes de confirmar</span>
-    </div>
-    <div id="reviewBody"></div>
-    <div class="acciones-review">
-      <button class="btn btn-rst" onclick="cerrarReview()">← Volver a editar</button>
-      <button class="btn btn-pdf" onclick="generarPDFDesdeReview()">📄 Generar PDF</button>
-      <button class="btn-revisar" onclick="confirmarPedido()">✅ Confirmar y Guardar Pedido</button>
-    </div>
-  </div>
-
-  <div class="acciones">
-    <button class="btn btn-rst" data-editor-only onclick="resetear()" title="Resetear pedido">🗑</button>
-    <button class="btn btn-prv" style="background:#1A6090" onclick="abrirMasiva()">📋 Carga Masiva</button>
-    <button class="btn-revisar" onclick="abrirReview()">📋 REVISAR PEDIDO</button>
-  </div>
-</div>
-
-
-
-
-<!-- MODAL DETALLE HISTORIAL -->
+  <!-- MODAL DETALLE HISTORIAL -->
 <div id="modalHistDet">
   <div class="histdet-box">
     <div class="mhd" style="position:sticky;top:0;background:var(--W);z-index:1;border-radius:14px 14px 0 0">
@@ -3021,7 +2977,7 @@ function _enviarEmailPA(pedido) {
   const pubKey  = localStorage.getItem('nielsen_emailjs_pubkey')  || '';
   const service = localStorage.getItem('nielsen_emailjs_service') || '';
   const tmpl    = localStorage.getItem('nielsen_emailjs_tmpl_pa') || '';
-  const from    = localStorage.getItem('nielsen_sender_email')    || 'compras@nielsenexpediciones.com.ar';
+  const from    = localStorage.getItem('nielsen_sender_email')    || 'facundo.godoy@nielsenexpediciones.com.ar';
 
   if (!pubKey || !service || !tmpl) {
     console.info('EmailJS no configurado — sin envío de mail PA');
@@ -3032,7 +2988,7 @@ function _enviarEmailPA(pedido) {
   if (!email) { console.warn('Sin email del solicitante PA'); return; }
 
   const catLabels = {M:'Mercadería',L:'Limpieza y Descartables',H:'Hotelería',A:'Agua, Gas y Leña',K:'Kiosco La Brea'};
-  const items = (pedido.items||[]).slice(0,8).map((it,i) =>
+  const items = (pedido.items||[]).map((it,i) =>
     `${i+1}. ${it.nombre||it}${it.cant?' — '+it.cant+(it.medida?' '+it.medida:''):''}` ).join('\n');
 
   emailjs.init({ publicKey: pubKey });
@@ -3040,7 +2996,8 @@ function _enviarEmailPA(pedido) {
   emailjs.send(service, tmpl, {
     to_email:       email,
     to_name:        pedido.solicitante || '',
-    from_email:     from,
+    from_name:      'Facundo Godoy — Compras y Abastecimiento',
+    from_email:     from || 'facundo.godoy@nielsenexpediciones.com.ar',
     num_pa:         pedido.oc || pedido.nroPedido || '',
     campamento:     pedido.campamento || '',
     categoria:      catLabels[pedido.cat] || pedido.cat || '',

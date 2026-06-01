@@ -72,7 +72,8 @@ header {
 .mode-badge.lector { background: rgba(200,120,0,.12); border-color: rgba(200,120,0,.4); color: #ca9010; }
 .mode-badge.editor { background: rgba(232,93,37,.15); border-color: rgba(232,93,37,.5); color: var(--or2); }
 /* In lector: editor-only elements are HIDDEN (not just grayed) */
-body.modo-lector [data-editor-only] { display: none !important; }
+body.modo-lector .sidebar-section[data-sid="herramientas"],
+.modo-lector [data-editor-only] { display: none !important; }
 
 /* ── SIDEBAR TOGGLE ── */
 .sidebar-toggle { background: none; border: 1px solid var(--border); cursor: pointer; color: var(--muted); font-size: 13px; padding: 4px 7px; border-radius: 5px; transition: all .15s; flex-shrink: 0; }
@@ -1766,6 +1767,13 @@ let contadorPorArea = JSON.parse(localStorage.getItem('nielsen_sc_contadores') |
 let contadorOP = parseInt(localStorage.getItem('nielsen_op_contador') || '0');
 
 
+
+// ── Normalizer: display OP- prefixes as PC- (backward compat with old records) ──
+function normPC(val) {
+  if (!val) return val;
+  return String(val).replace(/^OP-/, 'PC-');
+}
+
 function generarNumOP() {
   const anio = new Date().getFullYear();
   contadorOP++;
@@ -2811,7 +2819,7 @@ function verSC(idx) {
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Fecha límite</div>${formatFecha(sc.fechaLimite)}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Destino</div>${sc.destino||'—'}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Motivo de Compra</div><strong style="color:var(--or)">${sc.motivo||'—'}</strong></div>
-      <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Nº Pedido (PC)</div><span style="font-family:var(--fm);color:var(--or);font-weight:700">${sc.numOP||sc.op||'—'}</span></div>
+      <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Nº Pedido (PC)</div><span style="font-family:var(--fm);color:var(--or);font-weight:700">${normPC(sc.numOP||sc.op||'—')}</span></div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Orden de Servicio</div><span style="font-family:var(--fm)">${sc.os}</span></div>
       <div style="grid-column:1/-1"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Descripción OS</div>${sc.osDesc}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Responsable OS</div>${sc.osResp}</div>
@@ -2930,7 +2938,27 @@ function imprimirSC() {
   window.print();
 }
 function imprimirModalSC() {
-  window.print();
+  // Get full modal content including header (numSC/numPA) and body
+  const numEl  = document.getElementById('modal-sc-num');
+  const subEl  = document.getElementById('modal-sc-sub');
+  const bodyEl = document.getElementById('modal-sc-body');
+  if (!bodyEl) return;
+  const headerHTML = `<div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:800;letter-spacing:2px;color:#E8612A;margin-bottom:${subEl&&subEl.textContent?'2px':'16px'}">${numEl?numEl.textContent:''}</div>${subEl&&subEl.textContent?`<div style="font-size:13px;color:#666;margin-bottom:14px">${subEl.textContent}</div>`:''}`;
+  const logoLine = `<div style="border-bottom:2px solid #E8612A;padding-bottom:10px;margin-bottom:18px"><b style="font-family:'Barlow Condensed',sans-serif;font-size:14px;letter-spacing:2px;color:#E8612A">NIELSEN LOGÍSTICA Y EXPEDICIONES S.A.</b></div>`;
+  const content = logoLine + headerHTML + bodyEl.innerHTML;
+  const win = window.open('','_blank','width=800,height=700');
+  if (!win) { alert('Bloqueador de popups activo — permite ventanas emergentes'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Imprimir</title>
+    <style>
+      body{font-family:Arial,sans-serif;padding:24px;color:#222;font-size:13px;}
+      table{width:100%;border-collapse:collapse;margin:12px 0;}
+      th{background:#E8612A;color:white;padding:7px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;}
+      td{padding:7px 10px;border-bottom:1px solid #eee;}
+      button{display:none!important;}
+      @media print{body{padding:12px;}}
+    </style>
+  </head><body>${content}<script>setTimeout(()=>{window.print();window.close();},400);<\/script></body></html>`);
+  win.document.close();
 }
 
 // ══ EXPORTAR EXCEL ══
@@ -5534,17 +5562,33 @@ function verPA(idx) {
     'PENDIENTE':'⏳ Pendiente','EN PROCESO':'🔵 En Proceso',
     'ENTREGADO':'✅ Entregado','CANCELADO':'✕ Cancelado'
   };
-  const itemsHTML = items.map((it,i) => {
-    const nombre = it.nombre || it;
-    const cant   = it.cant ? `${it.cant}${it.medida?' '+it.medida:''}` : '—';
-    const est    = it.estado || 'pendiente';
-    const estColor = {ok:'var(--green)',parcial:'var(--yellow)',no:'var(--red)',pendiente:'var(--muted)'}[est]||'var(--muted)';
-    return `<tr>
-      <td style="font-family:var(--fm);color:var(--or)">${String(i+1).padStart(2,'0')}.</td>
-      <td>${nombre}${it.marca?' <span style="color:var(--muted);font-size:11px">— '+it.marca+'</span>':''}</td>
-      <td style="text-align:center;font-family:var(--fm)">${cant}</td>
-      <td><span style="color:${estColor};font-size:11px;font-weight:700;text-transform:capitalize">${est}</span></td>
-    </tr>`;
+  const CAT_LABELS_PA = {M:'🛒 Mercadería',L:'🧹 Limpieza y Descartables',H:'🛏 Hotelería',A:'💧 Agua, Gas y Leña',K:'🏪 Kiosco La Brea'};
+  // Group items by category
+  const itemsByCat = {};
+  const catOrder = ['M','L','H','A','K'];
+  items.forEach(it => {
+    const c = it.cat || 'M';
+    if (!itemsByCat[c]) itemsByCat[c] = [];
+    itemsByCat[c].push(it);
+  });
+  let itemCounter = 0;
+  const itemsHTML = catOrder.filter(c => itemsByCat[c] && itemsByCat[c].length).map(c => {
+    const catItems = itemsByCat[c];
+    const header = `<tr><td colspan="4" style="padding:10px 8px 4px;background:rgba(232,93,37,.08);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or)">${CAT_LABELS_PA[c]}</td></tr>`;
+    const rows = catItems.map(it => {
+      itemCounter++;
+      const nombre = it.nombre || it;
+      const cant   = it.cant ? `${it.cant}${it.medida?' '+it.medida:''}` : '—';
+      const est    = it.estado || 'pendiente';
+      const estColor = {ok:'var(--green)',parcial:'var(--yellow)',no:'var(--red)',pendiente:'var(--muted)'}[est]||'var(--muted)';
+      return `<tr>
+        <td style="font-family:var(--fm);color:var(--or)">${String(itemCounter).padStart(2,'0')}.</td>
+        <td>${nombre}${it.marca?' <span style="color:var(--muted);font-size:11px">— '+it.marca+'</span>':''}</td>
+        <td style="text-align:center;font-family:var(--fm)">${cant}</td>
+        <td><span style="color:${estColor};font-size:11px;font-weight:700;text-transform:capitalize">${est}</span></td>
+      </tr>`;
+    }).join('');
+    return header + rows;
   }).join('');
 
   const content = `
@@ -5751,7 +5795,7 @@ function renderHistorialPedidos() {
     const preview = lineas.slice(0,2).join(' · ') + (lineas.length > 2 ? ` <span style="color:var(--muted);font-size:11px">+${lineas.length-2} más</span>` : '');
     const allItems = lineas.map((l,i)=>`<div style="padding:3px 0;border-bottom:1px solid var(--border);font-size:11px">${i+1}. ${l}</div>`).join('');
 
-    const pcNum = sc.numOP || sc.numPC || '—';
+    const pcNum = normPC(sc.numOP || sc.numPC || '—');
     const scNum = sc.numSC || sc.num || '—';
     const estC  = sc.estado==='COMPLETADA'?'badge-green':sc.estado==='EN PROCESO'?'badge-blue':sc.estado==='CANCELADA'?'badge-gray':'badge-yellow';
 
