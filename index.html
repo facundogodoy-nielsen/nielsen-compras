@@ -421,12 +421,12 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 .pin-cancel:hover{color:var(--text);}
 
 /* Settings modal */
-.settings-box{background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:440px;}
+.settings-box{background:var(--s1);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:440px;max-height:85vh;display:flex;flex-direction:column;}
 .settings-hdr{padding:18px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .settings-title{font-size:14px;font-weight:700;color:var(--text);letter-spacing:.5px;}
 .settings-close{background:none;border:none;color:var(--muted);font-size:17px;cursor:pointer;line-height:1;}
 .settings-close:hover{color:var(--text);}
-.settings-body{padding:16px 20px 20px;display:flex;flex-direction:column;gap:12px;}
+.settings-body{padding:16px 20px 20px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;flex:1;}
 .settings-field label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:5px;}
 .settings-field input{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:var(--fm);font-size:12px;outline:none;transition:border-color .2s;box-sizing:border-box;}
 .settings-field input:focus{border-color:var(--or);}
@@ -1905,12 +1905,17 @@ async function guardarEditCompletoSC(idx) {
   const newNumSC = g('numsc').trim() || oldNumSC;
 
   // Build patch object
+  const newArea = g('area');
+  // Auto-clear subarea if new area doesn't support it
+  const AREAS_CON_SUBAREA = new Set(['MANTENIMIENTO','SSMA']);
+  const newSubarea = AREAS_CON_SUBAREA.has(newArea) ? g('subarea') : '';
+
   const patch = {
     num_sc:       newNumSC,
     estado:       g('estado'),
     criticidad:   g('criticidad'),
-    area:         g('area'),
-    subarea:      g('subarea'),
+    area:         newArea,
+    subarea:      newSubarea,
     solicitante:  g('solicitante'),
     email:        g('email'),
     fecha:        g('fecha'),
@@ -1930,7 +1935,7 @@ async function guardarEditCompletoSC(idx) {
   Object.assign(sc, {
     numSC: newNumSC, num: newNumSC,
     estado: patch.estado, criticidad: patch.criticidad,
-    area: patch.area, subarea: patch.subarea,
+    area: patch.area, subarea: patch.subarea || '',
     solicitante: patch.solicitante, email: patch.email,
     fecha: patch.fecha, fechaLimite: patch.fecha_limite,
     motivo: patch.motivo, os: patch.os, osAsunto: patch.os_asunto,
@@ -2760,6 +2765,84 @@ function abrirComparativoLink(){
 
 const _comparativas = JSON.parse(localStorage.getItem('nielsen_comparativas')||'[]');
 
+async // ── Auth level helpers ──
+function _ccp_getUSDRate() {
+  return parseFloat(localStorage.getItem('nielsen_usd_rate')||'0') || 1300;
+}
+function _ccp_montoProm(c) {
+  // Try to get average from all provider totals stored in analisis
+  try {
+    const a = typeof c.analisis === 'string' ? JSON.parse(c.analisis) : (c.analisis||{});
+    const totals = a.proveedoresTotales || a.totales || null;
+    if (totals && Array.isArray(totals) && totals.length) {
+      const sum = totals.reduce((acc,v)=>acc+parseFloat(v||0),0);
+      return sum/totals.length;
+    }
+    // Fallback: average of min and max
+    const mn = parseFloat(c.precio_elegido||0);
+    const mx = parseFloat(c.precio_max||0);
+    if (mn>0 && mx>0) return (mn+mx)/2;
+    return mn||mx||0;
+  } catch(e) { return parseFloat(c.precio_elegido||0); }
+}
+function _ccp_authLevel(c) {
+  const rate = _ccp_getUSDRate();
+  const prom = _ccp_montoProm(c);
+  const divisa = (c.divisa||'ARS').toUpperCase();
+  const promUSD = divisa === 'USD' ? prom : prom / rate;
+  const n = parseInt((c.proveedores_count||c.proveedores?.length||0));
+  if (promUSD > 400) return {level:'GERENCIAL', label:'Alta Gerencia', color:'#f87171', usd:promUSD, needs2:true};
+  if (promUSD >= 100) return {level:'JEFATURA', label:'Jefatura', color:'var(--yellow)', usd:promUSD, needs2:true};
+  return {level:'COMPRAS', label:'Resp. Compras', color:'var(--green)', usd:promUSD, needs2:true};
+}
+function _ccp_provCount(c) {
+  try {
+    const p = typeof c.proveedores === 'string' ? JSON.parse(c.proveedores) : (c.proveedores||[]);
+    return Array.isArray(p) ? p.length : (c.proveedores_count||0);
+  } catch(e){ return 0; }
+}
+async function autorizarCCP(compId, numComp, asunto, montoStr, nivel) {
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
+  // Patch autorizado_en in Supabase
+  const now = new Date().toISOString().split('T')[0];
+  await fetch(_SB_URL+'/rest/v1/comparativas?id=eq.'+compId, {
+    method:'PATCH',
+    headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
+    body:JSON.stringify({autorizado_por:'Compras y Abastecimiento',autorizado_en:now,nivel_autorizacion:nivel})
+  });
+  // Send email via EmailJS
+  const pubKey=localStorage.getItem('nielsen_emailjs_pubkey')||'';
+  const svcId =localStorage.getItem('nielsen_emailjs_service')||'';
+  const tmpl  =localStorage.getItem('nielsen_emailjs_tmpl_sc')||'';
+  const NIVEL_EMAILS = {
+    GERENCIAL: ['facundo.castano@nielsenexpediciones.com.ar','pablo.nielsen@nielsenexpediciones.com.ar','mercedes@nielsenexpediciones.com.ar'],
+    JEFATURA:  ['facundo.castano@nielsenexpediciones.com.ar'],
+    COMPRAS:   ['facundo.castano@nielsenexpediciones.com.ar','pablo.nielsen@nielsenexpediciones.com.ar','mercedes@nielsenexpediciones.com.ar']
+  };
+  const recipients = NIVEL_EMAILS[nivel]||[];
+  const isCompras = nivel==='COMPRAS';
+  const msgTipo = isCompras ? 'AUTORIZACIÓN DE COMPRA — Responsable de Compras' : 'SOLICITUD DE AUTORIZACIÓN DE COMPRA';
+  if (pubKey&&svcId&&tmpl) {
+    emailjs.init({publicKey:pubKey});
+    for (const to of recipients) {
+      emailjs.send(svcId, tmpl, {
+        to_email: to,
+        to_name: 'Equipo Nielsen',
+        from_name: 'Compras y Abastecimiento — Nielsen',
+        num_pa: numComp,
+        campamento: asunto||'—',
+        categoria: msgTipo,
+        fecha: now,
+        fecha_entrega: isCompras?'AUTORIZADO — Queda registrada la compra':'Requiere su aprobación para continuar',
+        items: '📊 CCP N° '+numComp+'\nAsunto: '+asunto+'\nMonto: '+montoStr+'\nNivel: '+nivel,
+        obs: isCompras?'Facundo Godoy (Responsable de Compras) ha autorizado esta compra y la comunica a los destinatarios.':'Facundo Godoy (Responsable de Compras) solicita la AUTORIZACIÓN DE COMPRA.'
+      }).catch(()=>{});
+    }
+  }
+  showToast('✅ Autorización enviada a '+recipients.length+' destinatario'+(recipients.length!==1?'s':''),'ok');
+  renderComparativas();
+}
+
 async function renderComparativas(){
   const list=document.getElementById('comp-list'); if(!list) return;
   list.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted)"><div style="font-size:20px">⏳</div><div style="font-size:12px;margin-top:8px">Cargando comparativas...</div></div>';
@@ -2769,7 +2852,7 @@ async function renderComparativas(){
     const url=_SB_URL+'/rest/v1/comparativas?order=creado_at.desc&limit=100';
     const r=await fetch(url,{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}});
     if(r.ok) rows=await r.json();
-    if(q) rows=rows.filter(c=>(c.num_comp+c.num_sc+c.area+c.asunto+c.solicitante).toLowerCase().includes(q));
+    if(q) rows=rows.filter(c=>((c.num_comp||'')+(c.num_sc||'')+(c.area||'')+(c.asunto||'')+(c.solicitante||'')).toLowerCase().includes(q));
   }catch(e){}
   if(!rows.length){
     list.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:32px;margin-bottom:12px">📊</div>'
@@ -2777,28 +2860,57 @@ async function renderComparativas(){
       +'<div style="font-size:12px;max-width:360px;margin:0 auto">Las comparativas guardadas desde el Cuadro Comparativo aparecerán aquí.</div></div>';
     return;
   }
+  const usdRate = _ccp_getUSDRate();
   list.innerHTML='<div class="card"><div class="tbl-wrap"><table><thead><tr>'
-    +'<th>N° Comp.</th><th>N° SC</th><th>Asunto</th><th>Área</th><th>Solicitante</th>'
-    +'<th>Proveedor elegido</th><th>Precio elegido</th><th>Ahorro</th><th>Fecha</th><th>Acciones</th>'
+    +'<th>N° CCP</th><th>N° SC</th><th>Asunto</th><th>Monto Prom.</th><th>Nivel</th>'
+    +'<th>Prov.</th><th>Elegido</th><th>Ahorro</th><th>Fecha</th><th>Autorización</th><th>Acciones</th>'
     +'</tr></thead><tbody>'
     +rows.map(c=>{
-      const pMin=c.precio_elegido?c.divisa+' '+Number(c.precio_elegido).toLocaleString('es-AR',{minimumFractionDigits:2}):'—';
-      const aho =c.ahorro>0?'<span style="color:var(--green);font-weight:700">'+c.divisa+' '+Number(c.ahorro).toLocaleString('es-AR',{minimumFractionDigits:2})+'</span>':'—';
-      const link=localStorage.getItem('nielsen_comparacion_url')||'https://nielsen-compras.vercel.app/comparativo';
-      const scLink=c.num_sc?`<span class="mono" style="color:var(--or)">${c.num_sc}</span>`:'—';
+      const prom   = _ccp_montoProm(c);
+      const auth   = _ccp_authLevel(c);
+      const nProv  = _ccp_provCount(c);
+      const divisa = (c.divisa||'ARS').toUpperCase();
+      const fmt = v => divisa+' '+Number(v).toLocaleString('es-AR',{minimumFractionDigits:2});
+      const promStr= prom>0 ? fmt(prom) : '—';
+      const promUSDStr = auth.usd>0 ? 'USD '+auth.usd.toFixed(0) : '';
+      const pMin   = c.precio_elegido ? fmt(c.precio_elegido) : '—';
+      const aho    = c.ahorro>0 ? '<span style="color:var(--green);font-weight:700">'+fmt(c.ahorro)+'</span>' : '—';
+      const link   = localStorage.getItem('nielsen_comparacion_url')||'https://nielsen-compras.vercel.app/comparativo';
+      const scLink = c.num_sc ? `<span class="mono" style="color:var(--or)">${c.num_sc}</span>` : '—';
+      const ok2    = nProv>=2;
+      const nivelBadge = `<div style="font-size:10px;font-weight:700;color:${auth.color}">${auth.label}</div>`
+        +(promUSDStr?`<div style="font-size:9px;color:var(--muted)">≈ ${promUSDStr}</div>`:'')
+        +(!ok2?'<div style="font-size:9px;color:#f87171">⚠ Falta 2° presupuesto</div>':'');
+      // Autorización status
+      let authCell = '';
+      if (c.autorizado_en) {
+        authCell = `<div style="font-size:11px;font-weight:700;color:var(--green)">✅ Autorizado</div>`
+          +`<div style="font-size:9px;color:var(--muted)">${c.autorizado_en}</div>`;
+      } else if (ok2 && esModoEditor()) {
+        authCell = `<button onclick="autorizarCCP('${c.id}','${c.num_comp||''}','${(c.asunto||'').replace(/'/g,'&#39;')}','${promStr}','${auth.level}')"
+          style="padding:5px 10px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);border-radius:6px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--ff);white-space:nowrap">
+          ✅ Autorizar</button>`;
+      } else if (!ok2) {
+        authCell = `<span style="font-size:10px;color:var(--muted)">Sin 2° ppto</span>`;
+      } else {
+        authCell = `<span style="font-size:10px;color:var(--muted)">—</span>`;
+      }
       return '<tr>'
         +`<td class="mono" style="color:var(--or);font-weight:700">${c.num_comp||'—'}</td>`
         +`<td>${scLink}</td>`
-        +`<td style="max-width:180px">${c.asunto||'—'}</td>`
-        +`<td>${c.area||'—'}</td>`
-        +`<td>${c.solicitante||'—'}</td>`
-        +`<td style="font-weight:600">${c.proveedor_elegido||'—'}</td>`
-        +`<td>${pMin}</td><td>${aho}</td>`
-        +`<td>${c.fecha?formatFecha(c.fecha):'—'}</td>`
+        +`<td style="max-width:160px;font-size:12px">${c.asunto||'—'}</td>`
+        +`<td style="font-size:12px"><div>${promStr}</div></td>`
+        +`<td>${nivelBadge}</td>`
+        +`<td style="text-align:center;font-size:12px">${nProv||'—'}</td>`
+        +`<td style="font-size:12px">${pMin}</td>`
+        +`<td style="font-size:12px">${aho}</td>`
+        +`<td style="font-size:12px">${c.fecha?formatFecha(c.fecha):'—'}</td>`
+        +`<td style="min-width:120px">${authCell}</td>`
         +`<td><button class="btn btn-ghost btn-sm" style="font-size:10px" onclick="window.open('${link}?comp_id=${c.id}','_blank')">📊 Abrir</button></td>`
         +'</tr>';
     }).join('')
-    +'</tbody></table></div></div>';
+    +'</tbody></table></div></div>'
+    +'<div style="font-size:10px;color:var(--muted);margin-top:8px;padding:0 4px">Tipo de cambio USD: $'+(usdRate.toLocaleString('es-AR'))+ ' — Actualizar en ⚙️ Ajustes</div>';
 }
 
 async function renderAhorro(){
@@ -6320,6 +6432,11 @@ iniciarAutoSync();
         <label>📋 EmailJS — Template PA (pedido abastecimiento)</label>
         <input type="text" id="cfg-ejs-tpa" placeholder="template_xxxxxxxx" oninput="guardarCfgCC('nielsen_emailjs_tmpl_pa','cfg-ejs-tpa','cfg-ejs-tpa-saved')" autocomplete="off">
         <div class="settings-saved" id="cfg-ejs-tpa-saved"></div>
+      </div>
+      <div class="settings-field">
+        <label>💱 Tipo de cambio USD → ARS (para autorizaciones CCP)</label>
+        <input type="number" id="cfg-usd-rate" placeholder="Ej: 1250" min="1" oninput="guardarCfgCC('nielsen_usd_rate','cfg-usd-rate','cfg-usd-saved')" autocomplete="off">
+        <div class="settings-saved" id="cfg-usd-saved"></div>
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">
         ℹ️ Los valores se guardan en este navegador y se comparten con el formulario y el sistema de pedidos automáticamente (mismo dominio).
