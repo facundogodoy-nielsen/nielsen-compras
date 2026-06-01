@@ -1770,6 +1770,7 @@ let contadorOP = parseInt(localStorage.getItem('nielsen_op_contador') || '0');
 
 // ── Normalizer: display OP- prefixes as PC- (backward compat with old records) ──
 
+const CAT_LABELS_PA = {M:'🛒 Mercadería',L:'🧹 Limpieza y Descartables',H:'🛏 Hotelería',A:'💧 Agua, Gas y Leña',K:'🏪 Kiosco La Brea'};
 // ── Normalize old SC codes: PREF-AAAAMM-XXXX → PREF-AAAA-XXXX ──
 function normSCCode(code) {
   if (!code) return code;
@@ -2954,16 +2955,17 @@ function imprimirModalSC() {
   const content = logoLine + headerHTML + bodyEl.innerHTML;
   const win = window.open('','_blank','width=800,height=700');
   if (!win) { alert('Bloqueador de popups activo — permite ventanas emergentes'); return; }
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Imprimir</title>
-    <style>
-      body{font-family:Arial,sans-serif;padding:24px;color:#222;font-size:13px;}
-      table{width:100%;border-collapse:collapse;margin:12px 0;}
-      th{background:#E8612A;color:white;padding:7px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;}
-      td{padding:7px 10px;border-bottom:1px solid #eee;}
-      button{display:none!important;}
-      @media print{body{padding:12px;}}
-    </style>
-  </head><body>${content}<script>setTimeout(()=>{window.print();window.close();},400);<\/script></body></html>`);
+  const printTag = '<scr'+'ipt>setTimeout(()=>{window.print();window.close();},400);<'+'/scr'+'ipt>';
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Imprimir</title>'
+    +'<style>'
+    +'body{font-family:Arial,sans-serif;padding:24px;color:#222;font-size:13px;}'
+    +'table{width:100%;border-collapse:collapse;margin:12px 0;}'
+    +'th{background:#E8612A;color:white;padding:7px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;}'
+    +'td{padding:7px 10px;border-bottom:1px solid #eee;}'
+    +'button{display:none!important;}'
+    +'@media print{body{padding:12px;}}'
+    +'</style>'
+    +'</head><body>'+content+printTag+'</body></html>');
   win.document.close();
 }
 
@@ -5565,12 +5567,10 @@ function verPA(idx) {
   window._paIdx = idx;
   const items = pa.items || [];
   const catLabels = {M:'Mercadería',L:'Limpieza y Descartables',H:'Hotelería',A:'Agua, Gas y Leña',K:'Kiosco La Brea'};
-  const CAT_LABELS_PA = {M:'🛒 Mercadería',L:'🧹 Limpieza y Descartables',H:'🛏 Hotelería',A:'💧 Agua, Gas y Leña',K:'🏪 Kiosco La Brea'};
   const estBadge = {
     'PENDIENTE':'⏳ Pendiente','EN PROCESO':'🔵 En Proceso',
     'ENTREGADO':'✅ Entregado','CANCELADO':'✕ Cancelado'
   };
-  const CAT_LABELS_PA = {M:'🛒 Mercadería',L:'🧹 Limpieza y Descartables',H:'🛏 Hotelería',A:'💧 Agua, Gas y Leña',K:'🏪 Kiosco La Brea'};
   // Group items by category
   const itemsByCat = {};
   const catOrder = ['M','L','H','A','K'];
@@ -5674,7 +5674,6 @@ function verPA(idx) {
 function renderItemsCompraPA(items, pa) {
   if (!items.length) return '<div style="color:var(--muted);font-size:12px;padding:10px">Sin ítems registrados</div>';
   const det = pa.itemsDetalle || {};
-  const CAT_LABELS_PA = {M:'🛒 Mercadería',L:'🧹 Limpieza y Descartables',H:'🛏 Hotelería',A:'💧 Agua, Gas y Leña',K:'🏪 Kiosco La Brea'};
   const catOrder = ['M','L','H','A','K'];
   // Group by cat
   const byCat = {};
