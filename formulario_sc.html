@@ -1697,7 +1697,7 @@ async function syncSCCounter(prefix, anio) {
     const SB_URL = (typeof _SB_URL_FM !== 'undefined') ? _SB_URL_FM : '';
     const SB_KEY = (typeof _SB_KEY_FM !== 'undefined') ? _SB_KEY_FM : '';
     if (!SB_URL) return;
-    const likePrefix = prefix + '-' + anio;
+    const likePrefix = prefix + '-' + anio + '-';
     const r = await fetch(SB_URL + '/rest/v1/solicitudes_compra?select=num_sc&num_sc=like.' + likePrefix + '*&order=num_sc.desc&limit=1', {
       headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
     });
@@ -1751,7 +1751,6 @@ async function enviar() {
   try {
     // ── Generar número SC correlativo (siempre, sin depender de Apps Script) ──
     const anio = new Date().getFullYear();
-    const mes  = String(new Date().getMonth()+1).padStart(2,'0');
     const PREFS = {
       'TALLER':'SCTL','TRANSPORTE':'SCTR','MANTENIMIENTO':'SCMT',
       'GERENCIA':'SCG','COMPRAS':'SCCYA','SSMA':'SCSSMA',
@@ -1769,7 +1768,7 @@ async function enviar() {
     const numSC = await sbGetNextNum(
       'sc_' + pref + '_' + anio,
       'sc_cnt_' + pref + '_' + anio,
-      pref + '-' + anio + mes + '-', 4
+      pref + '-' + anio + '-', 4
     );
     const numOP = opNum || await sbGetNextNum(
       'op_' + anio,

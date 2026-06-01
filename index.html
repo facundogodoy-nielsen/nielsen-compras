@@ -1769,6 +1769,14 @@ let contadorOP = parseInt(localStorage.getItem('nielsen_op_contador') || '0');
 
 
 // ── Normalizer: display OP- prefixes as PC- (backward compat with old records) ──
+
+// ── Normalize old SC codes: PREF-AAAAMM-XXXX → PREF-AAAA-XXXX ──
+function normSCCode(code) {
+  if (!code) return code;
+  // Match: PREFIX-YYYYMM-XXXX (6-digit year+month) → PREFIX-YYYY-XXXX
+  return String(code).replace(/^([A-Z]+)-(\d{4})(\d{2})-(\d+)$/, '$1-$2-$4');
+}
+
 function normPC(val) {
   if (!val) return val;
   return String(val).replace(/^OP-/, 'PC-');
@@ -2170,14 +2178,12 @@ function generarNumSC(area, subarea) {
   if (area === 'MANTENIMIENTO' && subarea && SUBPREFIJOS[subarea]) {
     prefijo = 'SC' + SUBPREFIJOS[subarea];
   }
-  const now = new Date();
-  const anio = now.getFullYear();
-  const mes = String(now.getMonth() + 1).padStart(2, '0');
-  const key = prefijo + '_' + anio + mes;
+  const anio = new Date().getFullYear();
+  const key = prefijo + '_' + anio;
   if (!contadorPorArea[key]) contadorPorArea[key] = 0;
   contadorPorArea[key]++;
   const num = String(contadorPorArea[key]).padStart(4, '0');
-  return `${prefijo}-${anio}${mes}-${num}`;
+  return `${prefijo}-${anio}-${num}`;
 }
 
 // ══ PREVIEW ══
@@ -2187,7 +2193,7 @@ function actualizarPreview() {
   let prefijo = area ? (PREFIJOS[area] || 'SC') : 'SC';
   if (area === 'MANTENIMIENTO' && subarea && SUBPREFIJOS[subarea]) prefijo = 'SC' + SUBPREFIJOS[subarea];
   const set = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val || '—'; };
-  set('prev-num', prefijo + '-2026??-????');
+  set('prev-num', prefijo + '-2026-????');
   set('prev-sol', document.getElementById('sol-nombre')?.value);
   set('prev-email', document.getElementById('sol-email')?.value);
   let areaLabel = area || '';
@@ -5556,8 +5562,10 @@ async function renderHistorialPA() {
 function verPA(idx) {
   const pa = paData[idx];
   if (!pa) return;
+  window._paIdx = idx;
   const items = pa.items || [];
   const catLabels = {M:'Mercadería',L:'Limpieza y Descartables',H:'Hotelería',A:'Agua, Gas y Leña',K:'Kiosco La Brea'};
+  const CAT_LABELS_PA = {M:'🛒 Mercadería',L:'🧹 Limpieza y Descartables',H:'🛏 Hotelería',A:'💧 Agua, Gas y Leña',K:'🏪 Kiosco La Brea'};
   const estBadge = {
     'PENDIENTE':'⏳ Pendiente','EN PROCESO':'🔵 En Proceso',
     'ENTREGADO':'✅ Entregado','CANCELADO':'✕ Cancelado'
@@ -5612,24 +5620,188 @@ function verPA(idx) {
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;border-top:1px solid var(--border);padding-top:14px">
       Ítems del pedido — ${items.length} artículo${items.length!==1?'s':''}
     </div>
-    <div class="tbl-wrap">
-      <table style="width:100%">
-        <thead><tr><th>#</th><th>Artículo</th><th>Cantidad</th><th>Estado entrega</th></tr></thead>
-        <tbody>${itemsHTML||'<tr><td colspan="4" style="color:var(--muted)">Sin ítems</td></tr>'}</tbody>
-      </table>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:space-between;margin-top:20px;flex-wrap:wrap">
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-ghost" data-editor-only onclick="cambiarEstadoPA(${idx})">🔄 Cambiar Estado</button>
-        <button class="btn btn-sm btn-danger" data-editor-only onclick="eliminarPA(${idx});cerrarModal()">🗑 Eliminar</button>
+    <!-- SECCIÓN COMPRA PA -->
+    <div class="compra-section">
+      <div class="compra-section-title">🛒 Seguimiento de Compra — Estado por ítem</div>
+
+      <!-- Barra de progreso -->
+      <div class="compra-barra-wrap">
+        <div class="compra-pct-row">
+          <div>
+            <div class="compra-pct-num" id="compra-pct-num" style="color:var(--muted)">0%</div>
+            <div class="compra-pct-lbl">Concretado</div>
+          </div>
+          <div style="text-align:right">
+            <div class="compra-pct-detalle" id="compra-pct-detalle">0 de ${items.length} ítems</div>
+            <div id="compra-estado-badge" style="margin-top:4px"></div>
+          </div>
+        </div>
+        <div class="compra-progress">
+          <div class="compra-progress-fill" id="compra-progress-fill" style="width:0%;background:var(--muted)"></div>
+        </div>
       </div>
-      <button class="btn btn-sm btn-ghost" onclick="imprimirModalSC()">🖨 Imprimir</button>
+
+      ${!esModoEditor() ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Lector — solo visualización.</div>' : ''}
+
+      <!-- Lista ítems agrupados por categoría con estados de compra -->
+      <div id="compra-items-list">
+        ${renderItemsCompraPA(items, pa)}
+      </div>
+
+      ${esModoEditor() ? `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm btn-ghost" data-editor-only onclick="cambiarEstadoPA(${idx})">🔄 Estado PA</button>
+          <button class="btn btn-sm btn-danger" data-editor-only onclick="eliminarPA(${idx});cerrarModal()">🗑 Eliminar</button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm btn-ghost" onclick="imprimirModalSC()">🖨 Imprimir</button>
+          <button class="btn btn-green" onclick="confirmarCompraPA()" style="padding:9px 20px;font-size:13px;font-weight:700;letter-spacing:.5px">
+            ✅ Guardar
+          </button>
+        </div>
+      </div>` : `<div style="margin-top:12px;text-align:right"><button class="btn btn-sm btn-ghost" onclick="imprimirModalSC()">🖨 Imprimir</button></div>`}
     </div>`;
 
   document.getElementById('modal-sc-num').textContent = `PA ${pa.numPA||''}`;
   document.getElementById('modal-sc-body').innerHTML = content;
   document.getElementById('modal-sc').classList.add('open');
+  // Recalc progress bar from saved state
+  _recalcCI_PA(pa.itemsDetalle||{}, items.length);
 }
+
+
+// ══ PA PURCHASE TRACKING ══════════════════════════════════════
+function renderItemsCompraPA(items, pa) {
+  if (!items.length) return '<div style="color:var(--muted);font-size:12px;padding:10px">Sin ítems registrados</div>';
+  const det = pa.itemsDetalle || {};
+  const CAT_LABELS_PA = {M:'🛒 Mercadería',L:'🧹 Limpieza y Descartables',H:'🛏 Hotelería',A:'💧 Agua, Gas y Leña',K:'🏪 Kiosco La Brea'};
+  const catOrder = ['M','L','H','A','K'];
+  // Group by cat
+  const byCat = {};
+  items.forEach((it,i) => {
+    const c = it.cat || pa.categoria || 'M';
+    if (!byCat[c]) byCat[c] = [];
+    byCat[c].push({it, i});
+  });
+  let counter = 0;
+  const rows = catOrder.filter(c => byCat[c]).map(c => {
+    const header = `<div style="padding:8px 0 4px;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);border-top:1px solid var(--border);margin-top:8px">${CAT_LABELS_PA[c]||c}</div>`;
+    const itemRows = byCat[c].map(({it, i}) => {
+      counter++;
+      const d = det[i] || {};
+      const estado = d.estado || 'PRESUPUESTADO';
+      const stateClass = {COMPRADO:'compra-item-ok',NO_COMPRADO:'compra-item-no',PRESUPUESTADO:''}[estado]||'';
+      const cantDisp = it.cant ? `${it.cant}${it.medida?' '+it.medida:''}` : '—';
+      const isEditor = esModoEditor();
+      const comprobante = estado === 'COMPRADO' ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;padding:8px 10px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:6px">
+          <div style="font-size:10px;font-weight:700;color:green;width:100%">📄 Comprobante de compra</div>
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)">Fecha
+            <input type="date" id="pa-fc-${i}" value="${d.factura?.fecha||''}" ${isEditor?`onchange="setPAItem(${i},'fecha',this.value)"`:'disabled'} style="font-size:11px;border:1px solid var(--border2);border-radius:4px;padding:3px 6px;background:var(--s3);color:var(--text);outline:none"></label>
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)">N° Comprobante
+            <input type="text" id="pa-fn-${i}" value="${d.factura?.num||''}" placeholder="Ej: 0001-00012345" ${isEditor?`oninput="setPAItem(${i},'num',this.value)"`:'disabled'} style="font-size:11px;border:1px solid var(--border2);border-radius:4px;padding:3px 6px;width:160px;background:var(--s3);color:var(--text);outline:none"></label>
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)">Proveedor
+            <input type="text" id="pa-fp-${i}" value="${d.factura?.proveedor||''}" placeholder="Nombre del proveedor" ${isEditor?`oninput="setPAItem(${i},'proveedor',this.value)"`:'disabled'} style="font-size:11px;border:1px solid var(--border2);border-radius:4px;padding:3px 6px;width:170px;background:var(--s3);color:var(--text);outline:none"></label>
+        </div>` : '';
+      const justificacion = estado === 'NO_COMPRADO' ? `
+        <div style="margin-top:6px">
+          <input type="text" id="pa-just-${i}" value="${d.justificacion||''}" placeholder="Justificar por qué no se compró..." ${isEditor?`oninput="setPAItem(${i},'justificacion',this.value)"`:'disabled'}
+            style="width:100%;font-size:11px;border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:6px 10px;background:rgba(239,68,68,.05);color:var(--text);outline:none;box-sizing:border-box">
+        </div>` : '';
+      return `<div class="compra-item ${stateClass}" style="margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-family:var(--fm);color:var(--or);font-size:11px;flex-shrink:0">${String(counter).padStart(2,'0')}.</span>
+          <span style="flex:1;font-size:13px;font-weight:500">${it.nombre||'—'}${it.marca?` <span style="color:var(--muted);font-size:11px">— ${it.marca}</span>`:''}</span>
+          <span style="font-size:11px;color:var(--muted);white-space:nowrap">Cant: <strong>${cantDisp}</strong></span>
+          ${isEditor ? `<div style="display:flex;gap:4px;flex-shrink:0">
+            <button onclick="setPAEstado(${i},'PRESUPUESTADO')" style="padding:3px 8px;font-size:10px;border-radius:4px;border:1px solid var(--border2);cursor:pointer;font-family:var(--ff);background:${estado==='PRESUPUESTADO'?'var(--or)':'var(--s2)'};color:${estado==='PRESUPUESTADO'?'#fff':'var(--muted)'}">PPTO</button>
+            <button onclick="setPAEstado(${i},'COMPRADO')" style="padding:3px 8px;font-size:10px;border-radius:4px;border:1px solid rgba(34,197,94,.3);cursor:pointer;font-family:var(--ff);background:${estado==='COMPRADO'?'rgba(34,197,94,.2)':'var(--s2)'};color:${estado==='COMPRADO'?'#4ade80':'var(--muted)'}">COMPRADO</button>
+            <button onclick="setPAEstado(${i},'NO_COMPRADO')" style="padding:3px 8px;font-size:10px;border-radius:4px;border:1px solid rgba(239,68,68,.3);cursor:pointer;font-family:var(--ff);background:${estado==='NO_COMPRADO'?'rgba(239,68,68,.2)':'var(--s2)'};color:${estado==='NO_COMPRADO'?'#f87171':'var(--muted)'}">NO COMPRADO</button>
+          </div>` : `<span style="font-size:11px;font-weight:700;color:${{COMPRADO:'#4ade80',NO_COMPRADO:'#f87171',PRESUPUESTADO:'var(--muted)'}[estado]}">${{COMPRADO:'✔ Comprado',NO_COMPRADO:'✕ No comprado',PRESUPUESTADO:'⏳ Ppto'}[estado]||estado}</span>`}
+        </div>
+        ${comprobante}${justificacion}
+      </div>`;
+    }).join('');
+    return header + itemRows;
+  }).join('');
+  return rows;
+}
+
+function setPAEstado(iidx, newEstado) {
+  if (!esModoEditor()) return;
+  const pa = paData[window._paIdx]; if (!pa) return;
+  if (!pa.itemsDetalle) pa.itemsDetalle = {};
+  if (!pa.itemsDetalle[iidx]) pa.itemsDetalle[iidx] = {};
+  pa.itemsDetalle[iidx].estado = newEstado;
+  if (newEstado !== 'COMPRADO') delete pa.itemsDetalle[iidx].factura;
+  // Re-render the items list
+  document.getElementById('compra-items-list').innerHTML = renderItemsCompraPA(pa.items||[], pa);
+  _recalcCI_PA(pa.itemsDetalle, (pa.items||[]).length);
+}
+
+function setPAItem(iidx, campo, val) {
+  if (!esModoEditor()) return;
+  const pa = paData[window._paIdx]; if (!pa) return;
+  if (!pa.itemsDetalle) pa.itemsDetalle = {};
+  if (!pa.itemsDetalle[iidx]) pa.itemsDetalle[iidx] = {};
+  if (!pa.itemsDetalle[iidx].factura) pa.itemsDetalle[iidx].factura = {};
+  if (campo === 'justificacion') pa.itemsDetalle[iidx].justificacion = val;
+  else pa.itemsDetalle[iidx].factura[campo] = val;
+}
+
+function _recalcCI_PA(det, total) {
+  if (!total) return;
+  const entries = Object.values(det||{});
+  const comprados   = entries.filter(e => e.estado === 'COMPRADO').length;
+  const noComprados = entries.filter(e => e.estado === 'NO_COMPRADO').length;
+  const concretados = comprados + noComprados;
+  const pct = Math.round((concretados / total) * 100);
+  const fill = document.getElementById('compra-progress-fill');
+  const numEl = document.getElementById('compra-pct-num');
+  const detEl = document.getElementById('compra-pct-detalle');
+  const color = noComprados > 0 ? 'var(--orange)' : (pct === 100 ? 'var(--green)' : 'var(--or)');
+  if (fill) { fill.style.width = pct + '%'; fill.style.background = color; }
+  if (numEl) { numEl.textContent = pct + '%'; numEl.style.color = color; }
+  if (detEl) detEl.textContent = `${comprados} comprado${comprados!==1?'s':''} · ${noComprados} no comprado${noComprados!==1?'s':''} · de ${total} total`;
+}
+
+async function confirmarCompraPA() {
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
+  const pa = paData[window._paIdx]; if (!pa) return;
+  if (!pa.itemsDetalle) pa.itemsDetalle = {};
+  // Collect current factura/justificacion values from DOM
+  (pa.items||[]).forEach((_,i) => {
+    if (!pa.itemsDetalle[i]) return;
+    const fc = document.getElementById('pa-fc-'+i);
+    const fn = document.getElementById('pa-fn-'+i);
+    const fp = document.getElementById('pa-fp-'+i);
+    const fj = document.getElementById('pa-just-'+i);
+    if (fc && fn && fp) {
+      if (!pa.itemsDetalle[i].factura) pa.itemsDetalle[i].factura = {};
+      pa.itemsDetalle[i].factura.fecha     = fc.value;
+      pa.itemsDetalle[i].factura.num       = fn.value;
+      pa.itemsDetalle[i].factura.proveedor = fp.value;
+    }
+    if (fj) pa.itemsDetalle[i].justificacion = fj.value;
+  });
+  // Calculate pct
+  const total = (pa.items||[]).length;
+  const entries = Object.values(pa.itemsDetalle);
+  const comprados = entries.filter(e => e.estado==='COMPRADO').length;
+  const noComprados = entries.filter(e => e.estado==='NO_COMPRADO').length;
+  const pct = total ? Math.round(((comprados+noComprados)/total)*100) : 0;
+  pa.pctComprado = pct;
+  pa.tieneAlerta = noComprados > 0;
+  if (pct === 100) pa.estado = noComprados > 0 ? 'ENTREGADO' : 'ENTREGADO';
+  // Save to Supabase
+  const patch = { items_detalle: pa.itemsDetalle, pct_comprado: pct, tiene_alerta: pa.tieneAlerta, estado: pa.estado };
+  if (pa.numPA) await sbPatch('pedidos_abastecimiento', 'num_pa', pa.numPA, patch);
+  localStorage.setItem('nielsen_pa_2026', JSON.stringify(paData));
+  renderHistorialPA();
+  showToast('✅ Estado de compra guardado', 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════
 
 function cambiarEstadoPA(idx) {
   if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor', 'error'); return; }
@@ -5679,8 +5851,8 @@ async function recargarSCsDesdeLS() {
   if (rows && Array.isArray(rows)) {
     // Convertir snake_case → camelCase para compatibilidad con el resto del CC
     const fromDB = rows.map(r => ({
-      numSC:      r.num_sc,
-      num:        r.num_sc,  // backward compat alias
+      numSC:      normSCCode(r.num_sc),
+      num:        normSCCode(r.num_sc),  // backward compat alias
       numOP:      r.num_op || '',
       area:       r.area || '',
       subarea:    r.subarea || '',
