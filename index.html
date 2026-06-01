@@ -1117,6 +1117,28 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 .sb-drag-handle:hover { opacity: 1; cursor: grab; }
 .sidebar-section.dragging { opacity: .4; background: var(--s2); border-radius: 8px; }
 .sidebar-section.drag-over { border-top: 2px solid var(--or); }
+
+/* ── EDITAR SC full mode ── */
+.sc-full-edit-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
+.sc-full-edit-grid .span2 { grid-column: 1/-1; }
+.sc-full-edit-field label { display:block; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:4px; }
+.sc-full-edit-field input,
+.sc-full-edit-field select,
+.sc-full-edit-field textarea {
+  width:100%; background:var(--s2); border:1.5px solid var(--border2); border-radius:7px;
+  padding:7px 10px; color:var(--text); font-family:var(--ff); font-size:13px; outline:none;
+  transition:border-color .15s; box-sizing:border-box;
+}
+.sc-full-edit-field input:focus,
+.sc-full-edit-field select:focus,
+.sc-full-edit-field textarea:focus { border-color:var(--or); }
+.sc-full-edit-field textarea { resize:vertical; min-height:60px; }
+.editar-sc-active-banner {
+  display:flex; align-items:center; gap:8px; padding:8px 14px; margin-bottom:14px;
+  background:rgba(232,93,37,.1); border:1.5px solid rgba(232,93,37,.35); border-radius:8px;
+  font-size:12px; font-weight:700; color:var(--or); letter-spacing:.5px;
+}
+
 </style>
 </head>
 <body>
@@ -1769,6 +1791,164 @@ let contadorOP = parseInt(localStorage.getItem('nielsen_op_contador') || '0');
 
 
 // ── Normalizer: display OP- prefixes as PC- (backward compat with old records) ──
+
+// ══ EDITAR SC MODE ════════════════════════════════════════
+let modoEditarSC = false;
+let _epinBuf = '';
+
+function toggleEditarSCMode() {
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor', 'error'); return; }
+  if (modoEditarSC) { desactivarEditarSC(); return; }
+  // Show PIN confirmation
+  cerrarSettings();
+  document.getElementById('editar-sc-pin-ov').classList.add('open');
+  _epinBuf = '';
+  updateEPinDots();
+}
+function cerrarEditarSCPin() {
+  document.getElementById('editar-sc-pin-ov').classList.remove('open');
+  _epinBuf = '';
+  updateEPinDots();
+  document.getElementById('epin-err').textContent = '';
+}
+function updateEPinDots() {
+  for (let i=0;i<4;i++) {
+    const d=document.getElementById('epd-'+i);
+    if(d) d.classList.toggle('filled', i<_epinBuf.length);
+  }
+}
+function epinDigit(d) {
+  if (_epinBuf.length>=4) return;
+  _epinBuf+=d; updateEPinDots();
+  if (_epinBuf.length===4) setTimeout(epinConfirm,120);
+}
+function epinDel() { _epinBuf=_epinBuf.slice(0,-1); updateEPinDots(); }
+function epinClear() { _epinBuf=''; updateEPinDots(); }
+function epinConfirm() {
+  if (_epinBuf === EDITOR_PIN) {
+    cerrarEditarSCPin();
+    activarEditarSC();
+  } else {
+    document.getElementById('epin-err').textContent = '❌ PIN incorrecto';
+    _epinBuf=''; updateEPinDots();
+  }
+}
+function activarEditarSC() {
+  modoEditarSC = true;
+  const btn = document.getElementById('btn-editar-sc-toggle');
+  if (btn) { btn.textContent='Desactivar'; btn.style.background='rgba(34,197,94,.15)'; btn.style.borderColor='rgba(34,197,94,.4)'; btn.style.color='var(--green)'; }
+  showToast('✏️ Modo Edición SC activado — abrí una SC para editar', 'ok');
+}
+function desactivarEditarSC() {
+  modoEditarSC = false;
+  const btn = document.getElementById('btn-editar-sc-toggle');
+  if (btn) { btn.textContent='Activar'; btn.style.background='rgba(232,93,37,.1)'; btn.style.borderColor='rgba(232,93,37,.4)'; btn.style.color='var(--or)'; }
+  showToast('Modo Edición SC desactivado', 'ok');
+}
+
+// ── FULL EDIT verSC renderer ──
+function renderEditGridSC(sc, idx) {
+  const AREAS = ['TALLER','TRANSPORTE','MANTENIMIENTO','GERENCIA','COMPRAS','SSMA','LOGISTICA','RRHH','CALIDAD','PRESIDENCIA','COCINA BASE','CAMPAMENTOS'];
+  const SUBAREAS = ['ELECTRICIDAD','PLOMERIA','METALURGIA','CAMPAMENTO'];
+  const MOTIVOS = ['REPOSICIÓN DE STOCK','PROYECTO','MANTENIMIENTO','NUEVO REQUERIMIENTO','REEMPLAZO','URGENCIA OPERATIVA','OTROS'];
+  const ESTADOS = ['PENDIENTE','EN PROCESO','COMPLETADA','CANCELADA'];
+  const CRIT = ['CRITICA','URGENTE','ALTA','MEDIA','BAJA'];
+  const f = (id, label, val, type='text', fullrow=false) =>
+    `<div class="sc-full-edit-field${fullrow?' span2':''}">
+      <label>${label}</label>
+      <input type="${type}" id="esc-${id}" value="${(val||'').toString().replace(/"/g,'&quot;')}">
+    </div>`;
+  const sel = (id, label, val, opts, fullrow=false) =>
+    `<div class="sc-full-edit-field${fullrow?' span2':''}">
+      <label>${label}</label>
+      <select id="esc-${id}">${opts.map(o=>`<option value="${o}"${o===val?'selected':''}>${o}</option>`).join('')}</select>
+    </div>`;
+  const ta = (id, label, val) =>
+    `<div class="sc-full-edit-field span2">
+      <label>${label}</label>
+      <textarea id="esc-${id}">${(val||'').toString().replace(/</g,'&lt;')}</textarea>
+    </div>`;
+  return `
+    <div class="editar-sc-active-banner">✏️ MODO EDICIÓN — Modificá los campos y presioná GUARDAR</div>
+    <div class="sc-full-edit-grid">
+      ${f('numsc','N° SC',sc.numSC||sc.num)}
+      ${sel('estado','Estado',sc.estado,ESTADOS)}
+      ${sel('criticidad','Criticidad',sc.criticidad,CRIT)}
+      ${sel('area','Área',sc.area,AREAS)}
+      ${sc.area==='MANTENIMIENTO'?sel('subarea','Sub-área',sc.subarea,SUBAREAS):''}
+      ${f('solicitante','Solicitante',sc.solicitante)}
+      ${f('email','Correo',sc.email,'email')}
+      ${f('fecha','Fecha Solicitud',sc.fecha,'date')}
+      ${f('fechaLimite','Fecha Límite',sc.fechaLimite,'date')}
+      ${sel('motivo','Motivo de Compra',sc.motivo,MOTIVOS)}
+      ${f('os','Orden de Servicio',sc.os)}
+      ${f('osAsunto','Asunto OS',sc.osAsunto)}
+      ${ta('osDesc','Descripción OS',sc.osDesc)}
+      ${f('osResp','Responsable OS',sc.osResp)}
+      ${f('panolero','Pañolero Consultado',sc.panolero)}
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px">
+      <button class="btn btn-ghost btn-sm" onclick="desactivarEditarSC();verSC(window._scIdx)">Cancelar</button>
+      <button onclick="guardarEditCompletoSC(${idx})"
+        style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--ff);letter-spacing:.5px;display:flex;align-items:center;gap:8px">
+        💾 Guardar cambios
+      </button>
+    </div>`;
+}
+
+async function guardarEditCompletoSC(idx) {
+  if (!modoEditarSC || !esModoEditor()) return;
+  const sc = scs[idx]; if (!sc) return;
+  const g = id => (document.getElementById('esc-'+id)||{}).value||'';
+
+  const oldNumSC = sc.numSC || sc.num;
+  const newNumSC = g('numsc').trim() || oldNumSC;
+
+  // Build patch object
+  const patch = {
+    num_sc:       newNumSC,
+    estado:       g('estado'),
+    criticidad:   g('criticidad'),
+    area:         g('area'),
+    subarea:      g('subarea'),
+    solicitante:  g('solicitante'),
+    email:        g('email'),
+    fecha:        g('fecha'),
+    fecha_limite: g('fechaLimite'),
+    motivo:       g('motivo'),
+    os:           g('os'),
+    os_asunto:    g('osAsunto'),
+    os_desc:      g('osDesc'),
+    os_resp:      g('osResp'),
+    panolero:     g('panolero'),
+  };
+
+  // Update Supabase
+  const ok = await sbPatch('solicitudes_compra', 'num_sc', oldNumSC, patch);
+
+  // Update local state
+  Object.assign(sc, {
+    numSC: newNumSC, num: newNumSC,
+    estado: patch.estado, criticidad: patch.criticidad,
+    area: patch.area, subarea: patch.subarea,
+    solicitante: patch.solicitante, email: patch.email,
+    fecha: patch.fecha, fechaLimite: patch.fecha_limite,
+    motivo: patch.motivo, os: patch.os, osAsunto: patch.os_asunto,
+    osDesc: patch.os_desc, osResp: patch.os_resp, panolero: patch.panolero,
+  });
+  // Also update localStorage cache
+  localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+
+  // Re-render all views
+  renderHistorialSC();
+  if (typeof renderPanelSC === 'function') renderPanelSC();
+  if (typeof renderKanban === 'function') renderKanban();
+
+  showToast('✅ SC actualizada correctamente', 'ok');
+  // Refresh the modal with updated data
+  verSC(idx);
+}
+
 
 const CAT_LABELS_PA = {M:'🛒 Mercadería',L:'🧹 Limpieza y Descartables',H:'🛏 Hotelería',A:'💧 Agua, Gas y Leña',K:'🏪 Kiosco La Brea'};
 // ── Normalize old SC codes: PREF-AAAAMM-XXXX → PREF-AAAA-XXXX ──
@@ -2788,7 +2968,8 @@ function verSC(idx) {
     : sc.area;
   const lineas = (sc.items || '').split('\n').map(l => l.trim()).filter(l => l);
   document.getElementById('modal-sc-body').innerHTML = `
-    ${esModoEditor() ? `<div class="sc-edit-panel">
+    ${modoEditarSC && esModoEditor() ? renderEditGridSC(sc, idx) + '<div style="display:none">' : ''}
+    ${!modoEditarSC && esModoEditor() ? `<div class="sc-edit-panel">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:12px">✏️ Editar Solicitud — PIN requerido al guardar</div>
       <div class="sc-edit-row">
         <div class="sc-edit-field"><label>Estado</label>
@@ -2816,6 +2997,7 @@ function verSC(idx) {
           💾 Guardar cambios</button>
       </div>
     </div>` : ''}
+    ${modoEditarSC && esModoEditor() ? '</div>' : ''}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Estado</div>${estBadge(sc)} ${critBadge(sc.criticidad)}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Tipo</div><span class="badge badge-or">${sc.tipo||'—'}</span></div>
@@ -6058,6 +6240,29 @@ iniciarAutoSync();
   </div>
 </div>
 
+
+<!-- ══ EDITAR SC PIN ══ -->
+<div class="cc-ov" id="editar-sc-pin-ov" onclick="if(event.target===this)cerrarEditarSCPin()">
+  <div class="pin-box" style="border-color:rgba(232,93,37,.5)">
+    <div class="pin-title">✏️ EDITAR SC</div>
+    <div class="pin-sub">Confirmá el PIN para habilitar la edición completa</div>
+    <div class="pin-dots">
+      <div class="pin-dot" id="epd-0"></div><div class="pin-dot" id="epd-1"></div>
+      <div class="pin-dot" id="epd-2"></div><div class="pin-dot" id="epd-3"></div>
+    </div>
+    <div class="pin-err" id="epin-err"></div>
+    <div class="pin-numpad">
+      <button class="pin-key" onclick="epinDigit('1')">1</button><button class="pin-key" onclick="epinDigit('2')">2</button><button class="pin-key" onclick="epinDigit('3')">3</button>
+      <button class="pin-key" onclick="epinDigit('4')">4</button><button class="pin-key" onclick="epinDigit('5')">5</button><button class="pin-key" onclick="epinDigit('6')">6</button>
+      <button class="pin-key" onclick="epinDigit('7')">7</button><button class="pin-key" onclick="epinDigit('8')">8</button><button class="pin-key" onclick="epinDigit('9')">9</button>
+      <button class="pin-key" onclick="epinClear()" style="font-size:13px">✕</button>
+      <button class="pin-key" onclick="epinDigit('0')">0</button>
+      <button class="pin-key" onclick="epinDel()" style="font-size:13px">⌫</button>
+    </div>
+    <button class="pin-cancel" onclick="cerrarEditarSCPin()">Cancelar</button>
+  </div>
+</div>
+
 <!-- ══ SETTINGS MODAL ══ -->
 <div class="cc-ov" id="settings-ov" onclick="if(event.target===this)cerrarSettings()">
   <div class="settings-box">
@@ -6066,6 +6271,17 @@ iniciarAutoSync();
       <button class="settings-close" onclick="cerrarSettings()">✕</button>
     </div>
     <div class="settings-body">
+      <!-- EDITAR SC -->
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin:10px 0 4px">Edición avanzada</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">✏️ Editar SC</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Habilita edición completa de campos en VER</div>
+        </div>
+        <button id="btn-editar-sc-toggle" onclick="toggleEditarSCMode()" style="padding:7px 16px;border-radius:7px;border:1.5px solid rgba(232,93,37,.4);background:rgba(232,93,37,.1);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .2s">
+          Activar
+        </button>
+      </div>
       <!-- LINKS -->
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:4px">Links del sistema</div>
       <div class="settings-field">
