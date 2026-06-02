@@ -1946,7 +1946,7 @@ async function guardarEditCompletoSC(idx) {
     osDesc: patch.os_desc, osResp: patch.os_resp, panolero: patch.panolero,
   });
   // Also update localStorage cache
-  localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
 
   // Re-render all views
   renderHistorialSC();
@@ -2503,7 +2503,7 @@ function confirmarSC() {
   };
 
   scs.push(sc);
-  localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
   localStorage.setItem('nielsen_sc_contadores', JSON.stringify(contadorPorArea));
   actualizarContadores();
   registrarOPdesdeSC(sc); // registrar automáticamente en historial de OP
@@ -2774,7 +2774,7 @@ async function confirmarPinEditSC(){
   if(ch.nuevaCriticidad) sc.criticidad=ch.nuevaCriticidad;
   if(ch.nuevaFecha!==undefined) sc.fechaLimite=ch.nuevaFecha;
   if(ch.nuevaObs!==undefined)   sc.obs=ch.nuevaObs;
-  localStorage.setItem('nielsen_scs_2026',JSON.stringify(scs));
+  _lsSet('nielsen_scs_2026',JSON.stringify(scs));
   if(sc.numSC) await sbPatch('solicitudes_compra','num_sc',sc.numSC,{
     estado:sc.estado, criticidad:sc.criticidad,
     fecha_limite:sc.fechaLimite||null, obs:sc.obs||''
@@ -3250,7 +3250,7 @@ document.getElementById('modal-sc').addEventListener('click', e => { if (e.targe
 function cambiarEstado(idx, estado) {
   if (idx === undefined || idx === null) return;
   scs[idx].estado = estado;
-  localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
   const _scSB = scs[idx]; if (_scSB?.numSC) sbPatch('solicitudes_compra','num_sc',_scSB.numSC,{estado});
   actualizarContadores();
   cerrarModal();
@@ -3266,7 +3266,7 @@ function eliminarSC(idx) {
   if (!confirm('¿Eliminar esta SC permanentemente?')) return;
   const _scDel = scs[idx]; if (_scDel?.numSC) sbDelete('solicitudes_compra','num_sc',_scDel.numSC);
   scs.splice(idx, 1);
-  localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
   actualizarContadores();
   cerrarModal();
   renderPanel();
@@ -3384,6 +3384,35 @@ async function sbUpsert(tabla, matchCol, datos) {
   } catch(e) { console.warn('SB upsert error:', e.message); }
 }
 
+
+// ══ SUPABASE-FIRST: skip localStorage when online ══════════
+let _sbOnline = true; // set by sbSelect results
+
+function _lsSet(key, val) {
+  // Only save to localStorage if Supabase is offline
+  if (!_sbOnline) {
+    try { localStorage.setItem(key, val); } catch(e) {}
+  }
+}
+
+async function sbInsert(tabla, datos) {
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/' + tabla, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': _SB_KEY,
+        'Authorization': 'Bearer ' + _SB_KEY,
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(datos)
+    });
+    if (r.ok || r.status === 201) return true;
+    console.error('sbInsert error:', r.status, await r.text());
+    return false;
+  } catch(e) { console.error('sbInsert:', e); return false; }
+}
+
 async function sbPatch(tabla, col, val, datos) {
   try {
     await fetch(`${_SB_URL}/rest/v1/${tabla}?${col}=eq.${encodeURIComponent(val)}`, {
@@ -3417,7 +3446,7 @@ function setEl(id, val) {
 // ══════════════════════════════════════════════════
 // MODOS LECTOR / EDITOR
 // ══════════════════════════════════════════════════
-const EDITOR_PIN    = '2026';
+const EDITOR_PIN    = '110226';
 const SETTINGS_PIN  = '2026';
 let modoActual = 'LECTOR';
 let _pinBuf = '', _spinBuf = '', _lpinBuf = '', _lcpinBuf = '';
@@ -3931,7 +3960,7 @@ SI=encontrado en factura, PARCIAL=similar, NO=ausente.`;
       resultado: result,
       fecha: new Date().toISOString()
     };
-    localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+    _lsSet('nielsen_scs_2026', JSON.stringify(scs));
 
   } catch (err) {
     const esConexion = err.message.includes('fetch') || err.message.includes('network') || err.message.includes('Failed');
@@ -4224,7 +4253,7 @@ function guardarManual(total) {
 
   renderAnalisis(result, sc, itemsListado);
   scs[window._scIdx].factura = { nombre: 'Ingreso manual', resultado: result, fecha: new Date().toISOString() };
-  localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
   showToast('Resultado guardado correctamente', 'ok');
 }
 
@@ -4451,7 +4480,7 @@ function importarSCsExcel(event) {
       if (!confirm(msg)) { event.target.value = ''; return; }
 
       scs.push(...nuevas);
-      localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+      _lsSet('nielsen_scs_2026', JSON.stringify(scs));
       localStorage.setItem('nielsen_sc_contadores', JSON.stringify(contadorPorArea));
       // Sync imported SCs to Supabase
       nuevas.forEach(sc => {
@@ -4694,7 +4723,7 @@ async function confirmarCompraFinal() {
   sc.itemsComprados = comprados;
 
   // Guardar local + Supabase
-  localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
   if(sc.numSC) await sbPatch('solicitudes_compra','num_sc',sc.numSC,{
     estado:        sc.estado,
     tiene_alerta:  sc.tieneAlerta ? true : false,
@@ -4799,7 +4828,7 @@ async function _saveItemDetalle(sc) {
     sc.tieneAlerta=false;
   }
 
-  localStorage.setItem('nielsen_scs_2026',JSON.stringify(scs));
+  _lsSet('nielsen_scs_2026',JSON.stringify(scs));
   if(sc.numSC) await sbPatch('solicitudes_compra','num_sc',sc.numSC,{
     estado:sc.estado,
     tiene_alerta: sc.tieneAlerta ? true : false,
@@ -4869,7 +4898,7 @@ function confirmarCompra() {
   if (pct === 100 && sc.estado === 'PENDIENTE') sc.estado = 'COMPLETADA';
   else if (pct > 0 && sc.estado === 'PENDIENTE') sc.estado = 'EN PROCESO';
 
-  localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
   // Sync ALL changed fields to Supabase
   if (sc.numSC) sbPatch('solicitudes_compra','num_sc',sc.numSC,{
     estado: sc.estado,
@@ -5237,7 +5266,7 @@ function registrarOPdesdeSC(sc) {
     createdAt: new Date().toISOString()
   };
   ops.push(op);
-  localStorage.setItem('nielsen_ops_2026', JSON.stringify(ops));
+  _lsSet('nielsen_ops_2026', JSON.stringify(ops));
   actualizarContadoresOP();
 }
 
@@ -5283,7 +5312,7 @@ function guardarOP() {
   if (!op.solicitante) { showToast('Ingresá el solicitante', 'error'); return; }
   if (!op.itemsOriginal) { showToast('Ingresá el listado del pedido', 'error'); return; }
   ops.push(op);
-  localStorage.setItem('nielsen_ops_2026', JSON.stringify(ops));
+  _lsSet('nielsen_ops_2026', JSON.stringify(ops));
   actualizarContadoresOP();
   cerrarModal2('modal-op');
   renderHistorialOP();
@@ -5294,7 +5323,7 @@ function eliminarOP(idx) {
   if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Editor','error'); return; }
   if (!confirm('¿Eliminar esta OP?')) return;
   ops.splice(idx, 1);
-  localStorage.setItem('nielsen_ops_2026', JSON.stringify(ops));
+  _lsSet('nielsen_ops_2026', JSON.stringify(ops));
   actualizarContadoresOP();
   cerrarModal2('modal-ver-op');
   renderHistorialOP();
@@ -5515,7 +5544,7 @@ async function sincronizarDesdeSheet() {
     });
 
     if (nuevas > 0 || actualizadas > 0) {
-      localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+      _lsSet('nielsen_scs_2026', JSON.stringify(scs));
       actualizarContadores();
       // Refresh vistas activas
       const activeView = document.querySelector('.view.active');
@@ -5833,7 +5862,7 @@ async function renderHistorialPA() {
       creado:      r.creado_at || '',
       _sbId:       r.id
     }));
-    localStorage.setItem('nielsen_pa_2026', JSON.stringify(paData));
+    _lsSet('nielsen_pa_2026', JSON.stringify(paData));
   } else {
     // Fallback localStorage
     paData = JSON.parse(localStorage.getItem('nielsen_pa_2026') || '[]');
@@ -5880,7 +5909,11 @@ async function renderHistorialPA() {
     const catLabels = {M:'Mercadería',L:'Limpieza',H:'Hotelería',A:'Agua/Gas',K:'Kiosco'};
     const pctColor = pct===100?'var(--green)':pct>0?'var(--yellow)':'var(--muted)';
     return '<tr>' +
-      '<td class="mono" style="color:var(--or);font-weight:700">' + normPA(pa.numPA||'—') + '</td>' +
+      '<td class="mono" style="color:var(--or);font-weight:700">'
+      + (modoEditarSC && esModoEditor()
+          ? `<input type="text" value="${normPA(pa.numPA||'')}" onchange="guardarEditPANum(${paData.indexOf(pa)},this.value)" style="width:130px;font-family:var(--fm);font-size:12px;font-weight:700;color:var(--or);background:var(--s2);border:1.5px solid var(--or);border-radius:5px;padding:3px 6px;outline:none">`
+          : normPA(pa.numPA||'—'))
+      + '</td>' +
       '<td>' + formatFecha(pa.fecha) + '</td>' +
       '<td><strong>' + (pa.campamento||'—') + '</strong></td>' +
       '<td>' + (pa.solicitante||'—') + '</td>' +
@@ -6003,6 +6036,12 @@ function verPA(idx) {
       </div>` : `<div style="margin-top:12px;text-align:right"><button class="btn btn-sm btn-ghost" onclick="imprimirModalSC()">🖨 Imprimir</button></div>`}
     </div>`;
 
+  if (modoEditarSC && esModoEditor()) {
+    document.getElementById('modal-sc-num').textContent = `PA ${normPA(pa.numPA||'')}`;
+    document.getElementById('modal-sc-body').innerHTML = renderEditGridPA(pa, idx);
+    document.getElementById('modal-sc').classList.add('open');
+    return;
+  }
   document.getElementById('modal-sc-num').textContent = `PA ${normPA(pa.numPA||'')}`;
   document.getElementById('modal-sc-body').innerHTML = content;
   document.getElementById('modal-sc').classList.add('open');
@@ -6136,7 +6175,7 @@ async function confirmarCompraPA() {
   // Save to Supabase
   const patch = { items_detalle: pa.itemsDetalle, pct_comprado: pct, tiene_alerta: pa.tieneAlerta, estado: pa.estado };
   if (pa.numPA) await sbPatch('pedidos_abastecimiento', 'num_pa', pa.numPA, patch);
-  localStorage.setItem('nielsen_pa_2026', JSON.stringify(paData));
+  _lsSet('nielsen_pa_2026', JSON.stringify(paData));
   renderHistorialPA();
   showToast('✅ Estado de compra guardado', 'ok');
 }
@@ -6219,6 +6258,112 @@ async function recuperarSCsFaltantes() {
   renderHistorialPedidos();
 }
 
+
+// ══ PA FULL EDIT MODE ══════════════════════════════════════
+function renderEditGridPA(pa, idx) {
+  const ESTADOS_PA = ['PENDIENTE','EN PROCESO','ENTREGADO','CANCELADO'];
+  const CATS_PA = ['M','L','H','A','K'];
+  const CAT_NAMES = {M:'Mercadería',L:'Limpieza y Desc.',H:'Hotelería',A:'Agua, Gas y Leña',K:'Kiosco La Brea'};
+  const f = (id, label, val, type='text', fullrow=false) =>
+    `<div class="sc-full-edit-field${fullrow?' span2':''}">
+      <label>${label}</label>
+      <input type="${type}" id="epa-${id}" value="${(val||'').toString().replace(/"/g,'&quot;')}">
+    </div>`;
+  const sel = (id, label, val, opts, fullrow=false) =>
+    `<div class="sc-full-edit-field${fullrow?' span2':''}">
+      <label>${label}</label>
+      <select id="epa-${id}">${opts.map(o=>`<option value="${o}"${o===val?'selected':''}>${o}</option>`).join('')}</select>
+    </div>`;
+  const selObj = (id, label, val, opts, fullrow=false) =>
+    `<div class="sc-full-edit-field${fullrow?' span2':''}">
+      <label>${label}</label>
+      <select id="epa-${id}">${Object.entries(opts).map(([v,l])=>`<option value="${v}"${v===val?'selected':''}>${l}</option>`).join('')}</select>
+    </div>`;
+  return `
+    <div class="editar-sc-active-banner">✏️ MODO EDICIÓN CC — Modificá los campos y presioná GUARDAR</div>
+    <div class="sc-full-edit-grid">
+      ${f('numpa','N° PA', pa.numPA)}
+      ${sel('estado','Estado', pa.estado||'PENDIENTE', ESTADOS_PA)}
+      ${f('solicitante','Solicitante', pa.solicitante)}
+      ${f('email','Correo', pa.email)}
+      ${f('campamento','Campamento', pa.campamento)}
+      ${f('fecha','Fecha Pedido', pa.fecha, 'date')}
+      ${f('fechaEntrega','Entrega Requerida', pa.fechaEntrega||pa.entrega, 'date')}
+      ${selObj('cat','Categoría', pa.cat||'M', CAT_NAMES)}
+      ${f('obs','Observaciones', pa.obs, 'text', true)}
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px">
+      <button class="btn btn-ghost btn-sm" onclick="desactivarEditarSC();verPA(window._paIdx)">Cancelar</button>
+      <button onclick="guardarEditCompletoPA(${idx})"
+        style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--ff);letter-spacing:.5px">
+        💾 Guardar cambios
+      </button>
+    </div>`;
+}
+
+async function guardarEditPANum(idx, newNum) {
+  if (!modoEditarSC || !esModoEditor()) return;
+  const pa = paData[idx]; if (!pa) return;
+  const oldNum = pa.numPA;
+  pa.numPA = newNum;
+  await sbPatch('pedidos_abastecimiento', 'num_pa', oldNum, {num_pa: newNum});
+  _lsSet('nielsen_pa_2026', JSON.stringify(paData));
+  renderHistorialPA();
+  showToast('✅ N° PA actualizado', 'ok');
+}
+
+async function guardarEditCompletoPA(idx) {
+  if (!modoEditarSC || !esModoEditor()) return;
+  const pa = paData[idx]; if (!pa) return;
+  const g = id => (document.getElementById('epa-'+id)||{}).value||'';
+  const oldNumPA = pa.numPA;
+  const newNumPA = g('numpa').trim() || oldNumPA;
+  const patch = {
+    num_pa:       newNumPA,
+    estado:       g('estado'),
+    solicitante:  g('solicitante'),
+    email:        g('email'),
+    campamento:   g('campamento'),
+    fecha:        g('fecha'),
+    fecha_entrega: g('fechaEntrega'),
+    cat:          g('cat'),
+    obs:          g('obs'),
+  };
+  // Update Supabase
+  await sbPatch('pedidos_abastecimiento', 'num_pa', oldNumPA, patch);
+  // Update local state
+  Object.assign(pa, {
+    numPA: newNumPA, estado: patch.estado,
+    solicitante: patch.solicitante, email: patch.email,
+    campamento: patch.campamento, fecha: patch.fecha,
+    fechaEntrega: patch.fecha_entrega, entrega: patch.fecha_entrega,
+    cat: patch.cat, obs: patch.obs,
+  });
+  _lsSet('nielsen_pa_2026', JSON.stringify(paData));
+  renderHistorialPA();
+  showToast('✅ PA actualizado', 'ok');
+  verPA(idx);
+}
+
+// ══ HISTORIAL PEDIDOS inline edit ══════════════════════════
+async function guardarEditPC(scIdx, campo, valor, oldVal) {
+  if (!modoEditarSC || !esModoEditor()) return;
+  const sc = scs[scIdx]; if (!sc) return;
+  const oldNumSC = sc.numSC || sc.num;
+  // Build patch — campo is the JS key, map to Supabase snake_case
+  const colMap = { numOP:'num_op', numSC:'num_sc', estado:'estado', solicitante:'solicitante', area:'area' };
+  const sbCol = colMap[campo];
+  if (!sbCol) return;
+  sc[campo] = valor;
+  if (campo === 'numOP') sc.numPC = valor;
+  if (campo === 'numSC') sc.num = valor;
+  await sbPatch('solicitudes_compra', 'num_sc', oldNumSC, { [sbCol]: valor });
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
+  renderHistorialPedidos();
+  renderHistorial();
+  showToast('✅ Guardado', 'ok');
+}
+
 function cambiarEstadoPA(idx) {
   if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor', 'error'); return; }
   const pa = paData[idx];
@@ -6228,7 +6373,7 @@ function cambiarEstadoPA(idx) {
   const next = estados[(cur+1) % estados.length];
   paData[idx].estado = next;
   const _paSB = paData[idx]; if (_paSB?.numPA) sbPatch('pedidos_abastecimiento','num_pa',_paSB.numPA,{estado:next});
-  localStorage.setItem('nielsen_pa_2026', JSON.stringify(paData));
+  _lsSet('nielsen_pa_2026', JSON.stringify(paData));
   renderHistorialPA();
   showToast(`Estado PA actualizado: ${next}`, 'ok');
   cerrarModal();
@@ -6239,7 +6384,7 @@ function eliminarPA(idx) {
   if (!confirm('¿Eliminar este Pedido de Abastecimiento?')) return;
   const _paDel = paData[idx]; if (_paDel?.numPA) sbDelete('pedidos_abastecimiento','num_pa',_paDel.numPA);
   paData.splice(idx, 1);
-  localStorage.setItem('nielsen_pa_2026', JSON.stringify(paData));
+  _lsSet('nielsen_pa_2026', JSON.stringify(paData));
   renderHistorialPA();
   showToast('PA eliminado', 'ok');
 }
@@ -6298,19 +6443,21 @@ async function recargarSCsDesdeLS() {
       tieneAlerta:    r.tiene_alerta    || false,
       _sbId:      r.id   // UUID de Supabase
     }));
+    _sbOnline = true;
     scs = fromDB;
     // Reemplazar localStorage con datos frescos de Supabase (borra registros locales huérfanos)
-    localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+    _lsSet('nielsen_scs_2026', JSON.stringify(scs));
     actualizarContadores();
     return;
   }
   // 2. Fallback: localStorage (Supabase offline)
+  _sbOnline = false;
   console.warn('Supabase offline — usando localStorage');
   const fresh = JSON.parse(localStorage.getItem('nielsen_scs_2026') || '[]');
   fresh.forEach(sc => {
     if (!scs.find(s => s.numSC === sc.numSC)) scs.unshift(sc);
   });
-  localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
   actualizarContadores();
 }
 
@@ -6400,7 +6547,11 @@ function renderHistorialPedidos() {
     const estC  = sc.estado==='COMPLETADA'?'badge-green':sc.estado==='EN PROCESO'?'badge-blue':sc.estado==='CANCELADA'?'badge-gray':'badge-yellow';
 
     return `<tr>
-      <td class="mono" style="color:var(--or2);font-weight:700;white-space:nowrap">${pcNum}</td>
+      <td class="mono" style="color:var(--or2);font-weight:700;white-space:nowrap">
+        ${modoEditarSC && esModoEditor()
+          ? `<input type="text" value="${pcNum}" onchange="guardarEditPC(${scs.indexOf(sc)},'numOP',this.value,'${(sc.numOP||sc.numPC||'').replace(/'/g,'')}')" style="width:130px;font-family:var(--fm);font-size:12px;font-weight:700;color:var(--or2);background:var(--s2);border:1.5px solid var(--or);border-radius:5px;padding:3px 6px;outline:none">`
+          : pcNum}
+      </td>
       <td style="white-space:nowrap">${formatFecha(sc.fecha)}</td>
       <td><strong>${sc.area||'—'}</strong>${sc.subarea?`<br><span style="font-size:11px;color:var(--muted)">${sc.subarea}</span>`:''}</td>
       <td>${sc.solicitante||'—'}</td>
@@ -6492,7 +6643,7 @@ iniciarAutoSync();
 <!-- ══ EDITAR SC PIN ══ -->
 <div class="cc-ov" id="editar-sc-pin-ov" onclick="if(event.target===this)cerrarEditarSCPin()">
   <div class="pin-box" style="border-color:rgba(232,93,37,.5)">
-    <div class="pin-title">✏️ EDITAR SC</div>
+    <div class="pin-title">✏️ EDITAR CENTRO DE CONTROL</div>
     <div class="pin-sub">Confirmá el PIN para habilitar la edición completa</div>
     <div class="pin-dots">
       <div class="pin-dot" id="epd-0"></div><div class="pin-dot" id="epd-1"></div>
@@ -6532,7 +6683,7 @@ iniciarAutoSync();
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin:10px 0 4px">Edición avanzada</div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
         <div>
-          <div style="font-size:13px;font-weight:600;color:var(--text)">✏️ Editar SC</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">✏️ Editar Centro de Control</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">Habilita edición completa de campos en VER</div>
         </div>
         <button id="btn-editar-sc-toggle" onclick="toggleEditarSCMode()" style="padding:7px 16px;border-radius:7px;border:1.5px solid rgba(232,93,37,.4);background:rgba(232,93,37,.1);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .2s">
