@@ -1250,7 +1250,7 @@ const CAT_LABELS = {M:'Mercadería',L:'Limpieza y Descartables',H:'Hotelería',A
 // ═══════════════════════════════════════
 // ─── NUMERACIÓN CORRELATIVA ───────────────────────────────
 const OC_KEY = 'nielsen_oc_counter';
-const OC_PREFIX = 'OCC-' + new Date().getFullYear() + '-';
+const OC_PREFIX = 'PA-' + new Date().getFullYear() + '-';
 
 async function getNextOC(){
   const anio = new Date().getFullYear();
@@ -1258,11 +1258,11 @@ async function getNextOC(){
     const r = await fetch(_SB_URL+'/rest/v1/rpc/increment_counter', {
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
-      body: JSON.stringify({counter_name: 'oc_' + anio})
+      body: JSON.stringify({counter_name: 'pa_' + anio})
     });
     if(r.ok){
       const n = await r.json();
-      const num = 'OCC-'+anio+'-'+String(n).padStart(4,'0');
+      const num = 'PA-'+anio+'-'+String(n).padStart(4,'0');
       localStorage.setItem(OC_KEY, n);
       return num;
     }
@@ -1270,7 +1270,7 @@ async function getNextOC(){
   // Fallback to localStorage if Supabase unavailable
   const n = parseInt(localStorage.getItem(OC_KEY) || '0') + 1;
   localStorage.setItem(OC_KEY, n);
-  return OC_PREFIX + String(n).padStart(4,'0');
+  return 'PA-' + new Date().getFullYear() + '-' + String(n).padStart(4,'0');
 }
 
 async function resetearNumero(){

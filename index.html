@@ -1967,6 +1967,13 @@ function normSCCode(code) {
   return String(code).replace(/^([A-Z]+)-(\d{4})(\d{2})-(\d+)$/, '$1-$2-$4');
 }
 
+
+// ── Normalize old OCC- prefixes to PA- ──
+function normPA(val) {
+  if (!val) return val;
+  return String(val).replace(/^OCC-/, 'PA-');
+}
+
 function normPC(val) {
   if (!val) return val;
   return String(val).replace(/^OP-/, 'PC-');
@@ -2114,7 +2121,12 @@ async function showView(id, btn) {
   if (id === 'panel')       { await recargarSCsDesdeLS(); renderPanel(); }
   if (id === 'historial')    { await recargarSCsDesdeLS(); renderHistorial(); renderHistorialPedidos(); }
   if (id === 'kanban')       { await recargarSCsDesdeLS(); renderKanban(); }
-  if (id === 'historial-op')   { await recargarSCsDesdeLS(); renderHistorialPedidos(); }
+  if (id === 'historial-op')   {
+    await recargarSCsDesdeLS();
+    renderHistorialPedidos();
+    // Also keep historial SC in sync
+    renderHistorial();
+  }
   if (id === 'comparativas')   renderComparativas();
   if (id === 'ahorro')         renderAhorro();
   if (id === 'nueva-sc') resetWizard();
@@ -2658,11 +2670,20 @@ function onAreaFilterChange() {
 }
 
 function renderHistorial() {
+  // Sort: by numSC descending (prefix + year + number), then by date desc
   let data = [...scs].sort((a,b)=>{
-    const nA=parseInt((a.numSC||a.num||"").replace(/[^0-9]/g,"")||"0");
-    const nB=parseInt((b.numSC||b.num||"").replace(/[^0-9]/g,"")||"0");
-    if(nB!==nA) return nB-nA;
-    return (b.fecha||b.creado||"").localeCompare(a.fecha||a.creado||"");
+    const sa = (a.numSC||a.num||''), sb = (b.numSC||b.num||'');
+    // Extract numeric part at end: SCTL-2026-0008 → 8
+    const matchA = sa.match(/-(\d+)$/), matchB = sb.match(/-(\d+)$/);
+    const numA = matchA ? parseInt(matchA[1]) : 0;
+    const numB = matchB ? parseInt(matchB[1]) : 0;
+    // Extract year: SCTL-2026-0008 → 2026
+    const yearA = (sa.match(/-(\d{4})-/) || [,'0'])[1];
+    const yearB = (sb.match(/-(\d{4})-/) || [,'0'])[1];
+    // Sort by year desc, then number desc, then by date desc
+    if (yearB !== yearA) return yearB.localeCompare(yearA);
+    if (numB !== numA) return numB - numA;
+    return (b.fecha||b.creado||'').localeCompare(a.fecha||a.creado||'');
   });
   const fArea    = document.getElementById('f-area')?.value    || '';
   const fSubarea = document.getElementById('f-subarea')?.value || '';
@@ -2673,10 +2694,26 @@ function renderHistorial() {
   if (fCrit) data = data.filter(s => s.criticidad === fCrit);
   if (fEst) data = data.filter(s => s.estado === fEst);
   if (fBus) data = data.filter(s => (s.num + s.solicitante + s.os + s.osDesc + s.email).toLowerCase().includes(fBus));
+  // Show count and filter warning
+  const totalEl = document.getElementById('hist-total-count');
+  if (totalEl) {
+    const hasFilter = fArea || fCrit || fEst || fBus;
+    totalEl.textContent = hasFilter
+      ? `Mostrando ${data.length} de ${scs.length} SC (filtros activos)`
+      : `Total: ${scs.length} SC`;
+    totalEl.style.color = hasFilter ? 'var(--yellow)' : 'var(--muted)';
+  }
+
   const tb = document.getElementById('hist-table');
   tb.innerHTML = data.length
     ? data.map((sc) => renderFilaSC(sc, scs.indexOf(sc), 'hist')).join('')
     : '<tr class="empty-row"><td colspan="11">Sin resultados para el filtro aplicado.</td></tr>';
+}
+
+function limpiarFiltrosSC() {
+  const ids = ['f-area','f-subarea','f-crit','f-est','f-buscar'];
+  ids.forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  renderHistorial();
 }
 
 function filtrarPorArea(area) {
@@ -5675,7 +5712,7 @@ function _buildPanelPA() {
     const col = {full:'var(--green)',partial:'var(--yellow)',none:'var(--red)',pendiente:'var(--muted)'}[est];
     return `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1">
-        <div style="font-family:var(--fm);font-size:13px;font-weight:700;color:var(--or)">${pa.numPA||'—'}</div>
+        <div style="font-family:var(--fm);font-size:13px;font-weight:700;color:var(--or)">${normPA(pa.numPA||'—')}</div>
         <div style="font-size:11px;color:var(--muted)">${pa.campamento||'—'} · ${pa.solicitante||'—'}</div>
       </div>
       <div style="text-align:right">
@@ -5783,7 +5820,7 @@ async function renderHistorialPA() {
   const rows = await sbSelect('pedidos_abastecimiento');
   if (rows && Array.isArray(rows)) {
     paData = rows.map(r => ({
-      numPA:       r.num_pa,
+      numPA:       normPA(r.num_pa),
       fecha:       r.fecha || '',
       fechaEntrega: r.fecha_entrega || '',
       solicitante: r.solicitante || '',
@@ -5843,7 +5880,7 @@ async function renderHistorialPA() {
     const catLabels = {M:'Mercadería',L:'Limpieza',H:'Hotelería',A:'Agua/Gas',K:'Kiosco'};
     const pctColor = pct===100?'var(--green)':pct>0?'var(--yellow)':'var(--muted)';
     return '<tr>' +
-      '<td class="mono" style="color:var(--or);font-weight:700">' + (pa.numPA||'—') + '</td>' +
+      '<td class="mono" style="color:var(--or);font-weight:700">' + normPA(pa.numPA||'—') + '</td>' +
       '<td>' + formatFecha(pa.fecha) + '</td>' +
       '<td><strong>' + (pa.campamento||'—') + '</strong></td>' +
       '<td>' + (pa.solicitante||'—') + '</td>' +
@@ -5906,7 +5943,7 @@ function verPA(idx) {
   const content = `
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px">
       <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px">N° Pedido</div>
-        <div style="font-family:var(--fm);font-size:18px;font-weight:700;color:var(--or)">${pa.numPA||'—'}</div></div>
+        <div style="font-family:var(--fm);font-size:18px;font-weight:700;color:var(--or)">${normPA(pa.numPA||'—')}</div></div>
       <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px">Estado</div>
         <div style="font-size:14px;font-weight:700">${estBadge[pa.estado]||pa.estado}</div></div>
       <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px">Campamento</div>
@@ -5966,7 +6003,7 @@ function verPA(idx) {
       </div>` : `<div style="margin-top:12px;text-align:right"><button class="btn btn-sm btn-ghost" onclick="imprimirModalSC()">🖨 Imprimir</button></div>`}
     </div>`;
 
-  document.getElementById('modal-sc-num').textContent = `PA ${pa.numPA||''}`;
+  document.getElementById('modal-sc-num').textContent = `PA ${normPA(pa.numPA||'')}`;
   document.getElementById('modal-sc-body').innerHTML = content;
   document.getElementById('modal-sc').classList.add('open');
   // Recalc progress bar from saved state
@@ -6106,6 +6143,82 @@ async function confirmarCompraPA() {
 
 // ═══════════════════════════════════════════════════════════
 
+
+// ══ RECUPERAR SC FALTANTES: sync localStorage → Supabase ══
+async function recuperarSCsFaltantes() {
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
+
+  // 1. Get current Supabase records
+  showToast('Comparando registros...','ok');
+  const sbRows = await sbSelect('solicitudes_compra');
+  if (!sbRows || !Array.isArray(sbRows)) { showToast('Error al consultar Supabase','error'); return; }
+  const sbNums = new Set(sbRows.map(r => r.num_sc).filter(Boolean));
+
+  // 2. Get all records from localStorage (may include ones not in Supabase)
+  let lsRecs = [];
+  try { lsRecs = JSON.parse(localStorage.getItem('nielsen_scs_2026') || '[]'); } catch(e) {}
+
+  // 3. Find missing: in localStorage but NOT in Supabase
+  const missing = lsRecs.filter(sc => {
+    const num = sc.numSC || sc.num;
+    return num && !sbNums.has(num) && !sbNums.has(normSCCode(num));
+  });
+
+  if (!missing.length) {
+    showToast('✅ Todo sincronizado — no hay SC faltantes', 'ok');
+    return;
+  }
+
+  // 4. Show what will be inserted
+  const lista = missing.map(sc => `${sc.numSC||sc.num} (${sc.area||'?'} — ${sc.solicitante||'?'})`).join('\n');
+  if (!confirm(`Se van a recuperar ${missing.length} SC faltante${missing.length!==1?'s':''}:\n\n${lista}\n\n¿Continuar?`)) return;
+
+  // 5. Insert each missing SC into Supabase
+  let ok = 0, fail = 0;
+  for (const sc of missing) {
+    const payload = {
+      num_sc:       sc.numSC || sc.num || '',
+      num_op:       sc.numOP || sc.numPC || '',
+      area:         sc.area || '',
+      subarea:      sc.subarea || '',
+      solicitante:  sc.solicitante || '',
+      email:        sc.email || '',
+      fecha:        sc.fecha || new Date().toISOString().split('T')[0],
+      fecha_limite: sc.fechaLimite || '',
+      criticidad:   sc.criticidad || 'MEDIA',
+      os:           sc.os || '',
+      os_asunto:    sc.osAsunto || '',
+      os_desc:      sc.osDesc || '',
+      os_resp:      sc.osResp || '',
+      destino:      sc.destino || '',
+      motivo:       sc.motivo || '',
+      items:        sc.items || '',
+      obs:          sc.obs || '',
+      panolero:     sc.panolero || '',
+      estado:       sc.estado || 'PENDIENTE',
+    };
+    try {
+      const r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': _SB_KEY,
+          'Authorization': 'Bearer ' + _SB_KEY,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (r.ok || r.status === 201) ok++;
+      else { fail++; console.error('Insert failed:', await r.text()); }
+    } catch(e) { fail++; console.error('Insert error:', e.message); }
+  }
+
+  showToast(`✅ ${ok} SC recuperada${ok!==1?'s':''} en Supabase${fail?' — '+fail+' error(es)':''}`, ok>0?'ok':'error');
+  await recargarSCsDesdeLS();
+  renderHistorial();
+  renderHistorialPedidos();
+}
+
 function cambiarEstadoPA(idx) {
   if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor', 'error'); return; }
   const pa = paData[idx];
@@ -6186,7 +6299,7 @@ async function recargarSCsDesdeLS() {
       _sbId:      r.id   // UUID de Supabase
     }));
     scs = fromDB;
-    // Sincronizar también en localStorage como cache
+    // Reemplazar localStorage con datos frescos de Supabase (borra registros locales huérfanos)
     localStorage.setItem('nielsen_scs_2026', JSON.stringify(scs));
     actualizarContadores();
     return;
@@ -6216,8 +6329,16 @@ window.addEventListener('storage', function(e) {
 });
 
 (function(){const m=String(new Date().getMonth()+1).padStart(2,'0');const el=document.getElementById('kb-filtro-mes');if(el)el.value=m;})();
-// Activar MODO LECTOR al cargar
-recargarSCsDesdeLS();
+// Activar MODO LECTOR al cargar — await then refresh active view
+recargarSCsDesdeLS().then(() => {
+  // After Supabase loads, refresh whichever view is visible
+  const av = document.querySelector('.view.active');
+  if (!av) return;
+  if (av.id === 'view-historial')    { renderHistorial(); renderHistorialPedidos(); }
+  if (av.id === 'view-historial-op') { renderHistorialPedidos(); renderHistorial(); }
+  if (av.id === 'view-panel')        { renderPanel(); }
+  if (av.id === 'view-kanban')       { renderKanban(); }
+});
 renderHistorialPA();
 // ── Hash routing: acceso directo por URL (#historial, #historial-pa, etc.) ──
 function navegarPorHash() {
@@ -6258,6 +6379,10 @@ function renderHistorialPedidos() {
   if (buscar) data = data.filter(s =>
     ((s.numOP||s.numSC||'') + (s.area||'') + (s.solicitante||'') + (s.items||'')).toLowerCase().includes(buscar)
   );
+
+  // Show count
+  const opCountEl = document.getElementById('op-total-count');
+  if (opCountEl) opCountEl.textContent = 'Total: ' + scs.length + ' registros (' + data.length + ' visibles)';
 
   if (!data.length) {
     tb.innerHTML = '<tr class="empty-row"><td colspan="8">Sin pedidos que coincidan con el filtro.</td></tr>';
@@ -6316,11 +6441,12 @@ setInterval(async () => {
   if (_pauseReload || document.getElementById('modal-sc')?.classList.contains('open')) return;
   const av = document.querySelector('.view.active');
   if (!av) return;
-  if (['view-historial','view-panel','view-kanban'].includes(av.id)) {
+  if (['view-historial','view-historial-op','view-panel','view-kanban'].includes(av.id)) {
     await recargarSCsDesdeLS();
-    if (av.id==='view-historial') renderHistorial();
-    if (av.id==='view-panel')    renderPanel();
-    if (av.id==='view-kanban')   renderKanban();
+    if (av.id==='view-historial')    { renderHistorial(); renderHistorialPedidos(); }
+    if (av.id==='view-historial-op') { renderHistorialPedidos(); renderHistorial(); }
+    if (av.id==='view-panel')        renderPanel();
+    if (av.id==='view-kanban')       renderKanban();
   }
   if (av.id==='view-historial-pa' || av.id==='view-panel-pa') renderHistorialPA();
 }, 30000);
@@ -6393,6 +6519,15 @@ iniciarAutoSync();
       <button class="settings-close" onclick="cerrarSettings()">✕</button>
     </div>
     <div class="settings-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">🔄 Recuperar SC faltantes</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Detecta y sincroniza SCs en localStorage que no están en Supabase</div>
+        </div>
+        <button onclick="cerrarSettings();recuperarSCsFaltantes()" style="padding:7px 14px;border-radius:7px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:var(--green);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+          Recuperar
+        </button>
+      </div>
       <!-- EDITAR SC -->
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin:10px 0 4px">Edición avanzada</div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
