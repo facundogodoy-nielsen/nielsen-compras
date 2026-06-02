@@ -5965,7 +5965,7 @@ function verPA(idx) {
       const estColor = {ok:'var(--green)',parcial:'var(--yellow)',no:'var(--red)',pendiente:'var(--muted)'}[est]||'var(--muted)';
       return `<tr>
         <td style="font-family:var(--fm);color:var(--or)">${String(itemCounter).padStart(2,'0')}.</td>
-        <td>${nombre}${it.marca?' <span style="color:var(--muted);font-size:11px">— '+it.marca+'</span>':''}</td>
+        <td>${nombre}${marca?' <span style="color:var(--muted);font-size:11px">— '+marca+'</span>':''}</td>
         <td style="text-align:center;font-family:var(--fm)">${cant}</td>
         <td><span style="color:${estColor};font-size:11px;font-weight:700;text-transform:capitalize">${est}</span></td>
       </tr>`;
@@ -6070,7 +6070,12 @@ function renderItemsCompraPA(items, pa) {
       const d = det[i] || {};
       const estado = d.estado || 'PRESUPUESTADO';
       const stateClass = {COMPRADO:'compra-item-ok',NO_COMPRADO:'compra-item-no',PRESUPUESTADO:''}[estado]||'';
-      const cantDisp = it.cant ? `${it.cant}${it.medida?' '+it.medida:''}` : '—';
+      // Handle multiple item formats (Pedidos V3 items vs CC items)
+      const itNombre = it.nombre || it.name || it.articulo || (typeof it === 'string' ? it : '—');
+      const itMarca  = it.marca || '';
+      const itCant   = it.cant || it.cantidad || it.qty || '';
+      const itMedida = it.medida || it.unidad || '';
+      const cantDisp = itCant ? `${itCant}${itMedida?' '+itMedida:''}` : '—';
       const isEditor = esModoEditor();
       const comprobante = estado === 'COMPRADO' ? `
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;padding:8px 10px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:6px">
@@ -6090,7 +6095,7 @@ function renderItemsCompraPA(items, pa) {
       return `<div class="compra-item ${stateClass}" style="margin-bottom:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-family:var(--fm);color:var(--or);font-size:11px;flex-shrink:0">${String(counter).padStart(2,'0')}.</span>
-          <span style="flex:1;font-size:13px;font-weight:500">${it.nombre||'—'}${it.marca?` <span style="color:var(--muted);font-size:11px">— ${it.marca}</span>`:''}</span>
+          <span style="flex:1;font-size:13px;font-weight:500">${itNombre||'—'}${itMarca?` <span style="color:var(--muted);font-size:11px">— ${itMarca}</span>`:''}</span>
           <span style="font-size:11px;color:var(--muted);white-space:nowrap">Cant: <strong>${cantDisp}</strong></span>
           ${isEditor ? `<div style="display:flex;gap:4px;flex-shrink:0">
             <button onclick="setPAEstado(${i},'PRESUPUESTADO')" style="padding:3px 8px;font-size:10px;border-radius:4px;border:1px solid var(--border2);cursor:pointer;font-family:var(--ff);background:${estado==='PRESUPUESTADO'?'var(--or)':'var(--s2)'};color:${estado==='PRESUPUESTADO'?'#fff':'var(--muted)'}">PPTO</button>
@@ -6362,6 +6367,46 @@ async function guardarEditPC(scIdx, campo, valor, oldVal) {
   renderHistorialPedidos();
   renderHistorial();
   showToast('✅ Guardado', 'ok');
+}
+
+
+// ══ REPAIR PA ITEMS: recover from Supabase JSONB ══════════
+async function repararItemsPA() {
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
+  showToast('Verificando ítems en Supabase...','ok');
+  // Reload raw from Supabase to get full JSONB
+  try {
+    const url = _SB_URL + '/rest/v1/pedidos_abastecimiento?select=num_pa,items,items_detalle';
+    const r = await fetch(url, {headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}});
+    if (!r.ok) { showToast('Error al consultar Supabase','error'); return; }
+    const rows = await r.json();
+    let fixed = 0;
+    for (const row of rows) {
+      const pa = paData.find(p => (p.numPA||'').replace(/^OCC-/,'PA-') === (row.num_pa||'').replace(/^OCC-/,'PA-'));
+      if (!pa) continue;
+      // Parse items if stored as string
+      let items = row.items;
+      if (typeof items === 'string') { try { items = JSON.parse(items); } catch(e) { items = []; } }
+      if (!Array.isArray(items)) items = [];
+      if (items.length > 0 && pa.items.length === 0) {
+        pa.items = items;
+        fixed++;
+        console.log('Recovered', items.length, 'items for', pa.numPA);
+      } else if (items.length > 0 && pa.items.length !== items.length) {
+        pa.items = items;
+        fixed++;
+      }
+    }
+    if (fixed > 0) {
+      _lsSet('nielsen_pa_2026', JSON.stringify(paData));
+      showToast(`✅ ${fixed} PA actualizados con ítems de Supabase`, 'ok');
+    } else {
+      showToast('✅ Todos los ítems ya estaban sincronizados', 'ok');
+    }
+  } catch(e) {
+    showToast('Error: '+e.message,'error');
+    console.error(e);
+  }
 }
 
 function cambiarEstadoPA(idx) {
@@ -6677,6 +6722,15 @@ iniciarAutoSync();
         </div>
         <button onclick="cerrarSettings();recuperarSCsFaltantes()" style="padding:7px 14px;border-radius:7px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:var(--green);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
           Recuperar
+        </button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">🔧 Reparar ítems PA</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Recupera ítems de PA desde Supabase JSONB</div>
+        </div>
+        <button onclick="cerrarSettings();repararItemsPA()" style="padding:7px 14px;border-radius:7px;border:1.5px solid rgba(232,93,37,.4);background:rgba(232,93,37,.1);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+          Reparar
         </button>
       </div>
       <!-- EDITAR SC -->
