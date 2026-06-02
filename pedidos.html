@@ -533,7 +533,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
   <button class="cat-btn" data-cat="H" onclick="switchCat('H')"><span class="dot"></span>🛏 Hotelería</button>
   <button class="cat-btn" data-cat="A" onclick="switchCat('A')"><span class="dot"></span>💧 Agua, Gas y Leña</button>
   <button class="cat-btn" data-cat="K" onclick="switchCat('K')"><span class="dot"></span>🏪 Kiosco La Brea</button>
-
+  <button id="btn-enviar-pedido" onclick="abrirReview()" style="margin-left:auto;background:var(--N);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-family:'Barlow Condensed',sans-serif;font-size:.95rem;font-weight:700;letter-spacing:1px;cursor:pointer;display:flex;align-items:center;gap:8px;white-space:nowrap;transition:all .2s">
+    📤 Enviar Pedido
+  </button>
 </div>
 </div><!-- /sticky-top -->
 
@@ -544,7 +546,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
     <div class="ph"><div class="pt">Datos del Pedido</div></div>
     <div class="pb">
       <div class="fgrid">
-        <div class="fg"><label class="lbl">N° Orden de Compra</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="nroPedido" readonly style="background:#FFF8F5;border-color:rgba(232,93,38,.35);color:var(--N);font-weight:700;font-size:.9rem;cursor:default;flex:1"/><button data-editor-only onclick="resetearNumero()" title="Reiniciar numeración" style="background:none;border:1.5px solid var(--G4);border-radius:6px;padding:5px 8px;cursor:pointer;font-size:.85rem;color:var(--G3);transition:all .2s;line-height:1" onmouseover="this.style.borderColor='var(--N)';this.style.color='var(--N)'" onmouseout="this.style.borderColor='var(--G4)';this.style.color='var(--G3)'">↺</button></div></div>
+        <div class="fg"><label class="lbl">N° Pedido Abastecimiento</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="nroPedido" readonly style="background:#FFF8F5;border-color:rgba(232,93,38,.35);color:var(--N);font-weight:700;font-size:.9rem;cursor:default;flex:1"/></div></div>
         <div class="fg"><label class="lbl">Fecha de Pedido</label><input type="date" id="fechaPedido" required/></div>
         <div class="fg"><label class="lbl">Entrega Requerida</label><input type="date" id="fechaEntrega" required/></div>
         <div class="fg"><label class="lbl">Solicitado por</label><input type="text" id="solicitante" placeholder="Nombre" required oninput="this.value=toTitleCase(this.value)"/></div>
@@ -553,9 +555,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
           <option value="elio@nielsenexpediciones.com.ar">
           <option value="dario@nielsenexpediciones.com.ar">
         </datalist></div>
-        <div class="fg" style="grid-column:1/-1">
-          <label class="lbl">Campamento / Área</label>
-          <select id="centroCostoSel" onchange="onCampChange()" style="margin-bottom:6px">
+        <div class="fg">
+          <label class="lbl">Campamento <span style="color:var(--N)">*</span></label>
+          <select id="centroCostoSel" onchange="onCampChange()" required>
             <option value="">— Seleccioná —</option>
             <option value="CAMPAMENTO LA BREA">CAMPAMENTO LA BREA</option>
             <option value="CAMPAMENTO LAS PAILAS">CAMPAMENTO LAS PAILAS</option>
@@ -564,7 +566,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
             <option value="BASE SAN JUAN">BASE SAN JUAN</option>
             <option value="OTRO">OTRO (especificar)</option>
           </select>
-          <input type="text" id="centroCosto" placeholder="Especificá el campamento o área..." style="display:none" required/>
+          <input type="text" id="centroCosto" placeholder="Especificá el campamento..." style="display:none"/>
+        </div>
+        <div class="fg">
+          <label class="lbl">Área <span style="color:var(--N)">*</span></label>
+          <select id="areaSolicitante" required>
+            <option value="">— Seleccioná —</option>
+            <option value="SUPERVISIÓN LA BREA">SUPERVISIÓN LA BREA</option>
+            <option value="COCINA LA BREA">COCINA LA BREA</option>
+            <option value="HOTELERÍA LA BREA">HOTELERÍA LA BREA</option>
+          </select>
         </div>
       </div>
     </div>
@@ -1255,19 +1266,29 @@ const OC_PREFIX = 'PA-' + new Date().getFullYear() + '-';
 async function getNextOC(){
   const anio = new Date().getFullYear();
   try {
-    const r = await fetch(_SB_URL+'/rest/v1/rpc/increment_counter', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
-      body: JSON.stringify({counter_name: 'pa_' + anio})
+    // 1. Get MAX existing PA number from Supabase
+    const rmax = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&num_pa=like.PA-'+anio+'*&order=num_pa.desc&limit=1', {
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
     });
-    if(r.ok){
-      const n = await r.json();
-      const num = 'PA-'+anio+'-'+String(n).padStart(4,'0');
-      localStorage.setItem(OC_KEY, n);
-      return num;
+    if(rmax.ok){
+      const rows = await rmax.json();
+      let maxN = 0;
+      if(rows && rows.length && rows[0].num_pa){
+        const parts = rows[0].num_pa.split('-');
+        maxN = parseInt(parts[parts.length-1]) || 0;
+      }
+      // 2. Increment counter in Supabase to max+1
+      const next = maxN + 1;
+      // Update counter so it stays in sync
+      await fetch(_SB_URL+'/rest/v1/counters?name=eq.pa_'+anio, {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
+        body: JSON.stringify({value: next - 1})
+      }).catch(()=>{});
+      return 'PA-'+anio+'-'+String(next).padStart(4,'0');
     }
   } catch(e) {}
-  // Fallback to localStorage if Supabase unavailable
+  // Fallback
   const n = parseInt(localStorage.getItem(OC_KEY) || '0') + 1;
   localStorage.setItem(OC_KEY, n);
   return 'PA-' + new Date().getFullYear() + '-' + String(n).padStart(4,'0');
@@ -1454,6 +1475,9 @@ function limpiarSel(){
 // CUSTOM
 // ═══════════════════════════════════════
 function agregarCustom(){
+  // Normalize to uppercase
+  const nameEl = document.getElementById('custom-nombre');
+  if(nameEl) nameEl.value = nameEl.value.toUpperCase().trim();
   const rawDesc = document.getElementById('acDesc').value.trim();
   if(!rawDesc){toast('Escribí el nombre del producto.','err');return;}
   const desc = rawDesc.charAt(0).toUpperCase() + rawDesc.slice(1);
@@ -2977,7 +3001,7 @@ function _enviarEmailPA(pedido) {
   const pubKey  = localStorage.getItem('nielsen_emailjs_pubkey')  || '';
   const service = localStorage.getItem('nielsen_emailjs_service') || '';
   const tmpl    = localStorage.getItem('nielsen_emailjs_tmpl_pa') || '';
-  const from    = localStorage.getItem('nielsen_sender_email')    || 'facundo.godoy@nielsenexpediciones.com.ar';
+  const from    = 'facundo.godoy@nielsenexpediciones.com.ar';
 
   if (!pubKey || !service || !tmpl) {
     console.info('EmailJS no configurado — sin envío de mail PA');
@@ -3058,5 +3082,18 @@ async function _guardarPAenCC(pedido) {
 
 
 </script>
+<div id="reviewSection" class="review-section">
+  <div class="review-inner">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;letter-spacing:1px;color:var(--N)">📋 Revisión del Pedido</h2>
+      <button onclick="cerrarReview()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--G3)">✕</button>
+    </div>
+    <div id="reviewContent"></div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--G5)">
+      <button onclick="cerrarReview()" style="padding:10px 24px;border-radius:8px;border:1.5px solid var(--G4);background:none;color:var(--G2);font-family:var(--ff);font-size:14px;cursor:pointer">Cancelar</button>
+      <button onclick="confirmarPedido()" style="padding:10px 28px;border-radius:8px;border:none;background:var(--N);color:#fff;font-family:var(--ff);font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.5px">✅ Confirmar y Enviar</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
