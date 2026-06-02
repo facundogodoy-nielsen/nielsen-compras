@@ -5937,116 +5937,125 @@ async function renderHistorialPA() {
 
 function verPA(idx) {
   const pa = paData[idx];
-  if (!pa) return;
+  if (!pa) { showToast('No se encontró el pedido','error'); return; }
   window._paIdx = idx;
-  const items = pa.items || [];
-  const catLabels = {M:'Mercadería',L:'Limpieza y Descartables',H:'Hotelería',A:'Agua, Gas y Leña',K:'Kiosco La Brea'};
-  const estBadge = {
-    'PENDIENTE':'⏳ Pendiente','EN PROCESO':'🔵 En Proceso',
-    'ENTREGADO':'✅ Entregado','CANCELADO':'✕ Cancelado'
-  };
-  // Group items by category
-  const itemsByCat = {};
-  const catOrder = ['M','L','H','A','K'];
-  items.forEach(it => {
-    const c = it.cat || 'M';
-    if (!itemsByCat[c]) itemsByCat[c] = [];
-    itemsByCat[c].push(it);
-  });
-  let itemCounter = 0;
-  const itemsHTML = catOrder.filter(c => itemsByCat[c] && itemsByCat[c].length).map(c => {
-    const catItems = itemsByCat[c];
-    const header = `<tr><td colspan="4" style="padding:10px 8px 4px;background:rgba(232,93,37,.08);font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or)">${CAT_LABELS_PA[c]}</td></tr>`;
-    const rows = catItems.map(it => {
-      itemCounter++;
-      const nombre = it.nombre || it;
-      const cant   = it.cant ? `${it.cant}${it.medida?' '+it.medida:''}` : '—';
-      const est    = it.estado || 'pendiente';
-      const estColor = {ok:'var(--green)',parcial:'var(--yellow)',no:'var(--red)',pendiente:'var(--muted)'}[est]||'var(--muted)';
-      return `<tr>
-        <td style="font-family:var(--fm);color:var(--or)">${String(itemCounter).padStart(2,'0')}.</td>
-        <td>${nombre}${marca?' <span style="color:var(--muted);font-size:11px">— '+marca+'</span>':''}</td>
-        <td style="text-align:center;font-family:var(--fm)">${cant}</td>
-        <td><span style="color:${estColor};font-size:11px;font-weight:700;text-transform:capitalize">${est}</span></td>
-      </tr>`;
-    }).join('');
-    return header + rows;
-  }).join('');
 
-  const content = `
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px">
-      <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px">N° Pedido</div>
-        <div style="font-family:var(--fm);font-size:18px;font-weight:700;color:var(--or)">${normPA(pa.numPA||'—')}</div></div>
-      <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px">Estado</div>
-        <div style="font-size:14px;font-weight:700">${estBadge[pa.estado]||pa.estado}</div></div>
-      <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px">Campamento</div>
-        <div style="font-size:14px">${pa.campamento||'—'}</div></div>
-      <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px">Solicitante</div>
-        <div style="font-size:14px">${pa.solicitante||'—'}</div></div>
-      <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px">Fecha Pedido</div>
-        <div style="font-size:13px">${formatFecha(pa.fecha)}</div></div>
-      <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px">Entrega solicitada</div>
-        <div style="font-size:13px">${pa.fechaEntrega ? formatFecha(pa.fechaEntrega) : '—'}</div></div>
-      <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px">Categoría</div>
-        <div style="font-size:13px">${catLabels[pa.categoria]||pa.categoria||'—'}</div></div>
-    </div>
-    ${pa.obs ? `<div style="background:var(--s2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted);margin-bottom:16px">📝 ${pa.obs}</div>` : ''}
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;border-top:1px solid var(--border);padding-top:14px">
-      Ítems del pedido — ${items.length} artículo${items.length!==1?'s':''}
-    </div>
-    <!-- SECCIÓN COMPRA PA -->
-    <div class="compra-section">
-      <div class="compra-section-title">🛒 Seguimiento de Compra — Estado por ítem</div>
-
-      <!-- Barra de progreso -->
-      <div class="compra-barra-wrap">
-        <div class="compra-pct-row">
-          <div>
-            <div class="compra-pct-num" id="compra-pct-num" style="color:var(--muted)">0%</div>
-            <div class="compra-pct-lbl">Concretado</div>
-          </div>
-          <div style="text-align:right">
-            <div class="compra-pct-detalle" id="compra-pct-detalle">0 de ${items.length} ítems</div>
-            <div id="compra-estado-badge" style="margin-top:4px"></div>
-          </div>
-        </div>
-        <div class="compra-progress">
-          <div class="compra-progress-fill" id="compra-progress-fill" style="width:0%;background:var(--muted)"></div>
-        </div>
-      </div>
-
-      ${!esModoEditor() ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Lector — solo visualización.</div>' : ''}
-
-      <!-- Lista ítems agrupados por categoría con estados de compra -->
-      <div id="compra-items-list">
-        ${renderItemsCompraPA(items, pa)}
-      </div>
-
-      ${esModoEditor() ? `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-sm btn-ghost" data-editor-only onclick="cambiarEstadoPA(${idx})">🔄 Estado PA</button>
-          <button class="btn btn-sm btn-danger" data-editor-only onclick="eliminarPA(${idx});cerrarModal()">🗑 Eliminar</button>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-sm btn-ghost" onclick="imprimirModalSC()">🖨 Imprimir</button>
-          <button class="btn btn-green" onclick="confirmarCompraPA()" style="padding:9px 20px;font-size:13px;font-weight:700;letter-spacing:.5px">
-            ✅ Guardar
-          </button>
-        </div>
-      </div>` : `<div style="margin-top:12px;text-align:right"><button class="btn btn-sm btn-ghost" onclick="imprimirModalSC()">🖨 Imprimir</button></div>`}
-    </div>`;
-
+  // If EDITAR CC mode: show edit grid
   if (modoEditarSC && esModoEditor()) {
-    document.getElementById('modal-sc-num').textContent = `PA ${normPA(pa.numPA||'')}`;
+    document.getElementById('modal-sc-num').textContent = 'PA ' + normPA(pa.numPA||'');
+    var subEl = document.getElementById('modal-sc-sub');
+    if(!subEl){ subEl=document.createElement('div'); subEl.id='modal-sc-sub'; subEl.style.cssText='font-size:12px;color:var(--muted);font-weight:400;letter-spacing:.5px;margin-top:2px;font-family:var(--ff)'; document.getElementById('modal-sc-num').after(subEl); }
+    subEl.textContent = (pa.campamento||'') + (pa.fecha?' — '+formatFecha(pa.fecha):'');
     document.getElementById('modal-sc-body').innerHTML = renderEditGridPA(pa, idx);
     document.getElementById('modal-sc').classList.add('open');
     return;
   }
-  document.getElementById('modal-sc-num').textContent = `PA ${normPA(pa.numPA||'')}`;
+
+  const items = pa.items || [];
+  const CAT_MAP = {M:'🛒 Mercadería',L:'🧹 Limpieza y Desc.',H:'🛏 Hotelería',A:'💧 Agua, Gas y Leña',K:'🏪 Kiosco La Brea'};
+  const catOrder = ['M','L','H','A','K'];
+  const isEditor = esModoEditor();
+
+  // Build items by category
+  const byCat = {};
+  items.forEach((it, i) => {
+    const c = it.cat || it.categoria || pa.cat || pa.categoria || 'M';
+    if(!byCat[c]) byCat[c]=[];
+    byCat[c].push({it,i});
+  });
+
+  const det = pa.itemsDetalle || {};
+  let counter = 0;
+
+  const itemsSection = items.length === 0
+    ? '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">Sin ítems registrados</div>'
+    : catOrder.filter(c=>byCat[c]).map(c => {
+        const catHeader = catOrder.filter(c=>byCat[c]).length > 1
+          ? '<div style="padding:8px 0 4px;font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);border-top:1px solid var(--border);margin-top:8px">' + (CAT_MAP[c]||c) + '</div>' : '';
+        const rows = byCat[c].map(({it, i}) => {
+          counter++;
+          const nombre  = it.nombre  || it.name  || it.articulo || (typeof it==='string'?it:'—');
+          const marca   = it.marca   || '';
+          const cant    = it.cant    || it.cantidad || '';
+          const medida  = it.medida  || it.unidad  || '';
+          const cantDisp= cant ? (cant + (medida?' '+medida:'')) : '—';
+          const d       = det[i] || {};
+          const estado  = d.estado || it.estado || 'pendiente';
+          const estColor= {ok:'var(--green)',comprado:'var(--green)',parcial:'var(--yellow)',no:'var(--red)',no_comprado:'var(--red)',pendiente:'var(--muted)',presupuestado:'var(--muted)'}[estado]||'var(--muted)';
+          const estLabel= {ok:'✔ Recibido',comprado:'✔ Comprado',no_comprado:'✗ No comprado',parcial:'⚡ Parcial',pendiente:'⏳ Pendiente',presupuestado:'📋 Ppto'}[estado]||estado;
+
+          const comprobante = (estado==='ok'||estado==='comprado') && (d.factura?.num||d.factura?.fecha||d.factura?.proveedor) ? (
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;padding:6px 10px;background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.2);border-radius:6px">'
+            + '<span style="font-size:10px;font-weight:700;color:green;width:100%">📄 Factura</span>'
+            + (isEditor
+              ? '<input type="date" value="'+(d.factura?.fecha||'')+'" onchange="setPAItem('+i+',\'fecha\',this.value)" style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px">'
+              + '<input type="text" value="'+(d.factura?.num||'')+'" placeholder="N° Comprobante" oninput="setPAItem('+i+',\'num\',this.value)" style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;width:130px">'
+              + '<input type="text" value="'+(d.factura?.proveedor||'')+'" placeholder="Proveedor" oninput="setPAItem('+i+',\'proveedor\',this.value)" style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;width:140px">'
+              : '<span style="font-size:11px;color:var(--muted)">'+(d.factura?.fecha||'')+(d.factura?.num?' · '+d.factura.num:'')+(d.factura?.proveedor?' · '+d.factura.proveedor:'')+'</span>')
+            + '</div>') : '';
+
+          const noComp = (estado==='no'||estado==='no_comprado') && isEditor
+            ? '<input type="text" value="'+(d.justificacion||'')+'" placeholder="Justificar no compra..." oninput="setPAItem('+i+',\'justificacion\',this.value)" style="width:100%;margin-top:4px;font-size:11px;border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:5px 9px;background:rgba(239,68,68,.04);color:var(--text);outline:none;box-sizing:border-box">'
+            : ((estado==='no'||estado==='no_comprado') && d.justificacion ? '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+d.justificacion+'</div>' : '');
+
+          return '<div class="compra-item" style="margin-bottom:5px;padding:7px 10px;background:var(--s2);border-radius:7px;border:1px solid var(--border)">'
+            + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+            + '<span style="font-family:var(--fm);color:var(--or);font-size:11px;flex-shrink:0">'+String(counter).padStart(2,'0')+'.</span>'
+            + '<span style="flex:1;font-size:13px;font-weight:500">'+nombre+(marca?' <span style="color:var(--muted);font-size:11px">— '+marca+'</span>':'')+'</span>'
+            + '<span style="font-size:11px;color:var(--muted);white-space:nowrap">'+cantDisp+'</span>'
+            + (isEditor
+              ? '<div style="display:flex;gap:3px">'
+                + '<button onclick="setPAEstado('+i+',\'PRESUPUESTADO\')" style="padding:3px 7px;font-size:10px;border-radius:4px;border:1px solid var(--border2);cursor:pointer;font-family:var(--ff);background:'+(estado==='presupuestado'||estado==='pendiente'?'var(--or)':'var(--s3)')+';color:'+(estado==='presupuestado'||estado==='pendiente'?'#fff':'var(--muted)')+'">PPTO</button>'
+                + '<button onclick="setPAEstado('+i+',\'COMPRADO\')" style="padding:3px 7px;font-size:10px;border-radius:4px;border:1px solid rgba(34,197,94,.3);cursor:pointer;font-family:var(--ff);background:'+(estado==='ok'||estado==='comprado'?'rgba(34,197,94,.2)':'var(--s3)')+';color:'+(estado==='ok'||estado==='comprado'?'#4ade80':'var(--muted)')+'">COMPRADO</button>'
+                + '<button onclick="setPAEstado('+i+',\'NO_COMPRADO\')" style="padding:3px 7px;font-size:10px;border-radius:4px;border:1px solid rgba(239,68,68,.3);cursor:pointer;font-family:var(--ff);background:'+(estado==='no'||estado==='no_comprado'?'rgba(239,68,68,.2)':'var(--s3)')+';color:'+(estado==='no'||estado==='no_comprado'?'#f87171':'var(--muted)')+'">NO COMP.</button>'
+                + '</div>'
+              : '<span style="font-size:11px;font-weight:700;color:'+estColor+'">'+estLabel+'</span>')
+            + '</div>'
+            + comprobante + noComp
+            + '</div>';
+        }).join('');
+        return catHeader + rows;
+      }).join('');
+
+  // Progress bar
+  const entries = Object.values(det);
+  const comp = entries.filter(e=>e.estado==='COMPRADO'||e.estado==='ok').length;
+  const noComp = entries.filter(e=>e.estado==='NO_COMPRADO'||e.estado==='no').length;
+  const pct = items.length ? Math.round(((comp+noComp)/items.length)*100) : 0;
+  const barColor = noComp>0 ? 'var(--orange)' : (pct===100?'var(--green)':'var(--or)');
+
+  const content = '<div style="margin-bottom:14px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+    + '<div><span style="font-size:22px;font-weight:800;color:'+barColor+'">'+pct+'%</span> <span style="font-size:11px;color:var(--muted)">concretado</span></div>'
+    + '<div style="text-align:right;font-size:11px;color:var(--muted)">'+comp+' comprado · '+noComp+' no comprado · '+items.length+' total</div>'
+    + '</div>'
+    + '<div style="height:8px;background:var(--s3);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:4px;transition:width .4s"></div></div>'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'
+    + '<div><label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:3px">Campamento</label><span style="font-size:13px;font-weight:600">'+(pa.campamento||'—')+'</span></div>'
+    + '<div><label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:3px">Fecha Pedido</label><span style="font-size:13px">'+(pa.fecha?formatFecha(pa.fecha):'—')+'</span></div>'
+    + '<div><label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:3px">Entrega</label><span style="font-size:13px">'+(pa.fechaEntrega||pa.entrega?formatFecha(pa.fechaEntrega||pa.entrega):'—')+'</span></div>'
+    + '<div><label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:3px">Solicitante</label><span style="font-size:13px">'+(pa.solicitante||'—')+'</span></div>'
+    + '</div>'
+    + (!isEditor ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Lector — solo visualización</div>' : '')
+    + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:8px">📦 Ítems del pedido ('+items.length+')</div>'
+    + itemsSection
+    + (isEditor ? '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'
+      + '<button class="btn btn-ghost btn-sm" onclick="cambiarEstadoPA('+idx+')">🔄 Estado PA</button>'
+      + '<button class="btn btn-ghost btn-sm" onclick="imprimirModalSC()">🖨 Imprimir</button>'
+      + '<button onclick="confirmarCompraPA()" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--ff)">✅ Guardar</button>'
+      + '</div>'
+      : '<div style="text-align:right;margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="imprimirModalSC()">🖨 Imprimir</button></div>');
+
+  // Update modal sub-title
+  var subEl = document.getElementById('modal-sc-sub');
+  if(!subEl){ subEl=document.createElement('div'); subEl.id='modal-sc-sub'; subEl.style.cssText='font-size:12px;color:var(--muted);font-weight:400;letter-spacing:.5px;margin-top:2px;font-family:var(--ff)'; document.getElementById('modal-sc-num').after(subEl); }
+  subEl.textContent = (pa.campamento||'') + (pa.fecha?' — '+formatFecha(pa.fecha):'');
+
+  document.getElementById('modal-sc-num').textContent = 'PA ' + normPA(pa.numPA||'');
   document.getElementById('modal-sc-body').innerHTML = content;
   document.getElementById('modal-sc').classList.add('open');
-  // Recalc progress bar from saved state
-  _recalcCI_PA(pa.itemsDetalle||{}, items.length);
+  _recalcCI_PA(det, items.length);
 }
 
 

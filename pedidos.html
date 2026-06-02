@@ -1680,12 +1680,43 @@ document.getElementById('modal').addEventListener('click',function(e){if(e.targe
 const CAT_ORDER = ['A','H','K','L','M']; // Alfabético por nombre
 const CAT_FULL  = {M:'Mercadería',L:'Limpieza y Descartables',H:'Hotelería',A:'Agua, Gas y Leña',K:'Kiosco La Brea'};
 
+function _buildDatosHTML(np,sol,camp,area,fp,fe,em,obs){
+  const lbl = t => '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--G3);display:block">'+t+'</span>';
+  const val = t => '<span style="font-size:13px;font-weight:600">'+t+'</span>';
+  const fmtD = d => d ? d.split('-').reverse().join('/') : '—';
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px">'
+    + '<div>'+lbl('N° Pedido')+'<span style="font-size:15px;font-weight:800;color:var(--N)">'+np+'</span></div>'
+    + '<div>'+lbl('Solicitante')+val(sol)+'</div>'
+    + '<div>'+lbl('Campamento')+val(camp)+'</div>'
+    + '<div>'+lbl('Área')+val(area)+'</div>'
+    + '<div>'+lbl('Fecha Pedido')+val(fmtD(fp))+'</div>'
+    + '<div>'+lbl('Entrega Requerida')+val(fmtD(fe))+'</div>'
+    + '<div style="grid-column:1/-1">'+lbl('Email')+val(em)+'</div>'
+    + (obs ? '<div style="grid-column:1/-1">'+lbl('Observaciones')+val(obs)+'</div>' : '')
+    + '</div>';
+}
+
 function abrirReview(){
   const items = getActivos();
   if(!items.length){ toast('Seleccioná al menos un producto.','err'); return; }
+  // Build datos summary
+  const np   = (document.getElementById('nroPedido')||{}).value || '—';
+  const fp   = (document.getElementById('fechaPedido')||{}).value || '';
+  const fe   = (document.getElementById('fechaEntrega')||{}).value || '';
+  const sol  = (document.getElementById('solicitante')||{}).value || '—';
+  const em   = (document.getElementById('emailSolicitante')||{}).value || '—';
+  const camp = (document.getElementById('centroCostoSel')||{}).value || (document.getElementById('centroCosto')||{}).value || '—';
+  const area = (document.getElementById('areaSolicitante')||{}).value || '—';
+  const obs  = (document.getElementById('obs')||{}).value || '';
+  const fmtD = d => d ? d.split('-').reverse().join('/') : '—';
+  const datosEl = document.getElementById('reviewDatos');
+  if(datosEl) datosEl.innerHTML = _buildDatosHTML(np,sol,camp,area,fp,fe,em,obs);
   buildReviewSection(items);
+  // Update total count
+  const totEl = document.getElementById('reviewTotalItems');
+  if(totEl) totEl.textContent = items.length + ' ítem' + (items.length!==1?'s':'') + ' · ' + items.reduce((s,it)=>s+(parseFloat(it.cant)||0),0).toLocaleString('es-AR') + ' unidades totales';
   document.getElementById('reviewSection').classList.add('open');
-  document.getElementById('reviewSection').scrollIntoView({behavior:'smooth',block:'start'});
+  window.scrollTo(0,0);
 }
 
 function cerrarReview(){
@@ -3083,15 +3114,28 @@ async function _guardarPAenCC(pedido) {
 
 </script>
 <div id="reviewSection" class="review-section">
-  <div class="review-inner">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2 style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;letter-spacing:1px;color:var(--N)">📋 Revisión del Pedido</h2>
-      <button onclick="cerrarReview()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--G3)">✕</button>
+  <div class="review-inner" style="max-width:680px;width:100%;background:var(--W);border-radius:14px;padding:0;overflow:hidden">
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 22px 14px;border-bottom:1px solid var(--G5);background:var(--W)">
+      <div>
+        <h2 style="font-family:'Barlow Condensed',sans-serif;font-size:19px;font-weight:800;letter-spacing:1px;color:var(--N);margin:0">📋 Revisión Final del Pedido</h2>
+        <div style="font-size:11px;color:var(--G3);margin-top:2px">Verificá todos los datos antes de confirmar</div>
+      </div>
+      <button onclick="cerrarReview()" style="background:none;border:1.5px solid var(--G4);border-radius:6px;cursor:pointer;font-size:16px;color:var(--G3);width:32px;height:32px;display:flex;align-items:center;justify-content:center">✕</button>
     </div>
-    <div id="reviewContent"></div>
-    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--G5)">
-      <button onclick="cerrarReview()" style="padding:10px 24px;border-radius:8px;border:1.5px solid var(--G4);background:none;color:var(--G2);font-family:var(--ff);font-size:14px;cursor:pointer">Cancelar</button>
-      <button onclick="confirmarPedido()" style="padding:10px 28px;border-radius:8px;border:none;background:var(--N);color:#fff;font-family:var(--ff);font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.5px">✅ Confirmar y Enviar</button>
+    <!-- Datos del pedido summary -->
+    <div id="reviewDatos" style="padding:14px 22px;background:rgba(232,93,38,.04);border-bottom:1px solid var(--G5)"></div>
+    <!-- Items -->
+    <div style="max-height:55vh;overflow-y:auto;padding:14px 22px">
+      <div id="reviewBody"></div>
+    </div>
+    <!-- Footer -->
+    <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;padding:14px 22px;border-top:1px solid var(--G5);background:var(--W)">
+      <div id="reviewTotalItems" style="font-size:12px;color:var(--G3);font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.5px"></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="cerrarReview()" style="padding:9px 20px;border-radius:8px;border:1.5px solid var(--G4);background:none;color:var(--G2);font-family:var(--ff);font-size:13px;cursor:pointer">Cancelar</button>
+        <button onclick="confirmarPedido()" style="padding:9px 24px;border-radius:8px;border:none;background:var(--N);color:#fff;font-family:var(--ff);font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.5px;display:flex;align-items:center;gap:6px">✅ Confirmar y Enviar</button>
+      </div>
     </div>
   </div>
 </div>
