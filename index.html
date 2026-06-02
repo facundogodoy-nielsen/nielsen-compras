@@ -5947,6 +5947,28 @@ function verPA(idx) {
   if (!pa) { showToast('No se encontró el pedido','error'); return; }
   window._paIdx = idx;
 
+  // Auto-fetch items from Supabase if empty
+  if ((pa.items||[]).length === 0 && pa.numPA) {
+    (async () => {
+      try {
+        const url = _SB_URL + '/rest/v1/pedidos_abastecimiento?select=num_pa,items&num_pa=eq.' + encodeURIComponent(pa.numPA);
+        const r = await fetch(url, {headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Accept':'application/json'}});
+        if (r.ok) {
+          const rows = await r.json();
+          if (rows && rows[0] && rows[0].items) {
+            let items = rows[0].items;
+            if (typeof items === 'string') { try { items = JSON.parse(items); } catch(e) { items = []; } }
+            if (Array.isArray(items) && items.length > 0) {
+              pa.items = items;
+              verPA(idx); // re-render with items
+            }
+          }
+        }
+      } catch(e) { console.warn('Auto-fetch items:', e.message); }
+    })();
+    // Show loading state while fetching
+  }
+
   // If EDITAR CC mode: show edit grid
   if (modoEditarSC && esModoEditor()) {
     document.getElementById('modal-sc-num').textContent = 'PA ' + normPA(pa.numPA||'');
@@ -6389,39 +6411,59 @@ async function guardarEditPC(scIdx, campo, valor, oldVal) {
 // ══ REPAIR PA ITEMS: recover from Supabase JSONB ══════════
 async function repararItemsPA() {
   if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
-  showToast('Verificando ítems en Supabase...','ok');
-  // Reload raw from Supabase to get full JSONB
+  showToast('Cargando ítems desde Supabase...','ok');
   try {
-    const url = _SB_URL + '/rest/v1/pedidos_abastecimiento?select=num_pa,items,items_detalle';
-    const r = await fetch(url, {headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}});
-    if (!r.ok) { showToast('Error al consultar Supabase','error'); return; }
+    // Only fetch num_pa and items (avoid columns that might not exist)
+    const url = _SB_URL + '/rest/v1/pedidos_abastecimiento?select=num_pa,items&order=creado_at.desc';
+    const r = await fetch(url, {
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Accept':'application/json'}
+    });
+    if (!r.ok) {
+      const errText = await r.text().catch(()=>'');
+      showToast('Supabase error ' + r.status + ': ' + errText.slice(0,80),'error');
+      console.error('repararItemsPA error:', r.status, errText);
+      return;
+    }
     const rows = await r.json();
+    if (!rows || !rows.length) { showToast('Sin pedidos en Supabase','error'); return; }
+
+    // Update paData with items from Supabase
     let fixed = 0;
-    for (const row of rows) {
-      const pa = paData.find(p => (p.numPA||'').replace(/^OCC-/,'PA-') === (row.num_pa||'').replace(/^OCC-/,'PA-'));
-      if (!pa) continue;
-      // Parse items if stored as string
+    rows.forEach(row => {
+      // Normalize PA number for matching (OCC- and PA- are the same)
+      const sbNum = (row.num_pa||'').replace(/^OCC-/,'PA-');
+      const pa = paData.find(p => (p.numPA||'').replace(/^OCC-/,'PA-') === sbNum);
+      if (!pa) {
+        // PA not in memory yet — add it from the Supabase row
+        console.log('PA not in paData yet:', row.num_pa);
+        return;
+      }
+      // Parse items
       let items = row.items;
       if (typeof items === 'string') { try { items = JSON.parse(items); } catch(e) { items = []; } }
       if (!Array.isArray(items)) items = [];
-      if (items.length > 0 && pa.items.length === 0) {
-        pa.items = items;
-        fixed++;
-        console.log('Recovered', items.length, 'items for', pa.numPA);
-      } else if (items.length > 0 && pa.items.length !== items.length) {
+      if (items.length > 0 && pa.items.length !== items.length) {
         pa.items = items;
         fixed++;
       }
-    }
+    });
+
     if (fixed > 0) {
       _lsSet('nielsen_pa_2026', JSON.stringify(paData));
-      showToast(`✅ ${fixed} PA actualizados con ítems de Supabase`, 'ok');
+      showToast('✅ ' + fixed + ' PA actualizados (' + rows.reduce((s,r)=>{
+        let it=r.items; if(typeof it==='string'){try{it=JSON.parse(it);}catch(e){it=[];}} 
+        return s+(Array.isArray(it)?it.length:0);
+      },0) + ' ítems cargados)', 'ok');
+      // If a PA modal is open, refresh it
+      if (window._paIdx !== undefined && document.getElementById('modal-sc')?.classList?.contains('open')) {
+        verPA(window._paIdx);
+      }
     } else {
-      showToast('✅ Todos los ítems ya estaban sincronizados', 'ok');
+      showToast('✅ Todos los ítems ya están cargados correctamente', 'ok');
     }
   } catch(e) {
-    showToast('Error: '+e.message,'error');
-    console.error(e);
+    showToast('Error: ' + e.message,'error');
+    console.error('repararItemsPA:', e);
   }
 }
 
