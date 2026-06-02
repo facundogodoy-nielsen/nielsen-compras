@@ -5855,8 +5855,15 @@ async function renderHistorialPA() {
       solicitante: r.solicitante || '',
       campamento:  r.campamento || '',
       categoria:   r.categoria || '',
+      cat:         r.categoria || r.cat || '',
+      area:        r.area || '',
       obs:         r.obs || '',
-      items:       Array.isArray(r.items) ? r.items : [],
+      items:       (function(v){
+        if (!v) return [];
+        if (Array.isArray(v)) return v;
+        if (typeof v === 'string') { try { const p=JSON.parse(v); return Array.isArray(p)?p:[]; } catch(e){} }
+        return [];
+      })(r.items),
       estado:      r.estado || 'PENDIENTE',
       origen:      r.origen || '',
       creado:      r.creado_at || '',
@@ -6416,6 +6423,28 @@ async function repararItemsPA() {
     showToast('Error: '+e.message,'error');
     console.error(e);
   }
+}
+
+
+// ══ DIAGNÓSTICO: verificar items en Supabase ══════════════
+async function diagnosticarItemsPA() {
+  try {
+    const url = _SB_URL + '/rest/v1/pedidos_abastecimiento?select=num_pa,items,estado,campamento&order=creado_at.desc';
+    const r = await fetch(url, {headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}});
+    const rows = await r.json();
+    let report = 'DIAGNÓSTICO ITEMS PA\n\n';
+    for (const row of rows) {
+      const rawItems = row.items;
+      const type = rawItems === null ? 'NULL' : typeof rawItems;
+      let parsedLen = 0;
+      if (Array.isArray(rawItems)) parsedLen = rawItems.length;
+      else if (typeof rawItems === 'string') {
+        try { const p=JSON.parse(rawItems); parsedLen=Array.isArray(p)?p.length:0; } catch(e) { parsedLen=-1; }
+      }
+      report += `${row.num_pa}: tipo=${type}, items=${parsedLen}, estado=${row.estado}\n`;
+    }
+    alert(report);
+  } catch(e) { alert('Error: '+e.message); }
 }
 
 function cambiarEstadoPA(idx) {
