@@ -1143,6 +1143,10 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   font-size:12px; font-weight:700; color:var(--or); letter-spacing:.5px;
 }
 
+
+.area-chip{padding:5px 11px;border-radius:14px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);font-family:var(--ff);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.area-chip:hover{border-color:var(--or);color:var(--or)}
+.area-chip.active{background:var(--or);border-color:var(--or);color:#fff}
 </style>
 </head>
 <body>
@@ -1191,11 +1195,16 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('historial', this)">
       <span class="sb-icon">📋</span> Historial de SC
     </button>
+    <button class="sidebar-btn" onclick="showView('historial-op', this)">
+      <span class="sb-icon">📋</span> Historial Pedidos
+    </button>
     <button class="sidebar-btn" onclick="showView('kanban', this)">
       <span class="sb-icon">🗂</span> Vista Kanban
     </button>
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
+  <div class="sidebar-divider"></div>
+  <!-- ABASTECIMIENTO -->
   <div class="sidebar-divider"></div>
   <!-- ABASTECIMIENTO -->
   <div class="sidebar-section" data-sid="abastecimiento">
@@ -1224,69 +1233,32 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
-  <div class="sidebar-section" data-sid="por-area">
+  <div class="sidebar-divider"></div>
+  <!-- PROVEEDORES -->
+  <div class="sidebar-section" data-sid="proveedores">
     <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
       <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
             ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
             ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
             onclick="event.stopPropagation()">⠿</span>
-      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Por Área</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Proveedores</span>
       <span class="sidebar-toggle">▾</span>
     </div>
     <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('TALLER')">
-      <span class="sb-icon">🔧</span> Taller
+    <button class="sidebar-btn" onclick="showView('prov-db', this)">
+      <span class="sb-icon">🗂</span> Base de Datos
     </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('TRANSPORTE')">
-      <span class="sb-icon">🚛</span> Transporte
+    <button class="sidebar-btn" onclick="showView('prov-compras', this)">
+      <span class="sb-icon">📊</span> Compras por Proveedor
     </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('MANTENIMIENTO')">
-      <span class="sb-icon">⚙️</span> Mantenimiento
-    </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('GERENCIA')">
-      <span class="sb-icon">💼</span> Gerencia
-    </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('COMPRAS')">
-      <span class="sb-icon">🛒</span> Compras y Abastec.
-    </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('SSMA')">
-      <span class="sb-icon">⛑</span> SSMA
-    </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('LOGISTICA')">
-      <span class="sb-icon">📦</span> Logística
-    </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('RRHH')">
-      <span class="sb-icon">👥</span> RRHH
-    </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('CALIDAD')">
-      <span class="sb-icon">✅</span> Calidad
-    </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('PRESIDENCIA')">
-      <span class="sb-icon">🏛</span> Presidencia
-    </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('COCINA BASE')">
-      <span class="sb-icon">🍳</span> Cocina Base
-    </button>
-    <button class="sidebar-btn" onclick="showView('historial', this); filtrarPorArea('CAMPAMENTOS')">
-      <span class="sb-icon">⛺</span> Campamentos
+    <button class="sidebar-btn" onclick="showView('prov-eval', this)">
+      <span class="sb-icon">⭐</span> Evaluación de Proveedores
     </button>
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
-  <div class="sidebar-section" data-sid="registros">
-    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
-      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
-            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
-            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
-            onclick="event.stopPropagation()">⠿</span>
-      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Registros</span>
-      <span class="sidebar-toggle">▾</span>
-    </div>
-    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
-    <button class="sidebar-btn" onclick="showView('historial-op', this)">
-      <span class="sb-icon">📋</span> Historial Pedidos
-    </button>
-  </div>
+  <div class="sidebar-divider"></div>
+  <!-- PRESUPUESTOS -->
   <div class="sidebar-section" data-sid="presupuestos">
     <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
       <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
@@ -1310,46 +1282,6 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
-  <div class="sidebar-section" data-sid="proveedores">
-    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
-      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
-            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
-            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
-            onclick="event.stopPropagation()">⠿</span>
-      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Proveedores</span>
-      <span class="sidebar-toggle">▾</span>
-    </div>
-    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
-    <button class="sidebar-btn" onclick="showView('prov-db', this)">
-      <span class="sb-icon">🗂</span> Base de Datos
-    </button>
-    <button class="sidebar-btn" onclick="showView('prov-compras', this)">
-      <span class="sb-icon">📊</span> Compras por Proveedor
-    </button>
-    <button class="sidebar-btn" onclick="showView('prov-eval', this)">
-      <span class="sb-icon">⭐</span> Evaluación de Proveedores
-    </button>
-  </div></div><!-- /inner /body -->
-  </div><!-- /section -->
-  <div class="sidebar-divider"></div>
-  <div class="sidebar-section" data-sid="herramientas">
-    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
-      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
-            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
-            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
-            onclick="event.stopPropagation()">⠿</span>
-      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Herramientas</span>
-      <span class="sidebar-toggle">▾</span>
-    </div>
-    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
-    <button class="sidebar-btn" onclick="exportarExcel()">
-      <span class="sb-icon">⬇️</span> Exportar Excel
-    </button>
-    <button class="sidebar-btn" data-editor-only onclick="pedirPinLimpiar()">
-      <span class="sb-icon">🗑</span> Limpiar Datos
-    </button>
-  </div></div><!-- /inner /body -->
-  </div><!-- /section -->
 </aside>
 
 <!-- ══════════════════════════════════
@@ -1543,6 +1475,38 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <input type="text" id="f-buscar" placeholder="Buscar por N°, nombre, OS..." onkeyup="renderHistorial()"
         style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--ff);font-size:13px;outline:none;flex:1;min-width:200px">
     </div>
+    <!-- Area filter chips -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);align-self:center;margin-right:4px">Filtrar por área:</span>
+      <button class="area-chip" data-area="" onclick="filtrarPorAreaChip('')">Todas</button>
+      <button class="area-chip" data-area="TALLER" onclick="filtrarPorAreaChip('TALLER')">Taller</button>
+      <button class="area-chip" data-area="TRANSPORTE" onclick="filtrarPorAreaChip('TRANSPORTE')">Transporte</button>
+      <button class="area-chip" data-area="MANTENIMIENTO" onclick="filtrarPorAreaChip('MANTENIMIENTO')">Mantenimiento</button>
+      <button class="area-chip" data-area="GERENCIA" onclick="filtrarPorAreaChip('GERENCIA')">Gerencia</button>
+      <button class="area-chip" data-area="COMPRAS" onclick="filtrarPorAreaChip('COMPRAS')">Compras y Abastec.</button>
+      <button class="area-chip" data-area="SSMA" onclick="filtrarPorAreaChip('SSMA')">SSMA</button>
+      <button class="area-chip" data-area="LOGISTICA" onclick="filtrarPorAreaChip('LOGISTICA')">Logística</button>
+      <button class="area-chip" data-area="RRHH" onclick="filtrarPorAreaChip('RRHH')">RRHH</button>
+      <button class="area-chip" data-area="CALIDAD" onclick="filtrarPorAreaChip('CALIDAD')">Calidad</button>
+      <button class="area-chip" data-area="PRESIDENCIA" onclick="filtrarPorAreaChip('PRESIDENCIA')">Presidencia</button>
+      <button class="area-chip" data-area="COCINA BASE" onclick="filtrarPorAreaChip('COCINA BASE')">Cocina Base</button>
+      <button class="area-chip" data-area="CAMPAMENTOS" onclick="filtrarPorAreaChip('CAMPAMENTOS')">Campamentos</button>
+    </div>
+    <!-- Sort + scroll controls -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Ordenar:</span>
+      <select id="sc-orden" onchange="renderHistorial()" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-family:var(--ff);font-size:12px;outline:none">
+        <option value="fecha-desc">📅 Fecha (mayor a menor)</option>
+        <option value="fecha-asc">📅 Fecha (menor a mayor)</option>
+        <option value="area">🗂 Área</option>
+        <option value="criticidad">🔴 Criticidad</option>
+        <option value="estado">📊 Estado</option>
+        <option value="num-desc">🔢 N° SC (mayor a menor)</option>
+      </select>
+      <div style="flex:1"></div>
+      <button onclick="scrollHistTo('top','hist-table')" title="Ir al principio" style="padding:7px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);cursor:pointer;font-size:13px">⬆️ Inicio</button>
+      <button onclick="scrollHistTo('bottom','hist-table')" title="Ir al final" style="padding:7px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);cursor:pointer;font-size:13px">⬇️ Final</button>
+    </div>
   </div>
   <div class="card">
     <div class="tbl-wrap">
@@ -1623,6 +1587,17 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
         <option>LOGISTICA</option><option>RRHH</option><option>CALIDAD</option>
         <option>PRESIDENCIA</option><option>COCINA BASE</option><option>CAMPAMENTOS</option>
       </select>
+      <select id="op-orden" onchange="renderHistorialPedidos()" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-family:var(--ff);font-size:12px;outline:none">
+        <option value="fecha-desc">📅 Fecha (mayor a menor)</option>
+        <option value="fecha-asc">📅 Fecha (menor a mayor)</option>
+        <option value="area">🗂 Área</option>
+        <option value="criticidad">🔴 Criticidad</option>
+        <option value="estado">📊 Estado</option>
+        <option value="num-asc">🔢 N° PC (menor a mayor)</option>
+      </select>
+      <div style="flex:1"></div>
+      <button onclick="scrollHistTo('top','op-table-body')" title="Ir al principio" style="padding:7px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);cursor:pointer;font-size:13px">⬆️ Inicio</button>
+      <button onclick="scrollHistTo('bottom','op-table-body')" title="Ir al final" style="padding:7px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);cursor:pointer;font-size:13px">⬇️ Final</button>
     </div>
   </div>
   <!-- Tabla de pedidos originales -->
@@ -1747,6 +1722,31 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="pg-title">KANBAN <span>ABASTECIMIENTO</span></div>
     <div class="pg-sub">Estado de Pedidos de Abastecimiento por columna</div>
   </div>
+  <div class="kb-filter-bar">
+    <span style="font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap">Período:</span>
+    <select id="kbpa-filtro-tipo" class="kb-filter-sel" onchange="onKbPaFiltroChange()">
+      <option value="todo">Todas las fechas</option>
+      <option value="anio">Año</option>
+      <option value="mes">Mes</option>
+      <option value="periodo">Período personalizado</option>
+    </select>
+    <select id="kbpa-filtro-anio" class="kb-filter-sel" style="display:none" onchange="_buildKanbanPA()">
+      <option value="2024">2024</option><option value="2025">2025</option><option value="2026" selected>2026</option>
+    </select>
+    <select id="kbpa-filtro-mes" class="kb-filter-sel" style="display:none" onchange="_buildKanbanPA()">
+      <option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option>
+      <option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option>
+      <option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option>
+      <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+    </select>
+    <div id="kbpa-filtro-rango" style="display:none;gap:6px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--muted)">Desde</span>
+      <input type="date" id="kbpa-filtro-desde" class="kb-filter-sel" style="padding:5px 8px" onchange="_buildKanbanPA()">
+      <span style="font-size:11px;color:var(--muted)">Hasta</span>
+      <input type="date" id="kbpa-filtro-hasta" class="kb-filter-sel" style="padding:5px 8px" onchange="_buildKanbanPA()">
+    </div>
+  </div>
+  <div class="kb-pct-panel" id="kbpa-pct-panel"></div>
   <div id="kanban-pa-body">
     <div style="padding:32px;text-align:center;color:var(--muted)">
       <div style="font-size:22px;margin-bottom:8px">⏳</div>
@@ -2280,7 +2280,7 @@ async function showView(id, btn) {
   if (id === 'comparativas')   renderComparativas();
   if (id === 'ahorro')         renderAhorro();
   if (id === 'prov-db')      { await cargarProveedoresSB(); renderProvDB(); }
-  if (id === 'prov-compras') { poblarPeriodos(); renderComprasProv(); }
+  if (id === 'prov-compras') { await cargarComprasSB(); poblarPeriodos(); renderComprasProv(); }
   if (id === 'prov-eval')    { renderEvalProv(); }
   if (id === 'nueva-sc') resetWizard();
 }
@@ -2822,22 +2822,30 @@ function onAreaFilterChange() {
   renderHistorial();
 }
 
+const CRIT_ORDER = {'CRITICA':0,'URGENTE':1,'ALTA':2,'MEDIA':3,'BAJA':4};
+const EST_ORDER  = {'PENDIENTE':0,'EN PROCESO':1,'COMPLETADA':2,'CANCELADA':3};
+function ordenarSCs(arr, modo) {
+  const byNumDesc = (a,b)=>{
+    const sa=(a.numSC||a.num||''), sb=(b.numSC||b.num||'');
+    const nA=(sa.match(/-(\d+)$/)||[,0])[1], nB=(sb.match(/-(\d+)$/)||[,0])[1];
+    const yA=(sa.match(/-(\d{4})-/)||[,'0'])[1], yB=(sb.match(/-(\d{4})-/)||[,'0'])[1];
+    if(yB!==yA) return yB.localeCompare(yA);
+    return parseInt(nB)-parseInt(nA);
+  };
+  const fecha = s => (s.fecha||s.creado||'');
+  switch(modo){
+    case 'fecha-asc':  return arr.sort((a,b)=>fecha(a).localeCompare(fecha(b)) || byNumDesc(a,b));
+    case 'fecha-desc': return arr.sort((a,b)=>fecha(b).localeCompare(fecha(a)) || byNumDesc(a,b));
+    case 'area':       return arr.sort((a,b)=>(a.area||'').localeCompare(b.area||'','es') || byNumDesc(a,b));
+    case 'criticidad': return arr.sort((a,b)=>(CRIT_ORDER[a.criticidad]??9)-(CRIT_ORDER[b.criticidad]??9) || byNumDesc(a,b));
+    case 'estado':     return arr.sort((a,b)=>(EST_ORDER[a.estado]??9)-(EST_ORDER[b.estado]??9) || byNumDesc(a,b));
+    case 'num-desc':
+    default:           return arr.sort(byNumDesc);
+  }
+}
 function renderHistorial() {
-  // Sort: by numSC descending (prefix + year + number), then by date desc
-  let data = [...scs].sort((a,b)=>{
-    const sa = (a.numSC||a.num||''), sb = (b.numSC||b.num||'');
-    // Extract numeric part at end: SCTL-2026-0008 → 8
-    const matchA = sa.match(/-(\d+)$/), matchB = sb.match(/-(\d+)$/);
-    const numA = matchA ? parseInt(matchA[1]) : 0;
-    const numB = matchB ? parseInt(matchB[1]) : 0;
-    // Extract year: SCTL-2026-0008 → 2026
-    const yearA = (sa.match(/-(\d{4})-/) || [,'0'])[1];
-    const yearB = (sb.match(/-(\d{4})-/) || [,'0'])[1];
-    // Sort by year desc, then number desc, then by date desc
-    if (yearB !== yearA) return yearB.localeCompare(yearA);
-    if (numB !== numA) return numB - numA;
-    return (b.fecha||b.creado||'').localeCompare(a.fecha||a.creado||'');
-  });
+  const orden = document.getElementById('sc-orden')?.value || 'fecha-desc';
+  let data = ordenarSCs([...scs], orden);
   const fArea    = document.getElementById('f-area')?.value    || '';
   const fSubarea = document.getElementById('f-subarea')?.value || '';
   const fCrit    = document.getElementById('f-crit')?.value    || '';
@@ -2866,12 +2874,34 @@ function renderHistorial() {
 function limpiarFiltrosSC() {
   const ids = ['f-area','f-subarea','f-crit','f-est','f-buscar'];
   ids.forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  document.querySelectorAll('.area-chip').forEach(c=>c.classList.toggle('active', c.dataset.area===''));
   renderHistorial();
 }
 
 function filtrarPorArea(area) {
   const sel = document.getElementById('f-area');
   if (sel) { sel.value = area; renderHistorial(); }
+}
+
+// Area filter chips in HISTORIAL SC
+function filtrarPorAreaChip(area) {
+  const sel = document.getElementById('f-area');
+  if (sel) sel.value = area;
+  document.querySelectorAll('.area-chip').forEach(c=>c.classList.toggle('active', c.dataset.area===area));
+  renderHistorial();
+}
+
+// Scroll helper for tables (top/bottom)
+function scrollHistTo(dir, tbodyId) {
+  const tb = document.getElementById(tbodyId);
+  if (!tb) return;
+  const wrap = tb.closest('.tbl-wrap') || tb.closest('.card') || tb.parentElement;
+  const target = dir === 'top' ? 0 : (tb.scrollHeight || 99999);
+  // Scroll the page to the table, then the table's own scroll container
+  const rows = tb.querySelectorAll('tr');
+  if (rows.length) {
+    (dir === 'top' ? rows[0] : rows[rows.length-1]).scrollIntoView({behavior:'smooth', block:'center'});
+  }
 }
 
 
@@ -5923,6 +5953,52 @@ function _buildPanelPA() {
     </div>`;
 }
 
+function onKbPaFiltroChange() {
+  const tipo=document.getElementById('kbpa-filtro-tipo')?.value;
+  const anioEl=document.getElementById('kbpa-filtro-anio');
+  const mesEl=document.getElementById('kbpa-filtro-mes');
+  const rangoEl=document.getElementById('kbpa-filtro-rango');
+  if(anioEl) anioEl.style.display=(tipo==='anio'||tipo==='mes')?'':'none';
+  if(mesEl)  mesEl.style.display=tipo==='mes'?'':'none';
+  if(rangoEl) rangoEl.style.display=tipo==='periodo'?'flex':'none';
+  _buildKanbanPA();
+}
+function getKbPaFiltered() {
+  const tipo=document.getElementById('kbpa-filtro-tipo')?.value||'todo';
+  const anio=document.getElementById('kbpa-filtro-anio')?.value||new Date().getFullYear()+'';
+  const mes=document.getElementById('kbpa-filtro-mes')?.value||'';
+  const desde=document.getElementById('kbpa-filtro-desde')?.value||'';
+  const hasta=document.getElementById('kbpa-filtro-hasta')?.value||'';
+  return paData.map((pa,idx)=>({pa,idx})).filter(({pa})=>{
+    const f=(pa.fecha||pa.creado||'').slice(0,10);
+    if(tipo==='todo') return true;
+    if(tipo==='anio') return f.startsWith(anio);
+    if(tipo==='mes')  return f.startsWith(anio+'-'+mes);
+    if(tipo==='periodo'){if(desde&&f<desde)return false;if(hasta&&f>hasta)return false;return true;}
+    return true;
+  });
+}
+function renderKbPaPctPanel(items){
+  const panel=document.getElementById('kbpa-pct-panel');if(!panel)return;
+  const total=items.length;
+  if(!total){panel.innerHTML='<div style="font-size:12px;color:var(--muted);padding:10px 0">Sin pedidos en el período seleccionado</div>';return;}
+  const cnts={pendiente:0,partial:0,full:0,none:0};
+  items.forEach(({pa})=>{const e=calcEstadoPA(pa);if(cnts[e]!==undefined)cnts[e]++;});
+  const labels={pendiente:'Pendiente',partial:'En Curso',full:'Entregado',none:'No recibido'};
+  const colors={pendiente:'var(--muted)',partial:'var(--yellow)',full:'var(--green)',none:'var(--red)'};
+  const cumulPct=Math.round(cnts.full/total*100);
+  panel.innerHTML='<div class="kb-pct-title">📊 Cumplimiento del Período — '+total+' PA en total</div>'
+    +'<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">'
+    +'<div style="text-align:center"><div style="font-family:var(--fd);font-size:36px;font-weight:800;color:var(--green);line-height:1">'+cumulPct+'%</div>'
+    +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px">Entregado</div></div>'
+    +'<div style="flex:1;min-width:200px">'
+    +Object.entries(cnts).map(([est,n])=>{
+      const pct=total?Math.round(n/total*100):0;
+      return '<div class="kb-pct-row"><span class="kb-pct-label">'+labels[est]+'</span>'
+        +'<div class="kb-pct-bar"><div class="kb-pct-fill" style="width:'+pct+'%;background:'+colors[est]+'"></div></div>'
+        +'<span class="kb-pct-num" style="color:'+colors[est]+'">'+pct+'% <span style="font-size:10px;opacity:.6">('+n+')</span></span></div>';
+    }).join('')+'</div></div>';
+}
 function renderKanbanPA() {
   renderHistorialPA();
   setTimeout(_buildKanbanPA, 600);
@@ -5965,7 +6041,9 @@ function _buildKanbanPA() {
     full:     {label:'✅ Entregado', color:'var(--green)',  items:[]},
     none:     {label:'❌ No recib.', color:'var(--red)',    items:[]}
   };
-  paData.forEach((pa,idx)=>{ const e=calcEstadoPA(pa); if(COLS[e]) COLS[e].items.push({pa,idx}); });
+  const filtered=getKbPaFiltered();
+  renderKbPaPctPanel(filtered);
+  filtered.forEach(({pa,idx})=>{ const e=calcEstadoPA(pa); if(COLS[e]) COLS[e].items.push({pa,idx}); });
   cont.innerHTML='<div class="kanban">'+Object.entries(COLS).map(([key,col])=>{
     const color=col.color;
     const avgPct=col.items.length?Math.round(col.items.reduce((s,{pa})=>s+calcPctPA(pa),0)/col.items.length):0;
@@ -6795,10 +6873,19 @@ function renderHistorialPedidos() {
   const area   = document.getElementById('fop-area')?.value || '';
 
   // Usar scs[] — cada SC tiene su PC asociado
-  let data = [...scs].sort((a,b)=>{
-    const na=a.numOP||a.numPC||'', nb=b.numOP||b.numPC||'';
-    return na.localeCompare(nb,'es',{numeric:true}); // PC ascendente
-  });
+  const orden = document.getElementById('op-orden')?.value || 'fecha-desc';
+  const pcNumOf = s => (s.numOP||s.numPC||'');
+  const fechaOf = s => (s.fecha||s.creado||'');
+  let data = [...scs];
+  switch(orden){
+    case 'fecha-asc':  data.sort((a,b)=>fechaOf(a).localeCompare(fechaOf(b))); break;
+    case 'fecha-desc': data.sort((a,b)=>fechaOf(b).localeCompare(fechaOf(a))); break;
+    case 'area':       data.sort((a,b)=>(a.area||'').localeCompare(b.area||'','es')); break;
+    case 'criticidad': data.sort((a,b)=>(CRIT_ORDER[a.criticidad]??9)-(CRIT_ORDER[b.criticidad]??9)); break;
+    case 'estado':     data.sort((a,b)=>(EST_ORDER[a.estado]??9)-(EST_ORDER[b.estado]??9)); break;
+    case 'num-asc':
+    default:           data.sort((a,b)=>pcNumOf(a).localeCompare(pcNumOf(b),'es',{numeric:true}));
+  }
   if (area) data = data.filter(s => s.area === area);
   if (buscar) data = data.filter(s =>
     ((s.numOP||s.numSC||'') + (s.area||'') + (s.solicitante||'') + (s.items||'')).toLowerCase().includes(buscar)
@@ -6891,6 +6978,21 @@ let comprasData = JSON.parse(localStorage.getItem('nielsen_compras_prov') || '[]
 let _provCharts = {};
 
 // Load providers from Supabase if available
+async function cargarComprasSB() {
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/compras_proveedor?select=proveedor,monto,fecha&order=fecha.desc&limit=10000', {
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
+    });
+    if (r.ok) {
+      const rows = await r.json();
+      if (rows && rows.length) {
+        comprasData = rows.map(r => ({proveedor:r.proveedor||'', monto:parseFloat(r.monto)||0, fecha:r.fecha||''}));
+        _lsSet('nielsen_compras_prov', JSON.stringify(comprasData));
+      }
+    }
+  } catch(e) { console.warn('cargarComprasSB:', e.message); }
+}
+
 async function cargarProveedoresSB() {
   try {
     const r = await fetch(_SB_URL + '/rest/v1/proveedores?select=*&order=nombre.asc&limit=2000', {
@@ -7023,6 +7125,23 @@ async function importarComprasXLS(ev) {
     poblarPeriodos();
     renderComprasProv();
     showToast('✅ ' + compras.length + ' compras importadas', 'ok');
+    // Persist to Supabase so it stays across devices/sessions
+    try {
+      // Clear previous and re-insert (full replace)
+      await fetch(_SB_URL + '/rest/v1/compras_proveedor?id=gt.0', {
+        method:'DELETE', headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
+      }).catch(()=>{});
+      // Insert in batches of 500
+      for (let i=0; i<compras.length; i+=500) {
+        const batch = compras.slice(i,i+500).map(c=>({proveedor:c.proveedor, monto:c.monto, fecha:c.fecha||null}));
+        await fetch(_SB_URL + '/rest/v1/compras_proveedor', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
+          body: JSON.stringify(batch)
+        }).catch(()=>{});
+      }
+      showToast('✅ Compras guardadas en Supabase (permanente)', 'ok');
+    } catch(e) { console.warn('compras SB:', e.message); }
   } catch(e) { showToast('Error: '+e.message, 'error'); console.error(e); }
   ev.target.value = '';
 }
@@ -7257,6 +7376,25 @@ function _destroyChart(id) {
       <button class="settings-close" onclick="cerrarSettings()">✕</button>
     </div>
     <div class="settings-body">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:4px">Datos y mantenimiento</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">⬇️ Exportar Excel</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Descarga todas las SC en una planilla</div>
+        </div>
+        <button onclick="cerrarSettings();exportarExcel()" style="padding:7px 14px;border-radius:7px;border:1.5px solid var(--border2);background:var(--s3);color:var(--text);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+          Exportar
+        </button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:#f87171">🗑 Limpiar Datos</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Borra todos los datos locales (requiere PIN)</div>
+        </div>
+        <button onclick="cerrarSettings();pedirPinLimpiar()" style="padding:7px 14px;border-radius:7px;border:1.5px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#f87171;font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+          Limpiar
+        </button>
+      </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--text)">🔄 Recuperar SC faltantes</div>
