@@ -505,7 +505,20 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
         </div>
         <div class="form-group">
           <label>Área / Departamento <span style="color:var(--orange)">*</span></label>
-          <input type="text" id="area" placeholder="Ej: Operaciones"/>
+          <select id="area">
+            <option value="">— Seleccioná —</option>
+            <option>PRESIDENCIA</option>
+            <option>GERENCIA</option>
+            <option>COMPRAS Y ABASTECIMIENTO</option>
+            <option>MANTENIMIENTO</option>
+            <option>CAMPAMENTOS</option>
+            <option>SSMA</option>
+            <option>RRHH</option>
+            <option>CALIDAD</option>
+            <option>LOGISTICA</option>
+            <option>TALLER</option>
+            <option>TRANSPORTE</option>
+          </select>
         </div>
         <div class="form-group">
           <label>Moneda de cotización <span style="color:#888;font-size:11px">(opcional)</span></label>
@@ -565,9 +578,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
       <h3>🏢 Proveedores</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" id="btnOpenDB">🗄️ Base de datos</button>
-        <button class="btn btn-outline btn-sm comp-editor-only" id="btnAddProv" style="display:none">+ Proveedor</button>
-        <button class="btn btn-outline btn-sm comp-editor-only" id="btnCargaMasiva" style="display:none">📥 Importar Planilla XLS</button>
-        <button class="btn btn-outline btn-sm comp-editor-only" id="btnDescPlantilla" onclick="descargarPlantillaProveedores()" style="display:none;font-size:11px">⬇️ Plantilla XLS</button>
+        <button class="btn btn-outline btn-sm" id="btnAddProv">+ Proveedor</button>
       </div>
     </div>
     <div class="card-body">
@@ -921,13 +932,21 @@ async function sbGetNextCompNum() {
 
 async function sbLoadProvDB() {
   try {
-    var r = await fetch(_SB_URL+'/rest/v1/proveedores_db?order=nombre.asc&limit=500', {
+    // Tomar la base de datos del Centro de Control (tabla 'proveedores')
+    var r = await fetch(_SB_URL+'/rest/v1/proveedores?select=*&order=nombre.asc&limit=2000', {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
     });
     if(r.ok) {
       var rows = await r.json();
       if(rows && rows.length) {
-        provDB = rows.map(function(row){return row.datos||({name:row.nombre,cuit:row.cuit,rubro:row.rubro,dbId:row.id});});
+        provDB = rows.map(function(row){
+          return {
+            name: row.nombre||'', cuit: row.cuit||'', rubro: row.rubro||'',
+            email: row.email||'', tel: row.tel||'', dir: row.direccion||'',
+            contacto: row.contacto||'', pago: row.condicion_pago||'', tipo: row.tipo||'',
+            dbId: row.id
+          };
+        });
         dbSave();
         renderDBTable();
         return;
@@ -1493,8 +1512,9 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch(e) { console.warn('URL params error:', e); }
   })();
 
-  // DB
+  // DB — cargar desde el Centro de Control
   dbLoad();
+  sbLoadProvDB();
   document.getElementById('btnOpenDB').addEventListener('click', openDB);
   var cmBtn = document.getElementById('btnCargaMasiva');
   if (cmBtn) cmBtn.addEventListener('click', function(){ document.getElementById('carga-masiva-input').click(); });
@@ -1967,6 +1987,7 @@ function openDB() {
   renderDBTable();
   switchDbTab('lista');
   document.getElementById('dbOverlay').classList.add('show');
+  sbLoadProvDB(); // refrescar desde el Centro de Control
 }
 function closeDB() { document.getElementById('dbOverlay').classList.remove('show'); }
 
