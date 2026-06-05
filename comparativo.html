@@ -390,6 +390,55 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
 .sc-assoc-field { flex:1;min-width:200px; }
 .sc-assoc-check { display:flex;align-items:center;gap:8px;padding-bottom:8px;white-space:nowrap;font-size:13px;color:var(--cream); }
 
+
+/* ── Análisis automático ── */
+.aa-metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.aa-metric{background:var(--bg-light);border-radius:8px;padding:14px 16px}
+.aa-metric .lbl{font-size:11px;color:var(--orange-dim);margin-bottom:5px;font-weight:600}
+.aa-metric .val{font-size:21px;font-weight:800;color:var(--cream)}
+.aa-metric .val.green{color:var(--green-light)}
+.aa-metric .val.red{color:var(--red-light)}
+.aa-table-card{background:var(--bg-mid);border:1px solid var(--orange-border);border-radius:8px;overflow:hidden;margin-bottom:14px}
+.aa-table-head{background:var(--bg-light);padding:9px 14px;font-size:12px;font-weight:700;color:var(--cream)}
+.aa-table{width:100%;border-collapse:collapse;font-size:12px}
+.aa-table th{font-size:11px;font-weight:600;color:var(--orange-dim);text-align:left;padding:8px 10px;border-bottom:1px solid var(--orange-border)}
+.aa-table td{padding:8px 10px;color:var(--cream);border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
+.aa-table tr:last-child td{border-bottom:none}
+.aa-badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:6px;font-weight:700}
+.aa-badge-green{background:rgba(30,132,73,.2);color:var(--green-light)}
+.aa-badge-red{background:rgba(192,57,43,.2);color:var(--red-light)}
+.aa-badge-amber{background:rgba(214,137,16,.2);color:var(--yellow-light)}
+.aa-badge-blue{background:rgba(46,134,193,.2);color:var(--blue-light)}
+.aa-conclusion{border:1px solid var(--orange-border);border-left:3px solid var(--green-light);border-radius:8px;padding:14px 18px;background:var(--bg-mid)}
+.aa-conclusion .t{font-size:14px;font-weight:700;color:var(--cream);margin-bottom:8px}
+.aa-conclusion p{font-size:13px;color:#c9c5c0;line-height:1.65}
+.aa-alert{border:1px solid var(--orange-border);border-left:3px solid var(--yellow-light);border-radius:8px;padding:14px 18px;background:var(--bg-mid);margin-top:10px}
+.aa-alert .t{font-size:14px;font-weight:700;color:var(--cream);margin-bottom:6px}
+.aa-alert p{font-size:13px;color:#c9c5c0;line-height:1.65}
+.aa-tag{font-size:10px;color:var(--orange-dim);display:block;margin-top:3px}
+/* Memo — fondo claro para impresión */
+.aa-memo{background:#fff;border-radius:10px;padding:38px 42px;max-width:720px;margin:0 auto;color:#1a1a1a;font-family:Barlow,sans-serif}
+.aa-memo .mh{border-bottom:2px solid #D96B1A;padding-bottom:18px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:flex-end}
+.aa-memo .company{font-size:15px;font-weight:700;color:#1a1a1a}
+.aa-memo .company-sub{font-size:12px;color:#666}
+.aa-memo .doc-type{font-size:11px;font-weight:700;color:#D96B1A;letter-spacing:.08em;text-align:right}
+.aa-memo .meta{display:grid;grid-template-columns:140px 1fr;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;margin-bottom:20px}
+.aa-memo .meta .ml{font-size:12px;color:#666;padding:7px 14px;background:#f6f6f6;border-bottom:1px solid #e0e0e0}
+.aa-memo .meta .mv{font-size:12px;color:#1a1a1a;padding:7px 14px;border-bottom:1px solid #e0e0e0}
+.aa-memo .sec{margin-bottom:18px}
+.aa-memo .sec-t{font-size:11px;font-weight:700;color:#D96B1A;letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px}
+.aa-memo .bt{font-size:13px;color:#1a1a1a;line-height:1.75}
+.aa-memo table{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden}
+.aa-memo th{background:#f6f6f6;font-weight:600;color:#666;text-align:left;padding:7px 12px;border-bottom:1px solid #e0e0e0}
+.aa-memo td{padding:7px 12px;color:#1a1a1a;border-bottom:1px solid #e0e0e0}
+.aa-memo .hl td{background:#EAF3DE;color:#27500A;font-weight:600}
+.aa-memo .rec{border-left:3px solid #3B6D11;padding:10px 14px;background:#EAF3DE;margin:10px 0}
+.aa-memo .rec p{font-size:12px;color:#27500A;line-height:1.65}
+.aa-memo .alert{border-left:3px solid #854F0B;padding:10px 14px;background:#FAEEDA;margin:10px 0}
+.aa-memo .alert p{font-size:12px;color:#633806;line-height:1.65}
+.aa-memo .ft{margin-top:28px;padding-top:16px;border-top:1px solid #e0e0e0;font-size:12px;color:#666;line-height:1.6}
+.aa-memo .ft strong{color:#1a1a1a;display:block}
+
 </style>
 </head>
 <body>
@@ -613,128 +662,67 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
 <!-- ═══ TAB 3: ANÁLISIS ═══ -->
 <div class="tab-panel" id="tab-analisis">
 
-  <!-- PASTE SECTION -->
-  <div class="card" id="cardPasteAnalysis">
+  <div class="card">
     <div class="card-header">
-      <h3>📋 Pegar Análisis</h3>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-outline btn-sm" id="btnClearAnalysis">🗑 Limpiar</button>
-        <button class="btn btn-orange btn-sm" id="btnRenderAnalysis">✓ Aplicar y ver</button>
+      <h3>⚙️ Análisis Automático</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-orange btn-sm" id="btnGenAnalisis" onclick="generarAnalisisAuto()">⚙️ Generar análisis</button>
       </div>
     </div>
     <div class="card-body">
-      <p style="font-size:12px;color:var(--orange-dim);margin-bottom:12px;line-height:1.6">
-        Pedile el análisis a <strong style="color:var(--cream)">Claude en claude.ai</strong> adjuntando los PDFs de presupuestos y la solicitud de compra.<br>
-        Claude te va a devolver el análisis en formato de texto. Pegalo en el área de abajo y hacé clic en <strong style="color:var(--orange)">Aplicar y ver</strong>.
+      <p style="font-size:12px;color:var(--orange-dim);margin-bottom:4px;line-height:1.6">
+        El análisis se genera <strong style="color:var(--cream)">automáticamente</strong> a partir de la solicitud y los precios cargados en la pestaña <strong style="color:var(--orange)">Proveedores</strong>.
+        Incluye comparativa por ítem, análisis de precios, variables críticas, conclusión ejecutiva y memo para Dirección.
       </p>
-      <textarea id="analysisRawInput" placeholder="Pegá acá el análisis completo que te proporcionó Claude...
-
-Ejemplo de lo que podés pedir en claude.ai:
-─────────────────────────────────────────────────
-Analizá estos presupuestos para [descripción del pedido] y generame:
-1. Comparación económica de precios por artículo
-2. Análisis de cobertura de pedido por proveedor
-3. Análisis cualitativo (scores del 1 al 5)
-4. Evaluación técnica (entrega, pago, envío)
-5. Conclusión y mensaje formal para aprobación de gerencia
-─────────────────────────────────────────────────" 
-        style="width:100%;height:200px;background:rgba(0,0,0,.25);border:1px solid var(--orange-border);border-radius:8px;color:var(--cream);font-family:Barlow,sans-serif;font-size:13px;padding:14px;outline:none;resize:vertical;line-height:1.6"
-        onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--orange-border)'">
-      </textarea>
     </div>
   </div>
 
-  <!-- RENDERED ANALYSIS -->
-  <div id="analysisRendered" style="display:none">
-    <div class="card">
+  <div id="aaRendered" style="display:none">
+    <!-- Resumen ejecutivo (métricas) -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header"><h3>📊 Resumen ejecutivo</h3></div>
+      <div class="card-body"><div id="aaMetrics" class="aa-metric-grid"></div></div>
+    </div>
+
+    <!-- Comparativa ítem por ítem -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header"><h3>🔍 Comparativa ítem por ítem</h3></div>
+      <div class="card-body"><div id="aaItemTables"></div></div>
+    </div>
+
+    <!-- Totales por proveedor -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header"><h3>💰 Totales por proveedor</h3></div>
+      <div class="card-body"><div id="aaTotalsTable"></div></div>
+    </div>
+
+    <!-- Variables críticas / condiciones comerciales -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header"><h3>📋 Variables críticas y condiciones comerciales</h3></div>
+      <div class="card-body"><div id="aaCondTable"></div></div>
+    </div>
+
+    <!-- Conclusión ejecutiva -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header"><h3>✅ Conclusión y recomendación</h3></div>
+      <div class="card-body"><div id="aaConclusion"></div></div>
+    </div>
+
+    <!-- Memo ejecutivo -->
+    <div class="card" style="margin-bottom:14px">
       <div class="card-header">
-        <h3>📊 Análisis Completo</h3>
-        <button class="btn btn-outline btn-sm" id="btnEditAnalysis">✏️ Editar</button>
+        <h3>📄 Memo ejecutivo para Dirección</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="copiarMemoEjecutivo()">📋 Copiar texto</button>
+          <button class="btn btn-outline btn-sm" onclick="imprimirMemoEjecutivo()">🖨 Imprimir / PDF</button>
+        </div>
       </div>
-      <div class="card-body">
-
-        <!-- 1. COMPARACION ECONOMICA -->
-        <div class="analysis-block s1 open" style="margin-bottom:14px">
-          <div class="analysis-hdr" id="hdr1">
-            <div class="analysis-num">1</div>
-            <h3>Comparación Económica</h3>
-            <span class="chevron">▼</span>
-          </div>
-          <div class="analysis-body">
-            <div class="analysis-content">
-              <div id="section-economica" style="white-space:pre-wrap;font-size:13px;line-height:1.8"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2. COBERTURA -->
-        <div class="analysis-block s2 open" style="margin-bottom:14px">
-          <div class="analysis-hdr" id="hdr2">
-            <div class="analysis-num">2</div>
-            <h3>Cobertura de Pedido por Proveedor</h3>
-            <span class="chevron">▼</span>
-          </div>
-          <div class="analysis-body">
-            <div class="analysis-content">
-              <div id="section-cobertura" style="white-space:pre-wrap;font-size:13px;line-height:1.8"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 3. CUALITATIVO -->
-        <div class="analysis-block s3 open" style="margin-bottom:14px">
-          <div class="analysis-hdr" id="hdr3">
-            <div class="analysis-num">3</div>
-            <h3>Análisis Cualitativo</h3>
-            <span class="chevron">▼</span>
-          </div>
-          <div class="analysis-body">
-            <div class="analysis-content">
-              <div id="section-cualitativo" style="white-space:pre-wrap;font-size:13px;line-height:1.8"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 4. TECNICA -->
-        <div class="analysis-block s4 open" style="margin-bottom:14px">
-          <div class="analysis-hdr" id="hdr4">
-            <div class="analysis-num">4</div>
-            <h3>Evaluación Técnica</h3>
-            <span class="chevron">▼</span>
-          </div>
-          <div class="analysis-body">
-            <div class="analysis-content">
-              <div id="section-tecnica" style="white-space:pre-wrap;font-size:13px;line-height:1.8"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 5. CONCLUSION -->
-        <div class="analysis-block s5 open" style="margin-bottom:14px">
-          <div class="analysis-hdr" id="hdr5">
-            <div class="analysis-num">5</div>
-            <h3>Conclusión y Mensaje para Gerencia</h3>
-            <span class="chevron">▼</span>
-          </div>
-          <div class="analysis-body">
-            <div class="analysis-content">
-              <div id="section-conclusion" style="white-space:pre-wrap;font-size:13px;line-height:1.8"></div>
-            </div>
-            <div style="margin-top:14px;background:rgba(232,97,26,.06);border:1px solid var(--orange-border-strong);border-radius:8px;padding:15px 19px">
-              <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--orange-dim);text-transform:uppercase;margin-bottom:8px">📧 Mensaje formal para envío</div>
-              <div id="section-email" style="white-space:pre-wrap;font-size:13px;line-height:1.8;font-style:italic"></div>
-              <button class="btn btn-outline btn-sm" id="btnCopyEmail" style="margin-top:10px">📋 Copiar mensaje</button>
-            </div>
-          </div>
-        </div>
-
-      </div>
+      <div class="card-body"><div id="aaMemo"></div></div>
     </div>
   </div>
 
 </div>
 
-<!-- ═══ TAB 4: EXPORTAR ═══ -->
 <div class="tab-panel" id="tab-exportar">
   <div class="card">
     <div class="card-header"><h3>📄 Exportar Informe</h3></div>
@@ -1401,23 +1389,8 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('pdfInput').addEventListener('change', function(e) { handlePDFUpload(e); });
   setupDragDrop();
 
-  // ANALYZE
-  document.getElementById('btnGoAnalisis').addEventListener('click', function(){ switchTab('analisis'); });
-  _safeOn('btnRenderAnalysis', 'click', function(){
-    if (typeof renderManualAnalysis === 'function') { renderManualAnalysis(); }
-    else if (typeof renderAnalysis === 'function') { renderAnalysis(); }
-    else { showToast('Análisis aplicado','ok'); }
-  });
-  document.getElementById('btnClearAnalysis').addEventListener('click', function(){
-    document.getElementById('analysisRawInput').value='';
-    document.getElementById('analysisRendered').style.display='none';
-    document.getElementById('cardPasteAnalysis').style.display='';
-    showToast('Análisis limpiado','ok');
-  });
-  document.getElementById('btnEditAnalysis').addEventListener('click', function(){
-    document.getElementById('analysisRendered').style.display='none';
-    document.getElementById('cardPasteAnalysis').style.display='';
-  });
+  // ANALYZE — auto-generación
+  _safeOn('btnGoAnalisis', 'click', function(){ switchTab('analisis'); });
 
   // EXPORT
   document.getElementById('btnCopyText').addEventListener('click', copyConclusion);
@@ -2250,6 +2223,339 @@ function tryMatchPDFtoProvider(pdfEntry) {
       return;
     }
   }
+}
+
+
+
+// ════════════════════════════════════════════════════════════════
+//  MOTOR DE ANÁLISIS AUTOMÁTICO
+// ════════════════════════════════════════════════════════════════
+var IVA_RATE = 0.21;
+
+function _fmtMoney(n){
+  return '$' + Math.round(n).toLocaleString('es-AR');
+}
+function _provTotals(){
+  // Returns [{idx,name,prov,totalSinIVA,totalConIVA,flete,cobertura}]
+  return providers.map(function(p, pIdx){
+    var totalSin = 0, itemsCotizados = 0;
+    items.forEach(function(item, i){
+      var price = (p.prices && p.prices[i]) ? parseFloat(p.prices[i])||0 : 0;
+      var qty = parseFloat(item.qty)||1;
+      if (price > 0) { totalSin += price * qty; itemsCotizados++; }
+    });
+    var flete = parseFloat(p.shippingCost)||0;
+    totalSin += flete;
+    var totalCon = totalSin * (1 + IVA_RATE);
+    return {
+      idx:pIdx, name:p.name||('Proveedor '+(pIdx+1)), prov:p,
+      totalSinIVA:totalSin, totalConIVA:totalCon, flete:flete,
+      cobertura:itemsCotizados, totalItems:items.length
+    };
+  }).filter(function(t){ return t.totalSinIVA > 0; });
+}
+
+function generarAnalisisAuto(){
+  if (!providers.length || !items.length){
+    showToast('Cargá ítems y al menos un proveedor con precios','err');
+    return;
+  }
+  var totals = _provTotals();
+  if (!totals.length){
+    showToast('No hay precios cargados en los proveedores','err');
+    return;
+  }
+  // Sort by total c/IVA ascending (cheapest first)
+  totals.sort(function(a,b){ return a.totalConIVA - b.totalConIVA; });
+  var ganador = totals[0];
+  var segundo = totals.length>1 ? totals[1] : null;
+  var ahorro = segundo ? (segundo.totalConIVA - ganador.totalConIVA) : 0;
+  var ahorroPct = segundo && segundo.totalConIVA>0 ? (ahorro/segundo.totalConIVA*100) : 0;
+
+  analysisResult = { totals:totals, ganador:ganador, segundo:segundo, ahorro:ahorro, ahorroPct:ahorroPct };
+
+  document.getElementById('aaRendered').style.display = 'block';
+  _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct);
+  _renderAAItemTables(totals);
+  _renderAATotals(totals, ganador);
+  _renderAACond(totals);
+  _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct);
+  _renderAAMemo(totals, ganador, segundo, ahorro, ahorroPct);
+  showToast('✓ Análisis generado','ok');
+  var _aaEl=document.getElementById('aaRendered'); if(_aaEl&&_aaEl.scrollIntoView)_aaEl.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct){
+  var html = '';
+  totals.slice(0,3).forEach(function(t){
+    html += '<div class="aa-metric"><div class="lbl">'+escHtml(t.name)+'</div>'
+      + '<div class="val">'+_fmtMoney(t.totalConIVA)+'</div></div>';
+  });
+  if (segundo){
+    html += '<div class="aa-metric"><div class="lbl">Diferencia (1° vs 2°)</div>'
+      + '<div class="val red">-'+_fmtMoney(ahorro)+'</div></div>';
+    html += '<div class="aa-metric"><div class="lbl">Ahorro c/ '+escHtml(ganador.name)+'</div>'
+      + '<div class="val green">'+ahorroPct.toFixed(1)+'%</div></div>';
+  }
+  document.getElementById('aaMetrics').innerHTML = html;
+}
+
+function _renderAAItemTables(totals){
+  var html = '';
+  items.forEach(function(item, i){
+    var qty = parseFloat(item.qty)||1;
+    // Build per-provider rows for this item
+    var rows = totals.map(function(t){
+      var price = (t.prov.prices && t.prov.prices[i]) ? parseFloat(t.prov.prices[i])||0 : 0;
+      return { name:t.name, prov:t.prov, price:price, totalSin:price*qty, totalCon:price*qty*(1+IVA_RATE) };
+    }).filter(function(r){ return r.price>0; });
+    if (!rows.length) return;
+    rows.sort(function(a,b){ return a.price - b.price; });
+    var minPrice = rows[0].price;
+
+    var body = rows.map(function(r){
+      var obs;
+      if (r.price === minPrice){
+        obs = '<span class="aa-badge aa-badge-green">Más económico</span>';
+      } else {
+        var pct = ((r.price-minPrice)/minPrice*100);
+        obs = '<span class="aa-badge aa-badge-red">+'+pct.toFixed(1)+'% más caro</span>';
+      }
+      return '<tr><td><strong>'+escHtml(r.name)+'</strong>'
+        + (r.prov.cuit?'<span class="aa-tag">'+escHtml(r.prov.cuit)+'</span>':'')+'</td>'
+        + '<td>'+(item.spec?escHtml(item.spec):'—')+'</td>'
+        + '<td>'+_fmtMoney(r.price)+'</td>'
+        + '<td>'+_fmtMoney(r.totalSin)+'</td>'
+        + '<td>'+_fmtMoney(r.totalCon)+'</td>'
+        + '<td>'+obs+'</td></tr>';
+    }).join('');
+
+    html += '<div class="aa-table-card">'
+      + '<div class="aa-table-head">'+escHtml(item.desc||('Ítem '+(i+1)))+' — '+qty+' '+(item.unit||'UN')+'</div>'
+      + '<table class="aa-table"><thead><tr>'
+      + '<th>Proveedor</th><th>Especificación</th><th>P. Unit. s/IVA</th><th>Total s/IVA</th><th>Total c/IVA</th><th>Observación</th>'
+      + '</tr></thead><tbody>'+body+'</tbody></table></div>';
+  });
+  document.getElementById('aaItemTables').innerHTML = html || '<p style="color:var(--orange-dim);font-size:13px">Sin precios cargados por ítem.</p>';
+}
+
+function _renderAATotals(totals, ganador){
+  var body = totals.map(function(t){
+    var esGanador = t.idx === ganador.idx;
+    return '<tr'+(esGanador?' style="background:rgba(30,132,73,.12)"':'')+'>'
+      + '<td><strong>'+escHtml(t.name)+'</strong>'+(esGanador?' <span class="aa-badge aa-badge-green">Recomendado</span>':'')+'</td>'
+      + '<td>'+t.cobertura+'/'+t.totalItems+' ítems</td>'
+      + '<td>'+(t.flete>0?_fmtMoney(t.flete):'—')+'</td>'
+      + '<td>'+_fmtMoney(t.totalSinIVA)+'</td>'
+      + '<td><strong>'+_fmtMoney(t.totalConIVA)+'</strong></td></tr>';
+  }).join('');
+  document.getElementById('aaTotalsTable').innerHTML =
+    '<div class="aa-table-card"><table class="aa-table"><thead><tr>'
+    + '<th>Proveedor</th><th>Cobertura</th><th>Flete</th><th>Total s/IVA</th><th>Total c/IVA</th>'
+    + '</tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+
+function _renderAACond(totals){
+  var body = totals.map(function(t){
+    var p = t.prov;
+    return '<tr><td><strong>'+escHtml(t.name)+'</strong></td>'
+      + '<td>'+(p.paymentTerms?escHtml(p.paymentTerms):'<span class="aa-badge aa-badge-amber">No especificada</span>')+'</td>'
+      + '<td>'+(p.deliveryDays?escHtml(p.deliveryDays)+' días':'—')+'</td>'
+      + '<td>'+(t.flete>0?_fmtMoney(t.flete):'Sin cargo / —')+'</td>'
+      + '<td>'+(p.contact?escHtml(p.contact):'—')+'</td></tr>';
+  }).join('');
+  document.getElementById('aaCondTable').innerHTML =
+    '<div class="aa-table-card"><table class="aa-table"><thead><tr>'
+    + '<th>Proveedor</th><th>Condición de pago</th><th>Plazo entrega</th><th>Flete</th><th>Contacto</th>'
+    + '</tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+
+function _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct){
+  // Coverage alert: did the winner quote all items?
+  var alertas = [];
+  if (ganador.cobertura < ganador.totalItems){
+    alertas.push('El proveedor recomendado ('+ganador.name+') cotizó '+ganador.cobertura+' de '+ganador.totalItems+' ítems solicitados. Verificar la provisión de los ítems faltantes antes de adjudicar.');
+  }
+  if (!ganador.prov.paymentTerms){
+    alertas.push(ganador.name+' no especificó condición de pago. Se recomienda confirmar plazos antes de emitir la orden de compra.');
+  }
+  // Items where winner is NOT cheapest
+  var itemsCaros = [];
+  items.forEach(function(item,i){
+    var gPrice = (ganador.prov.prices && ganador.prov.prices[i]) ? parseFloat(ganador.prov.prices[i])||0 : 0;
+    if (gPrice<=0) return;
+    var menor = gPrice, menorProv = null;
+    totals.forEach(function(t){
+      var pr = (t.prov.prices && t.prov.prices[i]) ? parseFloat(t.prov.prices[i])||0 : 0;
+      if (pr>0 && pr<menor){ menor=pr; menorProv=t.name; }
+    });
+    if (menorProv){
+      var pct=((gPrice-menor)/menor*100);
+      itemsCaros.push((item.desc||('Ítem '+(i+1)))+': '+menorProv+' es '+pct.toFixed(1)+'% más económico');
+    }
+  });
+
+  var razones = '';
+  if (segundo){
+    razones = ganador.name+' presenta el presupuesto total más bajo ('+_fmtMoney(ganador.totalConIVA)+' c/IVA frente a '+_fmtMoney(segundo.totalConIVA)+' de '+segundo.name+'), representando un ahorro de '+_fmtMoney(ahorro)+' ('+ahorroPct.toFixed(1)+'%).';
+  } else {
+    razones = ganador.name+' es el único proveedor con cotización completa, por un total de '+_fmtMoney(ganador.totalConIVA)+' c/IVA.';
+  }
+  if (ganador.prov.paymentTerms){
+    razones += ' Ofrece condición de pago '+ganador.prov.paymentTerms+'.';
+  }
+  if (itemsCaros.length){
+    razones += ' No obstante, en algunos ítems hay alternativas más económicas: '+itemsCaros.join('; ')+'. Esta diferencia queda compensada por el menor costo total del conjunto.';
+  }
+
+  var html = '<div class="aa-conclusion">'
+    + '<div class="t">Recomendación: adjudicar a '+escHtml(ganador.name)+'</div>'
+    + '<p>'+escHtml(razones)+'</p></div>';
+
+  if (alertas.length){
+    html += '<div class="aa-alert"><div class="t">⚠ Alertas a revisar antes de adjudicar</div><p>'
+      + alertas.map(escHtml).join('<br>') + '</p></div>';
+  }
+  document.getElementById('aaConclusion').innerHTML = html;
+}
+
+function _getSolicitudData(){
+  var g = function(id){ var el=document.getElementById(id); return el?(el.value||'').trim():''; };
+  return {
+    fecha: g('fechaDoc'), sc: g('scAsociada'), asunto: g('asunto'),
+    solicitante: g('solicitante'), area: g('area')
+  };
+}
+
+function _renderAAMemo(totals, ganador, segundo, ahorro, ahorroPct){
+  var sol = _getSolicitudData();
+  var hoy = new Date();
+  var meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var fechaTxt = (hoy.getDate())+' de '+meses[hoy.getMonth()]+' de '+hoy.getFullYear();
+
+  // Solicitud table rows
+  var solRows = items.map(function(item,i){
+    return '<tr><td>'+(i+1)+'</td><td>'+escHtml(item.desc||'—')+(item.spec?' — '+escHtml(item.spec):'')+'</td><td>'+(item.qty||'')+' '+(item.unit||'')+'</td></tr>';
+  }).join('');
+
+  // Comparative table rows
+  var compRows = totals.map(function(t){
+    var esG = t.idx===ganador.idx;
+    return '<tr'+(esG?' class="hl"':'')+'><td>'+escHtml(t.name)+(esG?' <span class="badge badge-green" style="background:#EAF3DE;color:#3B6D11;font-size:11px;padding:2px 7px;border-radius:6px;font-weight:600">Recomendado</span>':'')+'</td>'
+      + '<td>'+t.cobertura+'/'+t.totalItems+'</td>'
+      + '<td>'+(t.prov.paymentTerms?escHtml(t.prov.paymentTerms):'No esp.')+'</td>'
+      + '<td><strong>'+_fmtMoney(t.totalConIVA)+'</strong></td></tr>';
+  }).join('');
+
+  var ahorroTxt = segundo
+    ? ganador.name+' presenta la oferta más competitiva en precio total, con un ahorro de '+_fmtMoney(ahorro)+' ('+ahorroPct.toFixed(1)+'%) respecto a '+segundo.name+'.'
+    : ganador.name+' es el único proveedor con cotización completa para los ítems solicitados.';
+  if (ganador.prov.paymentTerms) ahorroTxt += ' Cuenta con condición de pago '+ganador.prov.paymentTerms+', lo que favorece el control administrativo de la operación.';
+
+  var alertaMemo = '';
+  if (ganador.cobertura < ganador.totalItems){
+    alertaMemo = '<div class="alert"><p><strong>Alerta:</strong> '+escHtml(ganador.name)+' cotizó '+ganador.cobertura+' de '+ganador.totalItems+' ítems. Verificar la provisión de los ítems faltantes antes de cerrar la operación.</p></div>';
+  }
+
+  var memo = '<div class="aa-memo" id="aaMemoDoc">'
+    + '<div class="mh"><div><div class="company">Nielsen Logística y Expediciones S.A.</div>'
+    + '<div class="company-sub">Departamento de Compras y Abastecimiento</div></div>'
+    + '<div class="doc-type">Memorándum interno</div></div>'
+    + '<div class="meta">'
+    + '<div class="ml">Para</div><div class="mv">Dirección General</div>'
+    + '<div class="ml">De</div><div class="mv">'+escHtml(sol.solicitante||'Responsable de Compras y Abastecimiento')+'</div>'
+    + '<div class="ml">Fecha</div><div class="mv">'+fechaTxt+'</div>'
+    + '<div class="ml">Referencia</div><div class="mv">'+escHtml(sol.asunto||'Análisis comparativo de presupuestos')+(sol.sc?' (SC '+escHtml(sol.sc)+')':'')+'</div>'
+    + '<div class="ml">Área</div><div class="mv">'+escHtml(sol.area||'—')+'</div>'
+    + '<div class="ml">Carácter</div><div class="mv">Para aprobación de compra</div>'
+    + '</div>'
+    + '<div class="sec"><div class="sec-t">Objeto</div><p class="bt">El presente memorándum tiene por objeto someter a consideración de la Dirección el análisis comparativo de los presupuestos recibidos, con el fin de obtener autorización para proceder con la orden de compra correspondiente.</p></div>'
+    + '<div class="sec"><div class="sec-t">Solicitud de compra</div><table><thead><tr><th>Ítem</th><th>Descripción</th><th>Cantidad</th></tr></thead><tbody>'+solRows+'</tbody></table></div>'
+    + '<div class="sec"><div class="sec-t">Cuadro comparativo de presupuestos</div><table><thead><tr><th>Proveedor</th><th>Cobertura</th><th>Cond. pago</th><th>Total c/IVA</th></tr></thead><tbody>'+compRows+'</tbody></table>'
+    + '<p class="bt" style="font-size:11px;color:#666;margin-top:6px">IVA calculado al 21% por Compras. Montos sujetos a confirmación con presupuesto formal.</p></div>'
+    + '<div class="sec"><div class="sec-t">Análisis y consideraciones</div><p class="bt">'+escHtml(ahorroTxt)+'</p></div>'
+    + alertaMemo
+    + '<div class="rec"><p><strong>Recomendación de Compras:</strong> Adjudicar la compra a '+escHtml(ganador.name)+' por un total de '+_fmtMoney(ganador.totalConIVA)+' (IVA incluido)'+(ganador.prov.paymentTerms?', condición de pago '+escHtml(ganador.prov.paymentTerms):'')+'.'+(segundo?' Ahorro estimado respecto a la alternativa: '+_fmtMoney(ahorro)+'.':'')+'</p></div>'
+    + '<div class="sec"><div class="sec-t">Solicitud</div><p class="bt">Se solicita a la Dirección la aprobación de la presente compra y la autorización para emitir la orden de compra correspondiente a favor de '+escHtml(ganador.name)+'.</p></div>'
+    + '<div class="ft"><strong>'+escHtml(sol.solicitante||'Responsable de Compras y Abastecimiento')+'</strong>Responsable de Compras y Abastecimiento<br>Nielsen Logística y Expediciones S.A.</div>'
+    + '</div>';
+  document.getElementById('aaMemo').innerHTML = memo;
+}
+
+function copiarMemoEjecutivo(){
+  if (!analysisResult){ showToast('Generá el análisis primero','err'); return; }
+  var t = analysisResult;
+  var sol = _getSolicitudData();
+  var hoy = new Date();
+  var meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var fechaTxt = hoy.getDate()+' de '+meses[hoy.getMonth()]+' de '+hoy.getFullYear();
+  var L = [];
+  L.push('MEMORÁNDUM INTERNO');
+  L.push('Nielsen Logística y Expediciones S.A. — Departamento de Compras y Abastecimiento');
+  L.push('');
+  L.push('Para: Dirección General');
+  L.push('De: '+(sol.solicitante||'Responsable de Compras y Abastecimiento'));
+  L.push('Fecha: '+fechaTxt);
+  L.push('Referencia: '+(sol.asunto||'Análisis comparativo de presupuestos')+(sol.sc?' (SC '+sol.sc+')':''));
+  L.push('Área: '+(sol.area||'—'));
+  L.push('Carácter: Para aprobación de compra');
+  L.push('');
+  L.push('OBJETO');
+  L.push('Someter a consideración de la Dirección el análisis comparativo de los presupuestos recibidos, para autorización de la orden de compra correspondiente.');
+  L.push('');
+  L.push('SOLICITUD DE COMPRA');
+  items.forEach(function(item,i){ L.push('- '+(item.qty||'')+' '+(item.unit||'')+': '+(item.desc||'')+(item.spec?' ('+item.spec+')':'')); });
+  L.push('');
+  L.push('CUADRO COMPARATIVO');
+  t.totals.forEach(function(tt){
+    L.push(tt.name+' — Cobertura '+tt.cobertura+'/'+tt.totalItems+' | Cond. pago: '+(tt.prov.paymentTerms||'no esp.')+' | TOTAL c/IVA: '+_fmtMoney(tt.totalConIVA)+(tt.idx===t.ganador.idx?' [RECOMENDADO]':''));
+  });
+  L.push('IVA calculado al 21% por Compras.');
+  L.push('');
+  L.push('ANÁLISIS');
+  var ana = t.segundo
+    ? t.ganador.name+' presenta la oferta más competitiva, con un ahorro de '+_fmtMoney(t.ahorro)+' ('+t.ahorroPct.toFixed(1)+'%) respecto a '+t.segundo.name+'.'
+    : t.ganador.name+' es el único con cotización completa.';
+  if (t.ganador.prov.paymentTerms) ana += ' Condición de pago '+t.ganador.prov.paymentTerms+'.';
+  L.push(ana);
+  L.push('');
+  L.push('RECOMENDACIÓN: Adjudicar a '+t.ganador.name+' por '+_fmtMoney(t.ganador.totalConIVA)+' c/IVA'+(t.ganador.prov.paymentTerms?', pago '+t.ganador.prov.paymentTerms:'')+'.'+(t.segundo?' Ahorro estimado: '+_fmtMoney(t.ahorro)+'.':''));
+  L.push('');
+  L.push('SOLICITUD');
+  L.push('Se solicita a la Dirección la aprobación de la compra y la autorización para emitir la orden de compra a favor de '+t.ganador.name+'.');
+  L.push('');
+  L.push(sol.solicitante||'Responsable de Compras y Abastecimiento');
+  L.push('Responsable de Compras y Abastecimiento');
+  L.push('Nielsen Logística y Expediciones S.A.');
+  navigator.clipboard.writeText(L.join('\n')).then(function(){ showToast('✓ Memo copiado al portapapeles','ok'); });
+}
+
+function imprimirMemoEjecutivo(){
+  if (!analysisResult){ showToast('Generá el análisis primero','err'); return; }
+  var memoEl = document.getElementById('aaMemoDoc');
+  if (!memoEl) return;
+  var w = window.open('', '_blank');
+  w.document.write('<html><head><title>Memo Ejecutivo — Nielsen</title>'
+    + '<style>body{margin:0;padding:24px;background:#fff;font-family:Arial,sans-serif}'
+    + '.aa-memo{max-width:720px;margin:0 auto;color:#1a1a1a}'
+    + '.aa-memo .mh{border-bottom:2px solid #D96B1A;padding-bottom:18px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:flex-end}'
+    + '.aa-memo .company{font-size:15px;font-weight:700}.aa-memo .company-sub{font-size:12px;color:#666}'
+    + '.aa-memo .doc-type{font-size:11px;font-weight:700;color:#D96B1A;letter-spacing:.08em}'
+    + '.aa-memo .meta{display:grid;grid-template-columns:140px 1fr;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;margin-bottom:20px}'
+    + '.aa-memo .meta .ml{font-size:12px;color:#666;padding:7px 14px;background:#f6f6f6;border-bottom:1px solid #e0e0e0}'
+    + '.aa-memo .meta .mv{font-size:12px;padding:7px 14px;border-bottom:1px solid #e0e0e0}'
+    + '.aa-memo .sec{margin-bottom:18px}.aa-memo .sec-t{font-size:11px;font-weight:700;color:#D96B1A;letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px}'
+    + '.aa-memo .bt{font-size:13px;line-height:1.75}'
+    + '.aa-memo table{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0;border:1px solid #e0e0e0}'
+    + '.aa-memo th{background:#f6f6f6;font-weight:600;color:#666;text-align:left;padding:7px 12px;border-bottom:1px solid #e0e0e0}'
+    + '.aa-memo td{padding:7px 12px;border-bottom:1px solid #e0e0e0}'
+    + '.aa-memo .hl td{background:#EAF3DE;color:#27500A;font-weight:600}'
+    + '.aa-memo .rec{border-left:3px solid #3B6D11;padding:10px 14px;background:#EAF3DE;margin:10px 0}.aa-memo .rec p{font-size:12px;color:#27500A;line-height:1.65}'
+    + '.aa-memo .alert{border-left:3px solid #854F0B;padding:10px 14px;background:#FAEEDA;margin:10px 0}.aa-memo .alert p{font-size:12px;color:#633806;line-height:1.65}'
+    + '.aa-memo .ft{margin-top:28px;padding-top:16px;border-top:1px solid #e0e0e0;font-size:12px;color:#666;line-height:1.6}.aa-memo .ft strong{color:#1a1a1a;display:block}'
+    + '</style></head><body>'+memoEl.outerHTML+'</body></html>');
+  w.document.close();
+  setTimeout(function(){ w.print(); }, 300);
 }
 
 </script>
