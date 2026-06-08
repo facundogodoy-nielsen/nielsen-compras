@@ -1324,17 +1324,22 @@ function switchCat(cat){
   catActual = cat;
   subcatActual = '';
   document.querySelectorAll('.cat-btn').forEach(b=>b.classList.toggle('act',b.dataset.cat===cat));
+  const panelProd = document.getElementById('panelProductos');
+  const panelHist = document.getElementById('panelHistorial');
+  const panelRes  = document.getElementById('panelRes');
   if(cat==='X'){
-    document.getElementById('panelProductos').style.display='none';
-    document.getElementById('panelHistorial').style.display='';
-    document.getElementById('panelRes').style.display='none';
-    renderHistorial();
+    if(panelProd) panelProd.style.display='none';
+    if(panelHist) panelHist.style.display='';
+    if(panelRes)  panelRes.style.display='none';
+    if(typeof renderHistorial==='function') renderHistorial();
     return;
   }
-  document.getElementById('panelProductos').style.display='';
-  document.getElementById('panelHistorial').style.display='none';
-  document.getElementById('prodTitulo').textContent = (CAT_LABELS[cat]||cat)+' — Seleccioná los ítems';
-  document.getElementById('busq').value = '';
+  if(panelProd) panelProd.style.display='';
+  if(panelHist) panelHist.style.display='none';
+  const tit = document.getElementById('prodTitulo');
+  if(tit) tit.textContent = (CAT_LABELS[cat]||cat)+' — Seleccioná los ítems';
+  const bq = document.getElementById('busq');
+  if(bq) bq.value = '';
   renderProductos();
 }
 
@@ -1716,7 +1721,8 @@ function abrirReview(){
   const totEl = document.getElementById('reviewTotalItems');
   if(totEl) totEl.textContent = items.length + ' ítem' + (items.length!==1?'s':'') + ' · ' + items.reduce((s,it)=>s+(parseFloat(it.cant)||0),0).toLocaleString('es-AR') + ' unidades totales';
   document.getElementById('reviewSection').classList.add('open');
-  window.scrollTo(0,0);
+  const rs = document.getElementById('reviewSection');
+  setTimeout(() => { try { rs.scrollIntoView({behavior:'smooth', block:'start'}); } catch(e){ rs.scrollIntoView(); } }, 60);
 }
 
 function cerrarReview(){
@@ -1764,11 +1770,26 @@ function buildReviewSection(items){
   document.getElementById('reviewBody').innerHTML = html;
 }
 
-function confirmarPedido(){
+async function confirmarPedido(){
   const items = getActivos();
   if(!items.length){ toast('Sin productos seleccionados.','err'); return; }
-  guardarPedidoActual();
+  const ok = await guardarPedidoActual();
+  if(ok === false) return;        // validación falló → mantener el tablero
   cerrarReview();
+  await nuevoPedidoLimpio();       // limpiar tablero + Nº correlativo actualizado
+}
+
+// Limpia el tablero para un nuevo pedido y actualiza el Nº de PA al siguiente correlativo.
+async function nuevoPedidoLimpio(){
+  seleccion = {};
+  const obsEl = document.getElementById('obs'); if(obsEl) obsEl.value='';
+  const np = document.getElementById('nroPedido');
+  if(np){ np.value = '⏳ ...'; try { np.value = await getNextOC(); } catch(e){ np.value=''; } }
+  switchCat('M');                 // vuelve a la primera categoría y re-renderiza vacío
+  if(typeof actualizarResumen==='function') actualizarResumen();
+  if(typeof actualizarContador==='function') actualizarContador();
+  try { window.scrollTo({top:0, behavior:'smooth'}); } catch(e){ window.scrollTo(0,0); }
+  toast('🧹 Tablero limpio — Nº actualizado para el próximo pedido','ok');
 }
 
 function generarPDFDesdeReview(){
@@ -2321,10 +2342,10 @@ function validarDatos(){
   return true;
 }
 
-function guardarPedidoActual(){
-  if(!validarDatos()) return;
+async function guardarPedidoActual(){
+  if(!validarDatos()) return false;
   const items = getActivos();
-  if(!items.length){ toast('No hay ítems en el pedido actual.','err'); return; }
+  if(!items.length){ toast('No hay ítems en el pedido actual.','err'); return false; }
   const d = getDatos();
   const pedido = {
     id: Date.now(),
@@ -2332,6 +2353,7 @@ function guardarPedidoActual(){
     fecha: d.fechaPedido || new Date().toISOString().split('T')[0],
     fechaEntrega: d.fechaEntrega||'',
     solicitante: d.solicitante||'—',
+    emailSolicitante: d.emailSolicitante||'',
     campamento: d.centroCosto||'—',
     cat: d.cat,
     obs: d.obs||'',
@@ -2341,11 +2363,12 @@ function guardarPedidoActual(){
   };
   historial.unshift(pedido);
   localStorage.setItem(HIST_KEY, JSON.stringify(historial));
-  // ── INTEGRACIÓN: registrar en CC + enviar email ──
-  _guardarPAenCC(pedido);
+  // ── INTEGRACIÓN: registrar en CC (await → el próximo Nº lo toma actualizado) + email ──
+  await _guardarPAenCC(pedido);
   _enviarEmailPA(pedido);
-  toast(`Pedido ${d.nroPedido} guardado en historial.`,'ok');
+  toast(`✅ Pedido ${d.nroPedido} confirmado y enviado.`,'ok');
   renderHistorial();
+  return true;
 }
 
 function calcEstado(pedido){
@@ -3031,7 +3054,7 @@ async function sbDelete(tabla, col, val) {
 // Pegá la URL /exec de tu Web App de correos (ver Apps_Script_Email.gs).
 // Funciona en cualquier dispositivo; copia siempre a Compras (CC).
 // ══════════════════════════════════════════════════════════
-const MAIL_WEBAPP_URL = '';  // ← pegá la URL que termina en /exec
+const MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxgLMhi31Xc5YEcHANuq9CiJsjh4Y-wh7SIqaUsUjZ7MnG7gc2pEDU80bAQubSA5RiP/exec';  // Web App de correos (Gmail) — Nielsen
 
 function _enviarEmailPA(pedido) {
   if (!MAIL_WEBAPP_URL) {
