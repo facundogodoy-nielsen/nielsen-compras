@@ -1140,6 +1140,13 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 // ══ CONFIG — REEMPLAZAR CON URL DEL APPS SCRIPT ══
 const APPS_SCRIPT_URL = 'REEMPLAZAR_CON_URL_DEL_APPS_SCRIPT';
 
+// ══════════════════════════════════════════════════════════════════
+// ENVÍO DE CORREOS — vía Apps Script + Gmail (reemplaza a EmailJS)
+// ▸ Pegá acá la URL /exec de tu Web App de correos (ver Apps_Script_Email.gs).
+//   Funciona en cualquier dispositivo; copia siempre a Compras (CC).
+// ══════════════════════════════════════════════════════════════════
+const MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxgLMhi31Xc5YEcHANuq9CiJsjh4Y-wh7SIqaUsUjZ7MnG7gc2pEDU80bAQubSA5RiP/exec';  // ← pegá la URL que termina en /exec
+
 // ══ LISTADO PEDIDO ORIGINAL ══
 let pedidoItems = []; // [{art, cant}]
 let pedidoTimer = null;
@@ -2450,18 +2457,14 @@ async function sbDelete(tabla, col, val) {
 // Configuración en Ajustes del Centro de Control
 // ══════════════════════════════════════════════════════════
 function _enviarEmailSC(numSC, numOP) {
-  const pubKey  = localStorage.getItem('nielsen_emailjs_pubkey')  || '';
-  const service = localStorage.getItem('nielsen_emailjs_service') || '';
-  const tmpl    = localStorage.getItem('nielsen_emailjs_tmpl_sc') || '';
-  const from    = localStorage.getItem('nielsen_sender_email')    || 'compras@nielsenexpediciones.com.ar';
-
-  if (!pubKey || !service || !tmpl) {
-    console.info('EmailJS no configurado — sin envío de mail');
+  if (!MAIL_WEBAPP_URL) {
+    if (typeof toast === 'function') toast('⚠️ Falta configurar la URL de correos (MAIL_WEBAPP_URL)', true);
+    console.warn('MAIL_WEBAPP_URL vacío en formulario_sc.html');
     return;
   }
 
   const nombre   = document.getElementById('sol-nombre')?.value || '';
-  const email    = document.getElementById('sol-email')?.value  || '';
+  const email    = (document.getElementById('sol-email')?.value || '').trim();
   const area     = document.getElementById('sol-area')?.value   || '';
   const destino  = document.getElementById('os-destino')?.value || '';
   const fecha    = document.getElementById('sol-fecha')?.value  || '';
@@ -2470,14 +2473,10 @@ function _enviarEmailSC(numSC, numOP) {
   const obs      = document.getElementById('items-obs')?.value   || '';
   const os       = sinOS ? 'Sin OS' : (document.getElementById('os-num')?.value || '');
 
-  if (!email) { console.warn('Sin email del solicitante'); return; }
-
-  emailjs.init({ publicKey: pubKey });
-
-  emailjs.send(service, tmpl, {
-    to_email:     email,
-    to_name:      nombre,
-    from_email:   from,
+  const payload = {
+    tipo:         'SC',
+    email:        email,            // solicitante (el CC a Compras lo agrega el Apps Script)
+    solicitante:  nombre,
     num_sc:       numSC,
     num_op:       numOP,
     area:         area,
@@ -2490,10 +2489,20 @@ function _enviarEmailSC(numSC, numOP) {
     obs:          obs || '—',
     vale_num:     valeNumActual || '—',
     link_historial: 'https://nielsen-compras.vercel.app/#historial'
-  }).then(
-    () => console.log('✅ Email SC enviado a', email),
-    (err) => console.warn('⚠️ Error email SC:', err)
-  );
+  };
+
+  if (typeof toast === 'function') toast('📧 Enviando confirmación...');
+  // Apps Script no envía cabeceras CORS → usamos no-cors (fire-and-forget).
+  // El body va como texto plano y el Apps Script lo parsea con JSON.parse.
+  fetch(MAIL_WEBAPP_URL, { method:'POST', mode:'no-cors', body: JSON.stringify(payload) })
+    .then(() => {
+      console.log('✅ Correo SC despachado al Web App');
+      if (typeof toast === 'function') toast('✅ Confirmación enviada (solicitante + Compras)');
+    })
+    .catch(err => {
+      console.warn('⚠️ Error al despachar correo SC:', err);
+      if (typeof toast === 'function') toast('⚠️ No se pudo enviar el correo de confirmación', true);
+    });
 }
 
 

@@ -3026,45 +3026,47 @@ async function sbDelete(tabla, col, val) {
 }
 
 // ══════════════════════════════════════════════════════════
-// ENVÍO DE EMAIL PEDIDO ABASTECIMIENTO — EmailJS
+// ENVÍO DE EMAIL PEDIDO ABASTECIMIENTO — vía Apps Script + Gmail
 // ══════════════════════════════════════════════════════════
-function _enviarEmailPA(pedido) {
-  const pubKey  = localStorage.getItem('nielsen_emailjs_pubkey')  || '';
-  const service = localStorage.getItem('nielsen_emailjs_service') || '';
-  const tmpl    = localStorage.getItem('nielsen_emailjs_tmpl_pa') || '';
-  const from    = 'facundo.godoy@nielsenexpediciones.com.ar';
+// Pegá la URL /exec de tu Web App de correos (ver Apps_Script_Email.gs).
+// Funciona en cualquier dispositivo; copia siempre a Compras (CC).
+// ══════════════════════════════════════════════════════════
+const MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxgLMhi31Xc5YEcHANuq9CiJsjh4Y-wh7SIqaUsUjZ7MnG7gc2pEDU80bAQubSA5RiP/exec';  // ← pegá la URL que termina en /exec
 
-  if (!pubKey || !service || !tmpl) {
-    console.info('EmailJS no configurado — sin envío de mail PA');
+function _enviarEmailPA(pedido) {
+  if (!MAIL_WEBAPP_URL) {
+    if (typeof toast === 'function') toast('⚠️ Falta configurar la URL de correos (MAIL_WEBAPP_URL)', 'error');
+    console.warn('MAIL_WEBAPP_URL vacío en pedidos.html');
     return;
   }
 
-  const email = pedido.emailSolicitante || pedido.email || getDatos?.()?.emailSolicitante || '';
-  if (!email) { console.warn('Sin email del solicitante PA'); return; }
-
+  const email = ((pedido.emailSolicitante || pedido.email || (typeof getDatos==='function' ? getDatos()?.emailSolicitante : '') || '') + '').trim();
   const catLabels = {M:'Mercadería',L:'Limpieza y Descartables',H:'Hotelería',A:'Agua, Gas y Leña',K:'Kiosco La Brea'};
-  const items = (pedido.items||[]).map((it,i) =>
-    `${i+1}. ${it.nombre||it}${it.cant?' — '+it.cant+(it.medida?' '+it.medida:''):''}` ).join('\n');
 
-  emailjs.init({ publicKey: pubKey });
+  const payload = {
+    tipo:          'PA',
+    email:         email,           // el CC a Compras lo agrega el Apps Script
+    solicitante:   pedido.solicitante || '',
+    num_pa:        pedido.oc || pedido.nroPedido || '',
+    campamento:    pedido.campamento || '',
+    categoria:     catLabels[pedido.cat] || pedido.cat || '',
+    fecha:         pedido.fecha || '',
+    fecha_entrega: pedido.fechaEntrega || 'No indicada',
+    items:         pedido.items || [],
+    obs:           pedido.obs || '—',
+    link_historial:'https://nielsen-compras.vercel.app/#historial-pa'
+  };
 
-  emailjs.send(service, tmpl, {
-    to_email:       email,
-    to_name:        pedido.solicitante || '',
-    from_name:      'Facundo Godoy — Compras y Abastecimiento',
-    from_email:     from || 'facundo.godoy@nielsenexpediciones.com.ar',
-    num_pa:         pedido.oc || pedido.nroPedido || '',
-    campamento:     pedido.campamento || '',
-    categoria:      catLabels[pedido.cat] || pedido.cat || '',
-    fecha:          pedido.fecha || '',
-    fecha_entrega:  pedido.fechaEntrega || 'No indicada',
-    items:          items || '—',
-    obs:            pedido.obs || '—',
-    link_historial: 'https://nielsen-compras.vercel.app/#historial-pa'
-  }).then(
-    () => console.log('✅ Email PA enviado a', email),
-    (err) => console.warn('⚠️ Error email PA:', err)
-  );
+  if (typeof toast === 'function') toast('📧 Enviando confirmación...');
+  fetch(MAIL_WEBAPP_URL, { method:'POST', mode:'no-cors', body: JSON.stringify(payload) })
+    .then(() => {
+      console.log('✅ Correo PA despachado al Web App');
+      if (typeof toast === 'function') toast('✅ Confirmación enviada (solicitante + Compras)');
+    })
+    .catch(err => {
+      console.warn('⚠️ Error al despachar correo PA:', err);
+      if (typeof toast === 'function') toast('⚠️ No se pudo enviar el correo de confirmación', 'error');
+    });
 }
 
 

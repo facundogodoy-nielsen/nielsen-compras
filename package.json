@@ -1,5 +1,9 @@
 {
   "name": "nielsen-logistica",
   "version": "1.0.0",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "acorn": "^8.16.0",
+    "jsdom": "^29.1.1"
+  }
 }
