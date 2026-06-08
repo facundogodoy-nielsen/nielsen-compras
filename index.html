@@ -1800,9 +1800,20 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       ⬆️ Importar Excel de Compras
       <input type="file" accept=".xlsx,.xls,.csv" onchange="importarComprasXLS(event)" style="display:none">
     </label>
-    <select id="compras-periodo" onchange="renderComprasProv()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
-      <option value="">Todos los períodos</option>
+    <select id="compras-anio" onchange="onFiltroAnioMes()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
+      <option value="">Todos los años</option>
     </select>
+    <select id="compras-mes" onchange="onFiltroAnioMes()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
+      <option value="">Todos los meses</option>
+      <option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option>
+      <option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option>
+      <option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option>
+      <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+    </select>
+    <span style="font-size:11px;color:var(--muted);font-family:var(--fm)">Rango:</span>
+    <input type="date" id="compras-desde" onchange="onFiltroRango()" title="Fecha inicial" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:12px">
+    <input type="date" id="compras-hasta" onchange="onFiltroRango()" title="Fecha final" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:12px">
+    <button onclick="limpiarFiltrosCompras()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer">✕ Limpiar</button>
     <span id="compras-info" style="font-size:11px;color:var(--muted);font-family:var(--fm)"></span>
   </div>
   <div id="compras-empty" style="padding:40px;text-align:center;color:var(--muted);background:var(--s1);border:1px dashed var(--border2);border-radius:12px">
@@ -2099,7 +2110,7 @@ async function guardarEditCompletoSC(idx) {
   _lsSet('nielsen_scs_2026', JSON.stringify(scs));
 
   // Re-render all views
-  renderHistorialSC();
+  if (typeof renderHistorial === 'function') renderHistorial();
   if (typeof renderPanelSC === 'function') renderPanelSC();
   if (typeof renderKanban === 'function') renderKanban();
 
@@ -5734,7 +5745,7 @@ async function sincronizarDesdeSheet() {
       if (activeView?.id === 'view-panel') renderPanel();
       if (activeView?.id === 'view-historial') renderHistorial();
       if (activeView?.id === 'view-kanban') renderKanban();
-      updateDashboard();
+      if (typeof updateDashboard === 'function') updateDashboard();
     }
 
     _lastSync = new Date();
@@ -6979,17 +6990,51 @@ let _provCharts = {};
 
 // Load providers from Supabase if available
 async function cargarComprasSB() {
+  // Supabase corta en 1000 filas por petición. Paginamos por ID (orden estable y único)
+  // para evitar filas duplicadas/salteadas que hacían variar los totales al reentrar.
   try {
-    const r = await fetch(_SB_URL + '/rest/v1/compras_proveedor?select=proveedor,monto,fecha&order=fecha.desc&limit=10000', {
-      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
-    });
-    if (r.ok) {
-      const rows = await r.json();
-      if (rows && rows.length) {
-        comprasData = rows.map(r => ({proveedor:r.proveedor||'', monto:parseFloat(r.monto)||0, fecha:r.fecha||''}));
-        _lsSet('nielsen_compras_prov', JSON.stringify(comprasData));
+    let all = [];
+    let lastId = 0;
+    const PAGE = 1000;
+    let expected = null;   // total real de filas (lo informa Supabase)
+    let ok = true;
+    for (let guard = 0; guard < 100; guard++) {       // tope de seguridad: 100k filas
+      const headers = {'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY};
+      if (guard === 0) headers['Prefer'] = 'count=exact';   // pedir el total en la 1ª página
+      let r;
+      try {
+        r = await fetch(_SB_URL + '/rest/v1/compras_proveedor'
+          + '?select=id,proveedor,monto,fecha&order=id.asc'
+          + '&id=gt.' + lastId + '&limit=' + PAGE, { headers });
+      } catch(netErr) { ok = false; break; }          // error de red → no pisar datos buenos
+      if (!r.ok) { ok = false; break; }
+      if (guard === 0) {
+        // content-range: "0-999/3509" → el total va tras la barra
+        const cr = r.headers.get('content-range') || '';
+        const m = cr.match(/\/(\d+)\s*$/);
+        if (m) expected = parseInt(m[1], 10);
       }
+      const rows = await r.json();
+      if (!rows || !rows.length) break;               // fin de datos
+      all = all.concat(rows);
+      lastId = rows[rows.length - 1].id;              // keyset: próxima página desde el último id
+      if (rows.length < PAGE) break;                  // última página parcial
     }
+
+    // Solo confiamos en el resultado si la paginación terminó bien Y trajimos
+    // todas las filas esperadas. Así no se "fijan" totales incompletos.
+    const completo = ok && (expected == null || all.length >= expected);
+
+    if (completo && all.length) {
+      comprasData = all.map(r => ({proveedor:r.proveedor||'', monto:parseFloat(r.monto)||0, fecha:r.fecha||''}));
+      _lsSet('nielsen_compras_prov', JSON.stringify(comprasData));
+    } else if (!comprasData.length && all.length) {
+      // No había datos previos en este equipo: mostramos lo parcial pero NO lo guardamos
+      // como definitivo (para que el próximo ingreso vuelva a intentar la carga completa).
+      comprasData = all.map(r => ({proveedor:r.proveedor||'', monto:parseFloat(r.monto)||0, fecha:r.fecha||''}));
+      if (typeof showToast === 'function') showToast('⚠️ Carga parcial de compras — reintentá', 'error');
+    }
+    // Si falló y ya había datos cargados, se conservan los anteriores (no se pisan).
   } catch(e) { console.warn('cargarComprasSB:', e.message); }
 }
 
@@ -7147,10 +7192,32 @@ async function importarComprasXLS(ev) {
 }
 
 function poblarPeriodos() {
-  const sel = document.getElementById('compras-periodo'); if (!sel) return;
-  const periodos = [...new Set(comprasData.map(c => (c.fecha||'').slice(0,7)).filter(Boolean))].sort().reverse();
-  sel.innerHTML = '<option value="">Todos los períodos</option>' +
-    periodos.map(p => '<option value="'+p+'">'+p+'</option>').join('');
+  // Puebla el desplegable de AÑOS con los años presentes en los datos.
+  const sel = document.getElementById('compras-anio'); if (!sel) return;
+  const prev = sel.value;
+  const anios = [...new Set(comprasData.map(c => (c.fecha||'').slice(0,4)).filter(y => /^\d{4}$/.test(y)))].sort().reverse();
+  sel.innerHTML = '<option value="">Todos los años</option>' +
+    anios.map(a => '<option value="'+a+'">'+a+'</option>').join('');
+  if (anios.includes(prev)) sel.value = prev;
+}
+
+// Si se usa año/mes, se limpia el rango (son filtros mutuamente excluyentes)
+function onFiltroAnioMes() {
+  const d = document.getElementById('compras-desde'), h = document.getElementById('compras-hasta');
+  if (d) d.value = ''; if (h) h.value = '';
+  renderComprasProv();
+}
+// Si se usa el rango por fechas, se limpia año/mes
+function onFiltroRango() {
+  const a = document.getElementById('compras-anio'), m = document.getElementById('compras-mes');
+  if (a) a.value = ''; if (m) m.value = '';
+  renderComprasProv();
+}
+function limpiarFiltrosCompras() {
+  ['compras-anio','compras-mes','compras-desde','compras-hasta'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderComprasProv();
 }
 
 function renderComprasProv() {
@@ -7159,9 +7226,28 @@ function renderComprasProv() {
   if (!comprasData.length) { if(empty)empty.style.display=''; if(content)content.style.display='none'; return; }
   if(empty)empty.style.display='none'; if(content)content.style.display='';
 
-  const periodo = document.getElementById('compras-periodo')?.value || '';
+  const anio  = document.getElementById('compras-anio')?.value || '';
+  const mes   = document.getElementById('compras-mes')?.value || '';
+  const desde = document.getElementById('compras-desde')?.value || '';
+  const hasta = document.getElementById('compras-hasta')?.value || '';
   let data = comprasData;
-  if (periodo) data = data.filter(c => (c.fecha||'').startsWith(periodo));
+  if (desde || hasta) {
+    // Rango por fechas (YYYY-MM-DD, comparación lexicográfica válida)
+    data = data.filter(c => {
+      const f = c.fecha || '';
+      if (!f) return false;
+      if (desde && f < desde) return false;
+      if (hasta && f > hasta) return false;
+      return true;
+    });
+  } else if (anio || mes) {
+    data = data.filter(c => {
+      const f = c.fecha || '';
+      if (anio && f.slice(0,4) !== anio) return false;
+      if (mes && f.slice(5,7) !== mes) return false;
+      return true;
+    });
+  }
 
   // Aggregate by provider
   const agg = {};
@@ -7174,7 +7260,16 @@ function renderComprasProv() {
   const totalMonto = arr.reduce((s,a)=>s+a.total,0);
   const totalCompras = arr.reduce((s,a)=>s+a.count,0);
 
-  document.getElementById('compras-info').textContent = data.length + ' compras · ' + arr.length + ' proveedores';
+  // Etiqueta de período activo (para que se vea qué filtro está aplicado)
+  let periodoTxt = 'Todos los períodos';
+  if (desde || hasta) {
+    periodoTxt = 'Rango: ' + (desde || '…') + ' → ' + (hasta || '…');
+  } else if (anio || mes) {
+    const MESES = {'01':'Ene','02':'Feb','03':'Mar','04':'Abr','05':'May','06':'Jun','07':'Jul','08':'Ago','09':'Sep','10':'Oct','11':'Nov','12':'Dic'};
+    periodoTxt = (mes ? (MESES[mes] || mes) + ' ' : '') + (anio || 'todos los años');
+  }
+  document.getElementById('compras-info').textContent =
+    '📅 ' + periodoTxt + '  ·  ' + data.length + ' compras · ' + arr.length + ' proveedores';
 
   // KPIs
   const fmt = n => '$' + Math.round(n).toLocaleString('es-AR');

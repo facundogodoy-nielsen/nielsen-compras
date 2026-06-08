@@ -636,6 +636,16 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
   </div>
 
   <div class="card">
+    <div class="card-header">
+      <h3>💲 Matriz de Precios</h3>
+      <span style="font-size:11px;color:var(--orange-dim)">Precio unitario de cada proveedor por ítem — necesario para el análisis</span>
+    </div>
+    <div class="card-body">
+      <div id="priceMatrixWrap" style="overflow-x:auto"></div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-header"><h3>📄 Presupuestos en PDF</h3></div>
     <div class="card-body">
       <div class="pdf-drop" id="dropZone">
@@ -920,19 +930,33 @@ async function sbGetNextCompNum() {
 
 async function sbLoadProvDB() {
   try {
-    // Tomar la base de datos del Centro de Control (tabla 'proveedores')
+    // Tomar la base de datos del Centro de Control (tabla 'proveedores') — fuente única.
     var r = await fetch(_SB_URL+'/rest/v1/proveedores?select=*&order=nombre.asc&limit=2000', {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
     });
     if(r.ok) {
       var rows = await r.json();
       if(rows && rows.length) {
+        // Conservar extras locales (localidad/deliveryDays/notes) por nombre, ya que
+        // esas 3 columnas no existen en la tabla compartida del Centro de Control.
+        var prevByName = {};
+        provDB.forEach(function(p){ if(p && p.name) prevByName[p.name.toUpperCase()] = p; });
         provDB = rows.map(function(row){
+          var prev = prevByName[(row.nombre||'').toUpperCase()] || {};
           return {
-            name: row.nombre||'', cuit: row.cuit||'', rubro: row.rubro||'',
-            email: row.email||'', tel: row.tel||'', dir: row.direccion||'',
-            contacto: row.contacto||'', pago: row.condicion_pago||'', tipo: row.tipo||'',
-            dbId: row.id
+            dbId:        row.id,
+            name:        row.nombre||'',
+            cuit:        row.cuit||'',
+            rubro:       row.rubro||'',
+            email:       row.email||'',
+            phone:       row.tel||'',
+            contact:     row.contacto||'',
+            paymentTerms:row.condicion_pago||'',
+            dir:         row.direccion||'',
+            tipo:        row.tipo||'',
+            localidad:   prev.localidad||'',
+            deliveryDays:prev.deliveryDays||'',
+            notes:       prev.notes||''
           };
         });
         dbSave();
@@ -941,22 +965,94 @@ async function sbLoadProvDB() {
       }
     }
   } catch(e) {}
-  dbLoad(); // fallback localStorage
+  // Fallback: leer la base del Centro de Control guardada en este mismo navegador
+  // (clave 'nielsen_proveedores'). Mismo origen → localStorage compartido entre rutas.
+  if (cargarProvDesdeCC()) return;
+  dbLoad(); // último fallback: base local propia del comparativo
 }
 
-async function sbSaveProvDB() {
-  // Save/upsert each provider to Supabase
+// Lee los proveedores del Centro de Control (localStorage 'nielsen_proveedores')
+// y los mapea al formato del comparativo. Devuelve true si cargó algo.
+function cargarProvDesdeCC(){
   try {
-    for(var i=0;i<provDB.length;i++) {
-      var p=provDB[i];
-      await fetch(_SB_URL+'/rest/v1/proveedores_db', {
+    var raw = localStorage.getItem('nielsen_proveedores');
+    if (!raw) return false;
+    var arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || !arr.length) return false;
+    var prevByName = {};
+    provDB.forEach(function(p){ if (p && p.name) prevByName[p.name.toUpperCase()] = p; });
+    provDB = arr.map(function(c){
+      var prev = prevByName[(c.nombre || '').toUpperCase()] || {};
+      return {
+        dbId:         prev.dbId || null,
+        name:         c.nombre || '',
+        cuit:         c.cuit || '',
+        rubro:        c.rubro || '',
+        email:        c.email || '',
+        phone:        c.tel || '',
+        contact:      c.contacto || '',
+        paymentTerms: c.pago || '',
+        dir:          c.dir || '',
+        tipo:         c.tipo || '',
+        localidad:    prev.localidad || '',
+        deliveryDays: prev.deliveryDays || '',
+        notes:        prev.notes || ''
+      };
+    });
+    dbSave();
+    renderDBTable();
+    return true;
+  } catch(e) { return false; }
+}
+
+// Mapea un proveedor del comparativo a las columnas de la tabla 'proveedores' (Centro de Control)
+function _provToSB(p) {
+  return {
+    nombre:        p.name||'',
+    cuit:          p.cuit||'',
+    rubro:         p.rubro||'',
+    email:         p.email||'',
+    tel:           p.phone||'',
+    direccion:     p.dir||p.localidad||'',
+    contacto:      p.contact||'',
+    condicion_pago:p.paymentTerms||'',
+    tipo:          p.tipo||''
+  };
+}
+
+// Inserta o actualiza UN proveedor en la tabla compartida 'proveedores'.
+// Devuelve el id de Supabase (para nuevos) o el dbId existente.
+async function sbUpsertProveedor(p) {
+  try {
+    if (p.dbId) {
+      // Actualizar existente
+      await fetch(_SB_URL+'/rest/v1/proveedores?id=eq.'+encodeURIComponent(p.dbId), {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
+        body:JSON.stringify(_provToSB(p))
+      });
+      return p.dbId;
+    } else {
+      // Insertar nuevo y recuperar el id generado
+      var r = await fetch(_SB_URL+'/rest/v1/proveedores', {
         method:'POST',
-        headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'resolution=merge-duplicates,return=minimal'},
-        body:JSON.stringify({nombre:p.name||'',cuit:p.cuit||'',rubro:p.rubro||'',datos:p})
-      }).catch(function(){});
+        headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=representation'},
+        body:JSON.stringify(_provToSB(p))
+      });
+      if (r.ok) { var rows = await r.json(); if (rows && rows[0] && rows[0].id) return rows[0].id; }
     }
-    showToast('✓ Base de proveedores sincronizada','ok');
-  } catch(e) { showToast('Error al sincronizar proveedores','err'); }
+  } catch(e) { console.warn('sbUpsertProveedor:', e.message); }
+  return p.dbId || null;
+}
+
+async function sbDeleteProveedor(dbId) {
+  if (!dbId) return;
+  try {
+    await fetch(_SB_URL+'/rest/v1/proveedores?id=eq.'+encodeURIComponent(dbId), {
+      method:'DELETE',
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'}
+    });
+  } catch(e) { console.warn('sbDeleteProveedor:', e.message); }
 }
 
 // Current comparative number
@@ -1278,6 +1374,7 @@ function cargaMasivaProveedores(file) {
       lines = lines.filter(function(l){ return !l.trim().startsWith('<') && !l.trim().startsWith('>'); });
       if (lines.length < 2) { showToast('El archivo debe tener encabezado y al menos un proveedor','err'); return; }
       var added = 0, skipped = 0;
+      var nuevos = [];
       // First line = headers, rest = data (skip example row if it starts with "Ej:")
       for (var i=1; i<lines.length; i++) {
         var cols;
@@ -1298,13 +1395,24 @@ function cargaMasivaProveedores(file) {
         if (!name || name.toLowerCase().startsWith('ej:') || name.toLowerCase().startsWith('nombre')) continue;
         var exists = provDB.some(function(p){ return p.name&&p.name.toLowerCase()===name.toLowerCase(); });
         if (!exists) {
-          provDB.push({ name:name, cuit:cols[1]||'', rubro:cols[2]||'', email:cols[3]||'', tel:cols[4]||'', dir:cols[5]||'', contacto:cols[6]||'' });
+          // Plantilla: Nombre, CUIT, Rubro, Email, Teléfono, Dirección, Contacto
+          var entry = { dbId:null, name:name, cuit:cols[1]||'', rubro:cols[2]||'', email:cols[3]||'',
+            phone:cols[4]||'', dir:cols[5]||'', contact:cols[6]||'', localidad:'', paymentTerms:'', deliveryDays:'', notes:'' };
+          provDB.push(entry); nuevos.push(entry);
           added++;
         } else { skipped++; }
       }
       dbSave();
       renderDBTable();
       showToast('✓ '+added+' proveedor'+(added!==1?'es':'')+' importado'+(added!==1?'s':'')+' · '+skipped+' duplicado'+(skipped!==1?'s':'')+' saltado'+(skipped!==1?'s':''), 'ok');
+      // Sincronizar con la tabla compartida 'proveedores'
+      (async function(){
+        for (var k=0;k<nuevos.length;k++) {
+          var rid = await sbUpsertProveedor(nuevos[k]);
+          if (rid) nuevos[k].dbId = rid; else if (!nuevos[k].dbId) nuevos[k].dbId = dbNextId();
+        }
+        dbSave(); renderDBTable();
+      })();
     } catch(err) {
       showToast('Error al procesar el archivo: '+err.message,'err');
     }
@@ -1528,6 +1636,7 @@ function switchTab(name) {
   if (panel) panel.classList.add('active');
   var btn = document.querySelector('[data-tab="' + name + '"]');
   if (btn) btn.classList.add('active');
+  if (name === 'proveedores') { try { renderPriceMatrix(); } catch(e){} }
 }
 
 // ═══════════════════════════════════════════════════
@@ -1587,6 +1696,7 @@ function renderItems() {
   });
   document.getElementById('chkAll').checked = items.length > 0 && items.every(function(i) { return i.sel; });
   updateDelBtn();
+  renderPriceMatrix();
 }
 
 function updateDelBtn() {
@@ -1699,8 +1809,9 @@ function processPaste() {
 function addProvider(prefillName) {
   provCounter++;
   providers.push({ id: provCounter, name: prefillName||'', contact:'', phone:'', email:'',
-    cuit:'', deliveryDays:'', shippingCost:'', paymentTerms:'' });
+    cuit:'', deliveryDays:'', shippingCost:'', paymentTerms:'', prices:[] });
   renderProviders();
+  renderPriceMatrix();
 }
 
 
@@ -1927,7 +2038,12 @@ function importSession(e) {
         document.getElementById('divisa').value = data.meta.divisa || 'ARS';
         document.getElementById('nroExp').value = data.meta.nroExp || '';
       }
-      if (data.analysisResult) { analysisResult = data.analysisResult; renderAnalysis(analysisResult); }
+      if (data.analysisResult) {
+        analysisResult = data.analysisResult;
+        // Regenerar el análisis a partir de los ítems/proveedores importados
+        // (antes llamaba a renderAnalysis(), que no existe).
+        if (items.length && providers.length) { try { generarAnalisisAuto(); } catch(e){} }
+      }
       showToast('✓ Sesión importada', 'ok');
     } catch(err) { showToast('Error al importar: ' + err.message, 'err'); }
   };
@@ -1946,10 +2062,6 @@ function dbLoad() {
 }
 function dbSave() {
   try { localStorage.setItem('nielsen_prov_db', JSON.stringify(provDB)); } catch(e) {}
-  // Also sync to Supabase in background (throttled)
-  if (!dbSave._timer) {
-    dbSave._timer = setTimeout(function(){ dbSave._timer=null; sbSaveProvDB(); }, 3000);
-  }
 }
 function dbNextId() {
   return provDB.length ? Math.max.apply(null, provDB.map(function(p){ return p.dbId||0; })) + 1 : 1;
@@ -2035,12 +2147,12 @@ function updateDBSelCount() {
   if (el) el.textContent = checked ? checked + ' seleccionado(s)' : '';
 }
 
-function saveNewDBProvider() {
+async function saveNewDBProvider() {
   var name = (document.getElementById('dbn-name').value||'').trim();
   if (!name) { showToast('⚠️ El nombre es obligatorio.', 'err'); return; }
 
   var entry = {
-    dbId: dbEditingId || dbNextId(),
+    dbId: dbEditingId || null,
     name: name,
     cuit: (document.getElementById('dbn-cuit').value||'').trim(),
     rubro: (document.getElementById('dbn-rubro').value||'').trim(),
@@ -2053,13 +2165,17 @@ function saveNewDBProvider() {
     notes: (document.getElementById('dbn-notes').value||'').trim()
   };
 
+  // Persistir en la tabla compartida 'proveedores' (Centro de Control)
+  var realId = await sbUpsertProveedor(entry);
+  if (realId) entry.dbId = realId; else if (!entry.dbId) entry.dbId = dbNextId();
+
   if (dbEditingId) {
     var idx = provDB.findIndex(function(p){ return p.dbId === dbEditingId; });
-    if (idx !== -1) provDB[idx] = entry;
-    showToast('✓ Proveedor actualizado', 'ok');
+    if (idx !== -1) provDB[idx] = entry; else provDB.push(entry);
+    showToast('✓ Proveedor actualizado (sincronizado con el Centro de Control)', 'ok');
   } else {
     provDB.push(entry);
-    showToast('✓ Proveedor guardado en la base de datos', 'ok');
+    showToast('✓ Proveedor guardado (sincronizado con el Centro de Control)', 'ok');
   }
   dbSave();
   clearDBForm();
@@ -2100,8 +2216,9 @@ function editDBProvider(dbId) {
   switchDbTab('nuevo');
 }
 
-function deleteDBProvider(dbId) {
-  if (!confirm('¿Eliminar este proveedor de la base de datos?')) return;
+async function deleteDBProvider(dbId) {
+  if (!confirm('¿Eliminar este proveedor de la base de datos? (también se quita del Centro de Control)')) return;
+  await sbDeleteProveedor(dbId);
   provDB = provDB.filter(function(p){ return p.dbId !== dbId; });
   dbSave();
   renderDBTable();
@@ -2115,9 +2232,10 @@ function useDBProvider(dbId) {
   providers.push({
     id: provCounter, name: p.name, contact: p.contact, phone: p.phone,
     email: p.email, cuit: p.cuit, deliveryDays: p.deliveryDays,
-    shippingCost: '', paymentTerms: p.paymentTerms
+    shippingCost: '', paymentTerms: p.paymentTerms, prices:[]
   });
   renderProviders();
+  renderPriceMatrix();
   showToast('✓ "' + p.name + '" agregado al cuadro', 'ok');
 }
 
@@ -2135,27 +2253,29 @@ function useSelectedDBProviders() {
     providers.push({
       id: provCounter, name: p.name, contact: p.contact, phone: p.phone,
       email: p.email, cuit: p.cuit, deliveryDays: p.deliveryDays,
-      shippingCost: '', paymentTerms: p.paymentTerms
+      shippingCost: '', paymentTerms: p.paymentTerms, prices:[]
     });
     count++;
   });
   renderProviders();
+  renderPriceMatrix();
   closeDB();
   showToast('✓ ' + count + ' proveedor(es) agregado(s) al cuadro', 'ok');
 }
 
-function importMasivo() {
+async function importMasivo() {
   var text = (document.getElementById('dbMasivoArea').value||'').trim();
   if (!text) return;
   var lines = text.split('\n').filter(function(l){ return l.trim(); });
   var added = 0, dupes = 0;
+  var nuevos = [];
   lines.forEach(function(line) {
     var cols = line.split(/[,\t]/).map(function(c){ return c.trim(); });
     var name = cols[0];
     if (!name) return;
     if (provDB.find(function(p){ return p.name.toLowerCase() === name.toLowerCase(); })) { dupes++; return; }
-    provDB.push({
-      dbId: dbNextId(),
+    var entry = {
+      dbId: null,
       name: name,
       cuit: cols[1]||'',
       rubro: cols[2]||'',
@@ -2166,7 +2286,8 @@ function importMasivo() {
       paymentTerms: cols[7]||'',
       deliveryDays: '',
       notes: ''
-    });
+    };
+    provDB.push(entry); nuevos.push(entry);
     added++;
   });
   dbSave();
@@ -2174,6 +2295,12 @@ function importMasivo() {
   if (res) res.textContent = '✓ ' + added + ' proveedor(es) importado(s)' + (dupes ? ' · ' + dupes + ' duplicado(s) omitido(s)' : '');
   renderDBTable();
   showToast('✓ ' + added + ' proveedor(es) importados', 'ok');
+  // Sincronizar con la tabla compartida 'proveedores'
+  for (var i=0;i<nuevos.length;i++) {
+    var rid = await sbUpsertProveedor(nuevos[i]);
+    if (rid) nuevos[i].dbId = rid; else if (!nuevos[i].dbId) nuevos[i].dbId = dbNextId();
+  }
+  dbSave(); renderDBTable();
 }
 
 function exportDBCSV() {
@@ -2253,6 +2380,95 @@ function _provTotals(){
       cobertura:itemsCotizados, totalItems:items.length
     };
   }).filter(function(t){ return t.totalSinIVA > 0; });
+}
+
+// ═══════════════════════════════════════════════════
+// MATRIZ DE PRECIOS  (faltaba — se llamaba pero no existía)
+// Filas = ítems · Columnas = proveedores · Celda = precio unit. s/IVA
+// Escribe en providers[pi].prices[ii] (lo que lee el análisis)
+// ═══════════════════════════════════════════════════
+function renderPriceMatrix(){
+  var wrap = document.getElementById('priceMatrixWrap');
+  if (!wrap) return;
+
+  if (!items.length || !providers.length){
+    var faltan = [];
+    if (!items.length) faltan.push('agregá ítems en la pestaña «Solicitud»');
+    if (!providers.length) faltan.push('agregá al menos un proveedor con «+ Proveedor»');
+    wrap.innerHTML = '<p style="color:var(--orange-dim);font-size:13px;margin:6px 2px">'
+      + 'Para cargar precios, ' + faltan.join(' y ') + '.</p>';
+    return;
+  }
+
+  // Garantizar que cada proveedor tenga su array de precios
+  providers.forEach(function(p){ if (!Array.isArray(p.prices)) p.prices = []; });
+
+  var head = '<th style="position:sticky;left:0;background:var(--bg-light);min-width:200px">Ítem</th>'
+    + '<th style="text-align:center;white-space:nowrap">Cant.</th>'
+    + providers.map(function(p, pi){
+        var color = PROV_COLORS[pi % PROV_COLORS.length];
+        return '<th style="color:'+color+';text-align:right;white-space:nowrap">'
+          + escHtml(p.name || ('Proveedor ' + (pi+1))) + '</th>';
+      }).join('');
+
+  var body = items.map(function(item, i){
+    var cells = providers.map(function(p, pi){
+      var v = (p.prices && p.prices[i] != null && p.prices[i] !== '') ? p.prices[i] : '';
+      return '<td style="text-align:right">'
+        + '<input type="number" min="0" step="any" inputmode="decimal" '
+        + 'value="' + escHtml(String(v)) + '" placeholder="0" '
+        + 'data-pm-prov="' + pi + '" data-pm-item="' + i + '" '
+        + 'style="width:120px;text-align:right;padding:6px 8px;border-radius:6px;'
+        + 'border:1px solid var(--orange-border);background:var(--bg-mid);color:var(--cream);font-family:inherit;font-size:12px"/>'
+        + '</td>';
+    }).join('');
+    return '<tr>'
+      + '<td style="position:sticky;left:0;background:var(--bg-mid);font-weight:600">'
+        + escHtml(item.desc || ('Ítem ' + (i+1)))
+        + (item.spec ? '<span style="display:block;font-size:10px;color:var(--orange-dim)">' + escHtml(item.spec) + '</span>' : '')
+      + '</td>'
+      + '<td style="text-align:center;white-space:nowrap;color:var(--orange-dim)">'
+        + (escHtml(String(item.qty || '')) || '1') + ' ' + escHtml(item.unit || 'UN') + '</td>'
+      + cells + '</tr>';
+  }).join('');
+
+  var foot = '<td colspan="2" style="position:sticky;left:0;background:var(--bg-light);font-weight:700;color:var(--cream)">Subtotal s/IVA</td>'
+    + providers.map(function(){ return '<td style="text-align:right;font-weight:700;color:var(--orange)"></td>'; }).join('');
+
+  wrap.innerHTML = '<table class="aa-table" style="min-width:100%">'
+    + '<thead><tr>' + head + '</tr></thead>'
+    + '<tbody>' + body + '</tbody>'
+    + '<tfoot><tr>' + foot + '</tr></tfoot>'
+    + '</table>';
+
+  // Binding: escribe el precio sin re-renderizar (no se pierde el foco)
+  wrap.querySelectorAll('input[data-pm-prov]').forEach(function(el){
+    el.addEventListener('input', function(){
+      var pi = parseInt(this.dataset.pmProv, 10);
+      var ii = parseInt(this.dataset.pmItem, 10);
+      if (!providers[pi]) return;
+      if (!Array.isArray(providers[pi].prices)) providers[pi].prices = [];
+      providers[pi].prices[ii] = this.value;
+      _updateMatrixSubtotals();
+    });
+  });
+
+  _updateMatrixSubtotals();
+}
+
+function _updateMatrixSubtotals(){
+  var cells = document.querySelectorAll('#priceMatrixWrap tfoot td');
+  if (!cells.length) return;
+  providers.forEach(function(p, pi){
+    var s = 0;
+    items.forEach(function(item, i){
+      var price = (p.prices && p.prices[i]) ? parseFloat(p.prices[i]) || 0 : 0;
+      var qty = parseFloat(item.qty) || 1;
+      s += price * qty;
+    });
+    var cell = cells[pi + 1]; // [0] es la etiqueta (colspan 2)
+    if (cell) cell.textContent = s > 0 ? _fmtMoney(s) : '—';
+  });
 }
 
 function generarAnalisisAuto(){
