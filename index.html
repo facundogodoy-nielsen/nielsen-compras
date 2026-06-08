@@ -1889,6 +1889,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       ⬆️ Importar Planilla COMPRAS
       <input type="file" accept=".xlsx,.xls,.csv" onchange="importarDetalleXLS(event)" style="display:none">
     </label>
+    <button onclick="traerDetalleDesdeSheet(false)" title="Leer directo de la planilla COMPRAS (Google Sheet)" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(59,130,246,.4);background:rgba(59,130,246,.1);color:#60a5fa;font-size:12px;font-weight:700">🔄 Traer de la planilla</button>
     <select id="det-a-anio" onchange="onFiltroDetArea('anio')" style="padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
       <option value="">Todos los años</option>
     </select>
@@ -1951,6 +1952,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       ⬆️ Importar Planilla COMPRAS
       <input type="file" accept=".xlsx,.xls,.csv" onchange="importarDetalleXLS(event)" style="display:none">
     </label>
+    <button onclick="traerDetalleDesdeSheet(false)" title="Leer directo de la planilla COMPRAS (Google Sheet)" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(59,130,246,.4);background:rgba(59,130,246,.1);color:#60a5fa;font-size:12px;font-weight:700">🔄 Traer de la planilla</button>
     <select id="det-c-anio" onchange="onFiltroDetCamp('anio')" style="padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
       <option value="">Todos los años</option>
     </select>
@@ -2056,11 +2058,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 
     <div style="display:flex;gap:10px;justify-content:space-between;margin-top:20px;flex-wrap:wrap">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-
+        <button class="btn btn-sm btn-ghost" onclick="listaPedidoActual()">📋 Lista de pedido</button>
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-sm btn-ghost" onclick="imprimirModalSC()">🖨 Imprimir</button>
-        <button class="btn btn-sm btn-danger" data-editor-only onclick="eliminarSC(window._scIdx)">🗑 Eliminar</button>
+        <button class="btn btn-sm btn-danger" data-editor-only onclick="eliminarActual()">🗑 Eliminar</button>
       </div>
     </div>
   </div>
@@ -2443,8 +2445,8 @@ async function showView(id, btn) {
   if (id === 'ahorro')         renderAhorro();
   if (id === 'prov-db')      { await cargarProveedoresSB(); renderProvDB(); }
   if (id === 'prov-compras') { await cargarComprasSB(); poblarPeriodos(); renderComprasProv(); }
-  if (id === 'prov-area')      { await cargarDetalleSB(); poblarPeriodosDet(); renderComprasArea(); }
-  if (id === 'prov-campamento'){ await cargarDetalleSB(); poblarPeriodosDet(); renderComprasCampamento(); }
+  if (id === 'prov-area')      { await _asegurarDetalle(); renderComprasArea(); }
+  if (id === 'prov-campamento'){ await _asegurarDetalle(); renderComprasCampamento(); }
   if (id === 'prov-eval')    { renderEvalProv(); }
   if (id === 'nueva-sc') resetWizard();
 }
@@ -3459,6 +3461,7 @@ function verSC(idx) {
   const sc = scs[idx];
   if (!sc) return;
   window._scIdx = idx;
+  window._modalTipo = 'SC';
   document.getElementById('modal-sc-num').textContent = sc.numSC || sc.num || '—';
   // Show osAsunto as subtitle below the SC number
   let subEl = document.getElementById('modal-sc-sub');
@@ -3619,6 +3622,94 @@ function eliminarSC(idx) {
   renderPanel();
   renderHistorial();
   showToast('SC eliminada', 'ok');
+}
+
+// ── Dispatcher de Eliminar según el tipo de modal abierto (SC o PA) ──
+function eliminarActual() {
+  if (window._modalTipo === 'PA') {
+    if (window._paIdx == null) { showToast('No hay PA seleccionado', 'error'); return; }
+    eliminarPA(window._paIdx);
+  } else {
+    if (window._scIdx == null) { showToast('No hay SC seleccionada', 'error'); return; }
+    eliminarSC(window._scIdx);
+  }
+}
+
+// ── Lista de pedido copiable (SC o PA) ──
+function listaPedidoActual() {
+  if (window._modalTipo === 'PA') return listaPedidoPA();
+  return listaPedidoSC();
+}
+
+function listaPedidoSC() {
+  const sc = scs[window._scIdx]; if (!sc) return;
+  const lineas = (sc.items || '').split('\n').map(l => l.trim()).filter(Boolean);
+  let txt = 'LISTA DE PEDIDO — SC ' + (sc.numSC || sc.num || '') + '\n';
+  if (sc.area)        txt += 'Área: ' + sc.area + (sc.subarea ? ' › ' + sc.subarea : '') + '\n';
+  if (sc.solicitante) txt += 'Solicitante: ' + sc.solicitante + '\n';
+  if (sc.destino)     txt += 'Destino: ' + sc.destino + '\n';
+  if (sc.fecha)       txt += 'Fecha: ' + formatFecha(sc.fecha) + '\n';
+  txt += '\nÍTEMS (' + lineas.length + '):\n';
+  txt += lineas.length ? lineas.map((l, i) => (i + 1) + '. ' + l).join('\n') : '(sin ítems)';
+  if (sc.obs) txt += '\n\nObservaciones: ' + sc.obs;
+  _mostrarCajaCopia('📋 Lista de Pedido — SC ' + (sc.numSC || sc.num || ''), txt);
+}
+
+function listaPedidoPA() {
+  const pa = paData[window._paIdx]; if (!pa) return;
+  const items = pa.items || [];
+  let txt = 'LISTA DE PEDIDO — PA ' + (normPA ? normPA(pa.numPA || '') : (pa.numPA || '')) + '\n';
+  if (pa.campamento)  txt += 'Campamento: ' + pa.campamento + '\n';
+  if (pa.solicitante) txt += 'Solicitante: ' + pa.solicitante + '\n';
+  if (pa.fecha)       txt += 'Fecha: ' + formatFecha(pa.fecha) + '\n';
+  if (pa.fechaEntrega || pa.entrega) txt += 'Entrega: ' + formatFecha(pa.fechaEntrega || pa.entrega) + '\n';
+  txt += '\nÍTEMS (' + items.length + '):\n';
+  txt += items.length ? items.map((it, i) => {
+    const nombre = it.nombre || it.name || it.articulo || (typeof it === 'string' ? it : '—');
+    const marca  = it.marca ? ' — ' + it.marca : '';
+    const cant   = (it.cant || it.cantidad || it.qty);
+    const medida = it.medida || it.unidad || '';
+    const cantTxt = cant ? '  [' + cant + (medida ? ' ' + medida : '') + ']' : '';
+    return (i + 1) + '. ' + nombre + marca + cantTxt;
+  }).join('\n') : '(sin ítems)';
+  if (pa.obs) txt += '\n\nObservaciones: ' + pa.obs;
+  _mostrarCajaCopia('📋 Lista de Pedido — PA ' + (normPA ? normPA(pa.numPA || '') : (pa.numPA || '')), txt);
+}
+
+// ── Caja modal con texto copiable (reutilizable) ──
+function _mostrarCajaCopia(titulo, texto) {
+  let ov = document.getElementById('modal-copia');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'modal-copia';
+    ov.className = 'modal-ov';
+    ov.innerHTML =
+      '<div class="modal" style="max-width:540px">'
+      + '<button class="modal-close" onclick="document.getElementById(\'modal-copia\').classList.remove(\'open\')">✕</button>'
+      + '<div class="modal-title" id="copia-titulo" style="font-size:17px">📋 Lista de Pedido</div>'
+      + '<div style="font-size:11px;color:var(--muted);margin:6px 0 10px">Copiá el texto para pegarlo en un mail o WhatsApp al proveedor.</div>'
+      + '<textarea id="copia-texto" readonly style="width:100%;min-height:240px;padding:12px;border-radius:10px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--fm);font-size:13px;line-height:1.6;resize:vertical;box-sizing:border-box"></textarea>'
+      + '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">'
+      + '<button class="btn btn-sm btn-ghost" onclick="document.getElementById(\'modal-copia\').classList.remove(\'open\')">Cerrar</button>'
+      + '<button class="btn btn-sm" id="copia-btn" style="background:var(--or);color:#fff;border:none;font-weight:700" onclick="_copiarCaja()">📋 Copiar todo</button>'
+      + '</div>'
+      + '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
+  }
+  document.getElementById('copia-titulo').textContent = titulo;
+  document.getElementById('copia-texto').value = texto;
+  ov.classList.add('open');
+}
+
+function _copiarCaja() {
+  const ta = document.getElementById('copia-texto'); if (!ta) return;
+  ta.select(); ta.setSelectionRange(0, 999999);
+  const btn = document.getElementById('copia-btn');
+  const done = () => { if (btn) { const o = btn.textContent; btn.textContent = '✅ Copiado'; setTimeout(() => { btn.textContent = o; }, 1600); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(ta.value).then(done).catch(() => { try { document.execCommand('copy'); done(); } catch (e) {} });
+  } else { try { document.execCommand('copy'); done(); } catch (e) {} }
 }
 
 // ══ CONTADORES SIDEBAR ══
@@ -6341,6 +6432,7 @@ async function verPA(idx) {
   const pa = paData[idx];
   if (!pa) { showToast('No se encontró el pedido','error'); return; }
   window._paIdx = idx;
+  window._modalTipo = 'PA';
 
   // ALWAYS fetch fresh items from Supabase by num_pa (most reliable)
   if (pa.numPA) {
@@ -7495,6 +7587,17 @@ function renderComprasProv() {
 let detalleData = JSON.parse(localStorage.getItem('nielsen_compras_detalle') || '[]');
 const _PALETA = ['#e85d25','#22c55e','#3b82f6','#a78bfa','#eab308','#ec4899','#14b8a6','#f97316','#06b6d4','#f43f5e','#84cc16','#8b5cf6'];
 
+// ── Fuente directa: Google Sheet COMPRAS como CSV ──
+// Para lectura directa desde el navegador, la planilla debe estar PUBLICADA en la web:
+//   Archivo → Compartir → Publicar en la web → (hoja COMPRAS) → Formato CSV → Publicar.
+// Pegá esa URL (termina en output=csv) acá:
+const SHEET_DETALLE_CSV_URL = '';   // ← URL de "Publicar en la web" (CSV)
+// Fallback: endpoint export (funciona si la planilla es visible para cualquiera con el
+// enlace; puede ser bloqueado por CORS en algunos navegadores).
+const _SHEET_ID = '1kbvtrc20NELbbSj66g8lpBgiKEdaALHeZ_SdNOV0fb4';
+const _SHEET_GID = '1491641052';
+const _SHEET_EXPORT_FALLBACK = 'https://docs.google.com/spreadsheets/d/' + _SHEET_ID + '/export?format=csv&gid=' + _SHEET_GID;
+
 // ── Carga desde Supabase (keyset por id, igual patrón que compras_proveedor) ──
 async function cargarDetalleSB() {
   try {
@@ -7581,56 +7684,7 @@ async function importarDetalleXLS(ev) {
     const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
     if (!rows.length) { showToast('Planilla vacía', 'error'); return; }
 
-    // Detección de columnas por encabezado; fallback a letras fijas D/Q/T/V/W.
-    const hdr = (rows[0]||[]).map(h => String(h||'').toLowerCase().trim());
-    const find = (...cands) => hdr.findIndex(h => cands.some(c => h.includes(c)));
-    let cComp  = find('comprobante','comprob','n° comp','nro comp');
-    let cMonto = find('precio total','total + iva','importe total','total c/iva','total con iva');
-    let cCamp  = find('campamento');
-    let cCat   = find('categoria','categoría');
-    let cArea  = find('area','área');
-    let cFecha = find('fecha');
-    let cTipo  = find('tipo comprob','tipo de comp','tipo');
-    // Fallback a letras fijas (0-indexed): D=3, Q=16, T=19, V=21, W=22
-    if (cComp  < 0) cComp  = 3;
-    if (cMonto < 0) cMonto = 16;
-    if (cCamp  < 0) cCamp  = 19;
-    if (cCat   < 0) cCat   = 21;
-    if (cArea  < 0) cArea  = 22;
-    if (cFecha < 0) cFecha = -1;
-
-    const out = [];
-    let ncCount = 0;
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i]; if (!r) continue;
-      const comp = String(r[cComp]||'').trim();
-      const camp = String(r[cCamp]||'').trim();
-      const cat  = String(r[cCat]||'').trim();
-      const area = String(r[cArea]||'').trim();
-      let monto  = _parseMonto(r[cMonto]);
-      // saltar filas totalmente vacías
-      if (!comp && !camp && !area && !monto) continue;
-      const tipo = cTipo >= 0 ? String(r[cTipo]||'') : '';
-      if (_esNC(comp, tipo)) { monto = -Math.abs(monto); ncCount++; }
-      let fechaStr = '';
-      if (cFecha >= 0) {
-        const f = r[cFecha];
-        if (f instanceof Date) fechaStr = f.toISOString().split('T')[0];
-        else if (f) {
-          const s = String(f).trim();
-          const dm = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-          if (dm) { const yy = dm[3].length===2 ? '20'+dm[3] : dm[3]; fechaStr = yy+'-'+dm[2].padStart(2,'0')+'-'+dm[1].padStart(2,'0'); }
-          else fechaStr = s.slice(0,10);
-        }
-      }
-      out.push({
-        comprobante: comp, monto,
-        campamento: camp || 'SIN ESPECIFICAR',
-        categoria:  cat  || 'SIN ESPECIFICAR',
-        area:       area || 'SIN ESPECIFICAR',
-        fecha: fechaStr
-      });
-    }
+    const { out, ncCount } = _procesarFilasDetalle(rows);
     if (!out.length) { showToast('No se detectaron filas válidas — revisá las columnas', 'error'); return; }
 
     detalleData = out;
@@ -7639,28 +7693,128 @@ async function importarDetalleXLS(ev) {
     renderComprasArea(); renderComprasCampamento();
     showToast('✅ ' + out.length + ' líneas importadas' + (ncCount? ' ('+ncCount+' NC restadas)':''), 'ok');
 
-    // Persistir en Supabase (full replace) sólo en modo editor.
-    if (typeof esModoEditor === 'function' && esModoEditor()) {
-      try {
-        await fetch(_SB_URL + '/rest/v1/compras_detalle?id=gt.0', {
-          method:'DELETE', headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
-        });
-        for (let i=0; i<out.length; i+=500) {
-          const batch = out.slice(i,i+500).map(c=>({
-            comprobante:c.comprobante, monto:c.monto, campamento:c.campamento,
-            categoria:c.categoria, area:c.area, fecha:c.fecha||null
-          }));
-          await fetch(_SB_URL + '/rest/v1/compras_detalle', {
-            method:'POST',
-            headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
-            body: JSON.stringify(batch)
-          });
-        }
-        showToast('✅ Detalle guardado en Supabase (permanente)', 'ok');
-      } catch(e) { console.warn('detalle SB:', e.message); showToast('⚠️ Guardado local OK, Supabase falló (¿falta la tabla compras_detalle?)','error'); }
-    }
+    if (typeof esModoEditor === 'function' && esModoEditor()) await _guardarDetalleSB(out);
   } catch(e) { showToast('Error: '+e.message, 'error'); console.error(e); }
   ev.target.value = '';
+}
+
+// ── Procesa filas (array de arrays, fila 0 = encabezados) → líneas de detalle ──
+// Detección por encabezado con fallback a letras fijas D=3,Q=16,T=19,V=21,W=22.
+function _procesarFilasDetalle(rows) {
+  const hdr = (rows[0]||[]).map(h => String(h||'').toLowerCase().trim());
+  const find = (...cands) => hdr.findIndex(h => cands.some(c => h.includes(c)));
+  let cComp  = find('comprobante','comprob','n° comp','nro comp');
+  let cMonto = find('precio total','total + iva','importe total','total c/iva','total con iva');
+  let cCamp  = find('campamento');
+  let cCat   = find('categoria','categoría');
+  let cArea  = find('area','área');
+  let cFecha = find('fecha');
+  let cTipo  = find('tipo comprob','tipo de comp','tipo');
+  if (cComp  < 0) cComp  = 3;
+  if (cMonto < 0) cMonto = 16;
+  if (cCamp  < 0) cCamp  = 19;
+  if (cCat   < 0) cCat   = 21;
+  if (cArea  < 0) cArea  = 22;
+
+  const out = [];
+  let ncCount = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i]; if (!r) continue;
+    const comp = String(r[cComp]||'').trim();
+    const camp = String(r[cCamp]||'').trim();
+    const cat  = String(r[cCat]||'').trim();
+    const area = String(r[cArea]||'').trim();
+    let monto  = _parseMonto(r[cMonto]);
+    if (!comp && !camp && !area && !monto) continue;
+    const tipo = cTipo >= 0 ? String(r[cTipo]||'') : '';
+    if (_esNC(comp, tipo)) { monto = -Math.abs(monto); ncCount++; }
+    let fechaStr = '';
+    if (cFecha >= 0) {
+      const f = r[cFecha];
+      if (f instanceof Date) fechaStr = f.toISOString().split('T')[0];
+      else if (f) {
+        const s = String(f).trim();
+        const dm = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+        if (dm) { const yy = dm[3].length===2 ? '20'+dm[3] : dm[3]; fechaStr = yy+'-'+dm[2].padStart(2,'0')+'-'+dm[1].padStart(2,'0'); }
+        else fechaStr = s.slice(0,10);
+      }
+    }
+    out.push({
+      comprobante: comp, monto,
+      campamento: camp || 'SIN ESPECIFICAR',
+      categoria:  cat  || 'SIN ESPECIFICAR',
+      area:       area || 'SIN ESPECIFICAR',
+      fecha: fechaStr
+    });
+  }
+  return { out, ncCount };
+}
+
+// ── Guardar detalle en Supabase (full replace) ──
+async function _guardarDetalleSB(out) {
+  try {
+    await fetch(_SB_URL + '/rest/v1/compras_detalle?id=gt.0', {
+      method:'DELETE', headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
+    });
+    for (let i=0; i<out.length; i+=500) {
+      const batch = out.slice(i,i+500).map(c=>({
+        comprobante:c.comprobante, monto:c.monto, campamento:c.campamento,
+        categoria:c.categoria, area:c.area, fecha:c.fecha||null
+      }));
+      await fetch(_SB_URL + '/rest/v1/compras_detalle', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
+        body: JSON.stringify(batch)
+      });
+    }
+    showToast('✅ Detalle guardado en Supabase (permanente)', 'ok');
+  } catch(e) { console.warn('detalle SB:', e.message); showToast('⚠️ Guardado local OK, Supabase falló (¿falta la tabla compras_detalle?)','error'); }
+}
+
+// ── Lectura DIRECTA del Google Sheet (planilla COMPRAS) como CSV ──
+// Requiere que la planilla esté "Publicada en la web" (Archivo → Compartir →
+// Publicar en la web → hoja COMPRAS → CSV) y pegar esa URL en SHEET_DETALLE_CSV_URL.
+// Como alternativa intenta el endpoint export?format=csv (funciona si la planilla
+// es visible "para cualquiera con el enlace"; puede fallar por CORS).
+async function traerDetalleDesdeSheet(silencioso) {
+  const url = SHEET_DETALLE_CSV_URL || _SHEET_EXPORT_FALLBACK;
+  if (!url) { if(!silencioso) showToast('Falta configurar la URL del Sheet (SHEET_DETALLE_CSV_URL)', 'error'); return false; }
+  if (!silencioso) showToast('🔄 Trayendo datos de la planilla...', 'ok');
+  try {
+    const r = await fetch(url, { redirect:'follow' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const txt = await r.text();
+    // Si Google devuelve HTML (login / sin publicar) en vez de CSV → avisar claro.
+    if (/^\s*</.test(txt) || /<html/i.test(txt.slice(0,200))) {
+      throw new Error('La planilla no es pública. Publicala en la web como CSV.');
+    }
+    const wb = XLSX.read(txt, {type:'string'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    const { out, ncCount } = _procesarFilasDetalle(rows);
+    if (!out.length) throw new Error('No se detectaron filas válidas en el CSV');
+
+    detalleData = out;
+    _lsSet('nielsen_compras_detalle', JSON.stringify(detalleData));
+    poblarPeriodosDet();
+    renderComprasArea(); renderComprasCampamento();
+    if (!silencioso) showToast('✅ ' + out.length + ' líneas leídas de la planilla' + (ncCount? ' ('+ncCount+' NC restadas)':''), 'ok');
+    if (typeof esModoEditor === 'function' && esModoEditor()) await _guardarDetalleSB(out);
+    return true;
+  } catch(e) {
+    console.warn('traerDetalleDesdeSheet:', e.message);
+    if (!silencioso) showToast('⚠️ No se pudo leer la planilla: ' + e.message, 'error');
+    return false;
+  }
+}
+
+// ── Carga combinada: Supabase primero; si está vacío, intenta el Sheet ──
+async function _asegurarDetalle() {
+  await cargarDetalleSB();
+  if (!detalleData.length && (SHEET_DETALLE_CSV_URL || _SHEET_EXPORT_FALLBACK)) {
+    await traerDetalleDesdeSheet(true);   // silencioso
+  }
+  poblarPeriodosDet();
 }
 
 // ── Poblar años en ambos selects ──
