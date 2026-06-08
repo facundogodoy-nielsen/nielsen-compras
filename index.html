@@ -3658,22 +3658,43 @@ function listaPedidoSC() {
 function listaPedidoPA() {
   const pa = paData[window._paIdx]; if (!pa) return;
   const items = pa.items || [];
-  let txt = 'LISTA DE PEDIDO — PA ' + (normPA ? normPA(pa.numPA || '') : (pa.numPA || '')) + '\n';
+  const numTxt = (typeof normPA==='function' ? normPA(pa.numPA||'') : (pa.numPA||''));
+  const CATL = {M:'MERCADERÍA',L:'LIMPIEZA Y DESCARTABLES',H:'HOTELERÍA',A:'AGUA, GAS Y LEÑA',K:'KIOSCO LA BREA'};
+  const catOrder = ['M','L','H','A','K'];
+  let txt = 'LISTA DE PEDIDO — PA ' + numTxt + '\n';
   if (pa.campamento)  txt += 'Campamento: ' + pa.campamento + '\n';
   if (pa.solicitante) txt += 'Solicitante: ' + pa.solicitante + '\n';
   if (pa.fecha)       txt += 'Fecha: ' + formatFecha(pa.fecha) + '\n';
   if (pa.fechaEntrega || pa.entrega) txt += 'Entrega: ' + formatFecha(pa.fechaEntrega || pa.entrega) + '\n';
   txt += '\nÍTEMS (' + items.length + '):\n';
-  txt += items.length ? items.map((it, i) => {
-    const nombre = it.nombre || it.name || it.articulo || (typeof it === 'string' ? it : '—');
-    const marca  = it.marca ? ' — ' + it.marca : '';
-    const cant   = (it.cant || it.cantidad || it.qty);
-    const medida = it.medida || it.unidad || '';
-    const cantTxt = cant ? '  [' + cant + (medida ? ' ' + medida : '') + ']' : '';
-    return (i + 1) + '. ' + nombre + marca + cantTxt;
-  }).join('\n') : '(sin ítems)';
-  if (pa.obs) txt += '\n\nObservaciones: ' + pa.obs;
-  _mostrarCajaCopia('📋 Lista de Pedido — PA ' + (normPA ? normPA(pa.numPA || '') : (pa.numPA || '')), txt);
+  if (!items.length) {
+    txt += '(sin ítems)';
+  } else {
+    const byCat = {};
+    items.forEach(it => { const c = it.cat || it.categoria || pa.categoria || 'M'; (byCat[c] = byCat[c] || []).push(it); });
+    const cats = catOrder.filter(c=>byCat[c]).concat(Object.keys(byCat).filter(c=>!catOrder.includes(c)));
+    let n = 0;
+    cats.forEach(c => {
+      txt += '\n═══ ' + (CATL[c] || c) + ' ═══\n';
+      const bySub = {};
+      byCat[c].forEach(it => { const sk = ((it.sub||it.subcategoria||'')+'').trim() || '—'; (bySub[sk] = bySub[sk] || []).push(it); });
+      const subKeys = Object.keys(bySub).sort((a,b)=> a==='—'?1 : b==='—'?-1 : a.localeCompare(b,'es'));
+      subKeys.forEach(sk => {
+        txt += '  ▸ ' + (sk==='—' ? 'Sin subcategoría' : sk.toUpperCase()) + '\n';
+        bySub[sk].slice().sort((a,b)=>((a.nombre||a.name||'')+'').localeCompare(((b.nombre||b.name||'')+''),'es')).forEach(it => {
+          n++;
+          const nombre = it.nombre || it.name || it.articulo || '—';
+          const marca  = it.marca ? ' — ' + it.marca : '';
+          const cant   = it.cant || it.cantidad || it.qty;
+          const medida = it.medida || it.unidad || '';
+          const cantTxt = cant ? '  [' + cant + (medida ? ' ' + medida : '') + ']' : '';
+          txt += '     ' + n + '. ' + nombre + marca + cantTxt + '\n';
+        });
+      });
+    });
+  }
+  if (pa.obs) txt += '\nObservaciones: ' + pa.obs;
+  _mostrarCajaCopia('📋 Lista de Pedido — PA ' + numTxt, txt);
 }
 
 // ── Caja modal con texto copiable (reutilizable) ──
@@ -6486,7 +6507,7 @@ async function verPA(idx) {
     ? '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">Sin ítems registrados</div>'
     : catOrder.filter(c=>byCat[c]).map(c => {
         const catHeader = '<div style="padding:9px 0 5px;font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);border-top:1px solid var(--border);margin-top:8px;display:flex;justify-content:space-between;align-items:center"><span>' + (CAT_MAP[c]||c) + '</span><span style="font-size:9px;color:var(--muted);font-weight:600">' + byCat[c].length + ' ítem' + (byCat[c].length!==1?'s':'') + '</span></div>';
-        const rows = byCat[c].map(({it, i}) => {
+        const _renderRow = ({it, i}) => {
           counter++;
           const nombre  = it.nombre  || it.name  || it.articulo || (typeof it==='string'?it:'—');
           const marca   = it.marca   || '';
@@ -6527,6 +6548,15 @@ async function verPA(idx) {
             + '</div>'
             + comprobante + noComp
             + '</div>';
+        };
+        // Agrupar por subcategoría dentro de la categoría
+        const bySub = {};
+        byCat[c].forEach(pair => { const sk = ((pair.it.sub||pair.it.subcategoria||'')+'').trim() || '—'; (bySub[sk] = bySub[sk] || []).push(pair); });
+        const subKeys = Object.keys(bySub).sort((a,b)=> a==='—'?1 : b==='—'?-1 : a.localeCompare(b,'es'));
+        const rows = subKeys.map(sk => {
+          const subLbl = sk==='—' ? 'Sin subcategoría' : sk;
+          const subHeader = '<div style="margin:4px 0 3px;padding:4px 8px;font-family:var(--ff);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text);background:var(--s3);border-left:3px solid var(--or);border-radius:0 5px 5px 0;display:flex;justify-content:space-between;align-items:center"><span style="opacity:.8">'+subLbl+'</span><span style="font-size:9px;color:var(--muted);font-weight:600">'+bySub[sk].length+'</span></div>';
+          return subHeader + bySub[sk].slice().sort((a,b)=>((a.it.nombre||a.it.name||'')+'').localeCompare(((b.it.nombre||b.it.name||'')+''),'es')).map(_renderRow).join('');
         }).join('');
         return catHeader + rows;
       }).join('');
