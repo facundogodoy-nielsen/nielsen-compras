@@ -775,6 +775,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
       <div class="db-panel active" id="dbpanel-lista">
         <div class="db-search-bar">
           <input type="text" id="dbSearch" placeholder="Buscar por nombre, CUIT, rubro..."/>
+          <button class="btn btn-orange btn-sm" id="btnDbSyncCC" style="font-size:10px">🔄 Sincronizar con Centro de Control</button>
           <button class="btn btn-outline btn-sm" id="btnDbExport">💾 Exportar CSV</button>
           <button class="btn btn-danger btn-sm" id="btnDbCleanCorrupt" style="font-size:10px">🧹 Limpiar corruptos</button>
           <button class="btn btn-danger btn-sm" id="btnDbClearAll" style="font-size:10px">🗑 Limpiar todo</button>
@@ -972,6 +973,23 @@ async function sbLoadProvDB() {
   // (clave 'nielsen_proveedores'). Mismo origen → localStorage compartido entre rutas.
   if (cargarProvDesdeCC()) return;
   dbLoad(); // último fallback: base local propia del comparativo
+}
+
+// Sincroniza la base de comparativo con la del Centro de Control (tabla 'proveedores').
+// Fuerza una recarga fresca desde Supabase y muestra el resultado.
+async function sincronizarProvCC() {
+  var btn = document.getElementById('btnDbSyncCC');
+  var prev = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '🔄 Sincronizando...'; }
+  showToast('🔄 Sincronizando con el Centro de Control...', 'ok');
+  try {
+    await sbLoadProvDB();   // re-lee la tabla compartida y re-renderiza
+    showToast('✅ Base sincronizada — ' + provDB.length + ' proveedor' + (provDB.length!==1?'es':''), 'ok');
+  } catch (e) {
+    showToast('⚠️ No se pudo sincronizar: ' + e.message, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = prev; }
+  }
 }
 
 // Lee los proveedores del Centro de Control (localStorage 'nielsen_proveedores')
@@ -1677,6 +1695,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('btnDbMasivoClear').addEventListener('click', function(){ document.getElementById('dbMasivoArea').value=''; document.getElementById('dbMasivoResult').textContent=''; });
   _safeOn('btnUseSelected', 'click', useSelectedDBProviders);
   _safeOn('btnDbExport', 'click', exportDBCSV);
+  _safeOn('btnDbSyncCC', 'click', sincronizarProvCC);
   _safeOn('btnDbCleanCorrupt', 'click', limpiarProvCorruptos);
   document.getElementById('btnDbClearAll').addEventListener('click', function(){
     if(!confirm('¿Eliminar TODOS los proveedores de la base de datos?')) return;
@@ -2134,11 +2153,11 @@ function dbNextId() {
 }
 
 function openDB() {
-  dbLoad();
-  renderDBTable();
   switchDbTab('lista');
   document.getElementById('dbOverlay').classList.add('show');
-  sbLoadProvDB(); // refrescar desde el Centro de Control
+  var tbody = document.getElementById('dbTableBody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:28px;color:var(--orange-dim)">🔄 Cargando proveedores del Centro de Control...</td></tr>';
+  sbLoadProvDB(); // SIEMPRE trae la lista del Centro de Control (Supabase)
 }
 function closeDB() { document.getElementById('dbOverlay').classList.remove('show'); }
 
