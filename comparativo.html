@@ -776,6 +776,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
         <div class="db-search-bar">
           <input type="text" id="dbSearch" placeholder="Buscar por nombre, CUIT, rubro..."/>
           <button class="btn btn-outline btn-sm" id="btnDbExport">💾 Exportar CSV</button>
+          <button class="btn btn-danger btn-sm" id="btnDbCleanCorrupt" style="font-size:10px">🧹 Limpiar corruptos</button>
           <button class="btn btn-danger btn-sm" id="btnDbClearAll" style="font-size:10px">🗑 Limpiar todo</button>
         </div>
         <div class="db-table-wrap">
@@ -936,6 +937,8 @@ async function sbLoadProvDB() {
     });
     if(r.ok) {
       var rows = await r.json();
+      // Ignorar filas corruptas (binario/ilegible) para que no se muestren
+      if (Array.isArray(rows)) rows = rows.filter(function(row){ return !_esNombreCorrupto(row.nombre); });
       if(rows && rows.length) {
         // Conservar extras locales (localidad/deliveryDays/notes) por nombre, ya que
         // esas 3 columnas no existen en la tabla compartida del Centro de Control.
@@ -1053,6 +1056,53 @@ async function sbDeleteProveedor(dbId) {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'}
     });
   } catch(e) { console.warn('sbDeleteProveedor:', e.message); }
+}
+
+// ¿El nombre/razón social parece corrupto (binario/ilegible)?
+function _esNombreCorrupto(n) {
+  if (n == null) return false;
+  var s = String(n);
+  if (!s.trim()) return false;
+  if (s.length > 100) return true;                       // absurdamente largo (blob)
+  if (/\uFFFD/.test(s)) return true;                     // carácter de reemplazo �
+  if (/[\x00-\x08\x0E-\x1F\x7F]/.test(s)) return true;   // caracteres de control
+  // caracteres fuera de un nombre comercial normal
+  var raros = (s.match(/[^A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ .,&()\/\-'’º°+°#]/g) || []).length;
+  if (raros > 6) return true;
+  if (raros / s.length > 0.25) return true;
+  return false;
+}
+
+// Elimina de Supabase (tabla compartida) los proveedores con nombre corrupto.
+async function limpiarProvCorruptos() {
+  if (!confirm('Se eliminarán de la base los proveedores con nombre corrupto (binario/ilegible). Los proveedores válidos NO se tocan. ¿Continuar?')) return;
+  showToast('🔎 Buscando proveedores corruptos...', 'ok');
+  try {
+    var r = await fetch(_SB_URL+'/rest/v1/proveedores?select=id,nombre&limit=10000', {
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
+    });
+    if (!r.ok) throw new Error('No se pudo leer la tabla (HTTP '+r.status+')');
+    var rows = await r.json();
+    var corruptos = rows.filter(function(row){ return _esNombreCorrupto(row.nombre); });
+    if (!corruptos.length) { showToast('✅ No se encontraron proveedores corruptos', 'ok'); return; }
+    var total = corruptos.length, borrados = 0;
+    for (var i=0; i<corruptos.length; i+=100) {
+      var ids = corruptos.slice(i, i+100).map(function(c){ return c.id; }).join(',');
+      var dr = await fetch(_SB_URL+'/rest/v1/proveedores?id=in.('+ids+')', {
+        method:'DELETE',
+        headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'}
+      });
+      if (dr.ok) borrados += corruptos.slice(i, i+100).length;
+    }
+    showToast('🧹 '+borrados+' de '+total+' proveedores corruptos eliminados', 'ok');
+    // Limpiar también la copia local del comparativo y recargar de Supabase
+    try { localStorage.removeItem('nielsen_prov_db'); } catch(e){}
+    provDB = provDB.filter(function(p){ return !_esNombreCorrupto(p.name); });
+    sbLoadProvDB();
+  } catch(e) {
+    showToast('Error al limpiar: '+e.message, 'err');
+    console.error(e);
+  }
 }
 
 // Current comparative number
@@ -1367,13 +1417,19 @@ function cargaMasivaProveedores(file) {
   reader.onload = function(e) {
     try {
       var text = e.target.result;
+      // Rechazar binarios (PDF / Excel real / imágenes) leídos como texto
+      var basura = (text.slice(0, 8000).match(/[\x00\uFFFD]/g) || []).length;
+      if (basura > 8 || /^%PDF/.test(text) || /^PK\x03\x04/.test(text)) {
+        showToast('⚠️ Ese archivo no es CSV/TSV (parece un PDF o Excel binario). Exportá la planilla como CSV y reintentá.','err');
+        return;
+      }
       // Detect delimiter: tab (XLS/TSV) or comma (CSV)
       var delim = (text.indexOf('\t') !== -1) ? '\t' : ',';
       var lines = text.split(/\r?\n/).filter(function(l){return l.trim();});
       // Skip rows that look like HTML tags (from .xls template)
       lines = lines.filter(function(l){ return !l.trim().startsWith('<') && !l.trim().startsWith('>'); });
       if (lines.length < 2) { showToast('El archivo debe tener encabezado y al menos un proveedor','err'); return; }
-      var added = 0, skipped = 0;
+      var added = 0, skipped = 0, corruptos = 0;
       var nuevos = [];
       // First line = headers, rest = data (skip example row if it starts with "Ej:")
       for (var i=1; i<lines.length; i++) {
@@ -1393,6 +1449,8 @@ function cargaMasivaProveedores(file) {
         var name = cols[0]||'';
         // Skip example rows
         if (!name || name.toLowerCase().startsWith('ej:') || name.toLowerCase().startsWith('nombre')) continue;
+        // Saltar filas corruptas (binario/ilegible)
+        if (_esNombreCorrupto(name)) { corruptos++; continue; }
         var exists = provDB.some(function(p){ return p.name&&p.name.toLowerCase()===name.toLowerCase(); });
         if (!exists) {
           // Plantilla: Nombre, CUIT, Rubro, Email, Teléfono, Dirección, Contacto
@@ -1402,9 +1460,16 @@ function cargaMasivaProveedores(file) {
           added++;
         } else { skipped++; }
       }
+      // Si casi todo es corrupto, abortar sin tocar nada
+      if (corruptos > 5 && added === 0) {
+        provDB = provDB.filter(function(p){ return !_esNombreCorrupto(p.name); });
+        showToast('⚠️ El archivo parece binario/corrupto ('+corruptos+' filas ilegibles). No se importó nada.','err');
+        renderDBTable();
+        return;
+      }
       dbSave();
       renderDBTable();
-      showToast('✓ '+added+' proveedor'+(added!==1?'es':'')+' importado'+(added!==1?'s':'')+' · '+skipped+' duplicado'+(skipped!==1?'s':'')+' saltado'+(skipped!==1?'s':''), 'ok');
+      showToast('✓ '+added+' proveedor'+(added!==1?'es':'')+' importado'+(added!==1?'s':'')+' · '+skipped+' duplicado'+(skipped!==1?'s':'')+' saltado'+(skipped!==1?'s':'')+(corruptos?' · '+corruptos+' corrupto'+(corruptos!==1?'s':'')+' ignorado'+(corruptos!==1?'s':''):''), 'ok');
       // Sincronizar con la tabla compartida 'proveedores'
       (async function(){
         for (var k=0;k<nuevos.length;k++) {
@@ -1612,6 +1677,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('btnDbMasivoClear').addEventListener('click', function(){ document.getElementById('dbMasivoArea').value=''; document.getElementById('dbMasivoResult').textContent=''; });
   _safeOn('btnUseSelected', 'click', useSelectedDBProviders);
   _safeOn('btnDbExport', 'click', exportDBCSV);
+  _safeOn('btnDbCleanCorrupt', 'click', limpiarProvCorruptos);
   document.getElementById('btnDbClearAll').addEventListener('click', function(){
     if(!confirm('¿Eliminar TODOS los proveedores de la base de datos?')) return;
     provDB=[]; dbSave(); renderDBTable(); showToast('Base de datos limpiada','ok');
@@ -2825,7 +2891,7 @@ function imprimirMemoEjecutivo(){
   </div>
 </div>
 
-<input type="file" id="carga-masiva-input" accept=".xls,.xlsx,.csv,.tsv" style="display:none" onchange="cargaMasivaProveedores(this.files[0])">
+<input type="file" id="carga-masiva-input" accept=".csv,.tsv,.txt" style="display:none" onchange="cargaMasivaProveedores(this.files[0])">
 
 <!-- ══ AJUSTES CCP MODAL ══ -->
 <div class="comp-pin-ov" id="ajustes-ccp-ov" onclick="if(event.target===this)cerrarAjustesCCP()">

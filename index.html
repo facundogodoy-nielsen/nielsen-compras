@@ -1912,25 +1912,29 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div style="font-size:12px">Importá la planilla COMPRAS (columnas N° Comprobante, Precio Total+IVA+Otros, Campamento, Categoría, Área) o esperá la sincronización diaria.</div>
   </div>
   <div id="det-a-content" style="display:none">
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Filtrar por área — clic para ver sus categorías</div>
+      <div id="det-a-areabtns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px" id="det-a-kpis"></div>
     <div class="chart-grid-2">
       <div class="chart-card">
-        <div class="chart-card-title">Monto por Área</div>
+        <div class="chart-card-title" id="det-a-bartitle">Monto por Área</div>
         <div class="chart-box"><canvas id="chart-area-bar"></canvas></div>
       </div>
       <div class="chart-card">
-        <div class="chart-card-title">Distribución por Área</div>
+        <div class="chart-card-title" id="det-a-tortatitle">Distribución por Área</div>
         <div class="chart-box"><canvas id="chart-area-torta"></canvas></div>
       </div>
     </div>
-    <div class="chart-card" style="margin-bottom:18px">
-      <div class="chart-card-title">Monto por Categoría (dentro del filtro)</div>
+    <div class="chart-card" style="margin-bottom:18px" id="det-a-catcard">
+      <div class="chart-card-title" id="det-a-cattitle">Monto por Categoría (dentro del filtro)</div>
       <div class="chart-box short"><canvas id="chart-area-cat"></canvas></div>
     </div>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:10px;background:var(--s1)">
       <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:420px">
         <thead><tr style="background:var(--s2);border-bottom:2px solid var(--border2)">
-          <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Área</th>
+          <th id="det-a-dimhdr" style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Área</th>
           <th style="padding:9px 12px;text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Comprobantes</th>
           <th style="padding:9px 12px;text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Monto Neto</th>
           <th style="padding:9px 12px;text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">% del Total</th>
@@ -2444,9 +2448,9 @@ async function showView(id, btn) {
   if (id === 'comparativas')   renderComparativas();
   if (id === 'ahorro')         renderAhorro();
   if (id === 'prov-db')      { await cargarProveedoresSB(); renderProvDB(); }
-  if (id === 'prov-compras') { await cargarComprasSB(); poblarPeriodos(); renderComprasProv(); }
-  if (id === 'prov-area')      { await _asegurarDetalle(); renderComprasArea(); }
-  if (id === 'prov-campamento'){ await _asegurarDetalle(); renderComprasCampamento(); }
+  if (id === 'prov-compras') { await _asegurarDatosCompras(); renderComprasProv(); }
+  if (id === 'prov-area')      { await _asegurarDatosCompras(); renderComprasArea(); }
+  if (id === 'prov-campamento'){ await _asegurarDatosCompras(); renderComprasCampamento(); }
   if (id === 'prov-eval')    { renderEvalProv(); }
   if (id === 'nueva-sc') resetWizard();
 }
@@ -6503,63 +6507,7 @@ async function verPA(idx) {
   const det = pa.itemsDetalle || {};
   let counter = 0;
 
-  const itemsSection = items.length === 0
-    ? '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">Sin ítems registrados</div>'
-    : catOrder.filter(c=>byCat[c]).map(c => {
-        const catHeader = '<div style="padding:9px 0 5px;font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);border-top:1px solid var(--border);margin-top:8px;display:flex;justify-content:space-between;align-items:center"><span>' + (CAT_MAP[c]||c) + '</span><span style="font-size:9px;color:var(--muted);font-weight:600">' + byCat[c].length + ' ítem' + (byCat[c].length!==1?'s':'') + '</span></div>';
-        const _renderRow = ({it, i}) => {
-          counter++;
-          const nombre  = it.nombre  || it.name  || it.articulo || (typeof it==='string'?it:'—');
-          const marca   = it.marca   || '';
-          const cant    = it.cant    || it.cantidad || '';
-          const medida  = it.medida  || it.unidad  || '';
-          const cantDisp= cant ? (cant + (medida?' '+medida:'')) : '—';
-          const d       = det[i] || {};
-          const estado  = d.estado || it.estado || 'pendiente';
-          const estColor= {ok:'var(--green)',comprado:'var(--green)',parcial:'var(--yellow)',no:'var(--red)',no_comprado:'var(--red)',pendiente:'var(--muted)',presupuestado:'var(--muted)'}[estado]||'var(--muted)';
-          const estLabel= {ok:'✔ Recibido',comprado:'✔ Comprado',no_comprado:'✗ No comprado',parcial:'⚡ Parcial',pendiente:'⏳ Pendiente',presupuestado:'📋 Ppto'}[estado]||estado;
-
-          const comprobante = (estado==='ok'||estado==='comprado') && (d.factura?.num||d.factura?.fecha||d.factura?.proveedor) ? (
-            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;padding:6px 10px;background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.2);border-radius:6px">'
-            + '<span style="font-size:10px;font-weight:700;color:green;width:100%">📄 Factura</span>'
-            + (isEditor
-              ? '<input type="date" value="'+(d.factura?.fecha||'')+'" onchange="setPAItem('+i+',\'fecha\',this.value)" style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px">'
-              + '<input type="text" value="'+(d.factura?.num||'')+'" placeholder="N° Comprobante" oninput="setPAItem('+i+',\'num\',this.value)" style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;width:130px">'
-              + '<input type="text" value="'+(d.factura?.proveedor||'')+'" placeholder="Proveedor" oninput="setPAItem('+i+',\'proveedor\',this.value)" style="font-size:11px;border:1px solid #ccc;border-radius:4px;padding:3px 6px;width:140px">'
-              : '<span style="font-size:11px;color:var(--muted)">'+(d.factura?.fecha||'')+(d.factura?.num?' · '+d.factura.num:'')+(d.factura?.proveedor?' · '+d.factura.proveedor:'')+'</span>')
-            + '</div>') : '';
-
-          const noComp = (estado==='no'||estado==='no_comprado') && isEditor
-            ? '<input type="text" value="'+(d.justificacion||'')+'" placeholder="Justificar no compra..." oninput="setPAItem('+i+',\'justificacion\',this.value)" style="width:100%;margin-top:4px;font-size:11px;border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:5px 9px;background:rgba(239,68,68,.04);color:var(--text);outline:none;box-sizing:border-box">'
-            : ((estado==='no'||estado==='no_comprado') && d.justificacion ? '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+d.justificacion+'</div>' : '');
-
-          return '<div class="compra-item" style="margin-bottom:5px;padding:7px 10px;background:var(--s2);border-radius:7px;border:1px solid var(--border)">'
-            + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
-            + '<span style="font-family:var(--fm);color:var(--or);font-size:11px;flex-shrink:0">'+String(counter).padStart(2,'0')+'.</span>'
-            + '<span style="flex:1;font-size:13px;font-weight:500">'+nombre+(marca?' <span style="color:var(--muted);font-size:11px">— '+marca+'</span>':'')+'</span>'
-            + '<span style="font-size:11px;color:var(--muted);white-space:nowrap">'+cantDisp+'</span>'
-            + (isEditor
-              ? '<div style="display:flex;gap:3px">'
-                + '<button onclick="setPAEstado('+i+',\'PRESUPUESTADO\')" style="padding:3px 7px;font-size:10px;border-radius:4px;border:1px solid var(--border2);cursor:pointer;font-family:var(--ff);background:'+(estado==='presupuestado'||estado==='pendiente'?'var(--or)':'var(--s3)')+';color:'+(estado==='presupuestado'||estado==='pendiente'?'#fff':'var(--muted)')+'">PPTO</button>'
-                + '<button onclick="setPAEstado('+i+',\'COMPRADO\')" style="padding:3px 7px;font-size:10px;border-radius:4px;border:1px solid rgba(34,197,94,.3);cursor:pointer;font-family:var(--ff);background:'+(estado==='ok'||estado==='comprado'?'rgba(34,197,94,.2)':'var(--s3)')+';color:'+(estado==='ok'||estado==='comprado'?'#4ade80':'var(--muted)')+'">COMPRADO</button>'
-                + '<button onclick="setPAEstado('+i+',\'NO_COMPRADO\')" style="padding:3px 7px;font-size:10px;border-radius:4px;border:1px solid rgba(239,68,68,.3);cursor:pointer;font-family:var(--ff);background:'+(estado==='no'||estado==='no_comprado'?'rgba(239,68,68,.2)':'var(--s3)')+';color:'+(estado==='no'||estado==='no_comprado'?'#f87171':'var(--muted)')+'">NO COMP.</button>'
-                + '</div>'
-              : '<span style="font-size:11px;font-weight:700;color:'+estColor+'">'+estLabel+'</span>')
-            + '</div>'
-            + comprobante + noComp
-            + '</div>';
-        };
-        // Agrupar por subcategoría dentro de la categoría
-        const bySub = {};
-        byCat[c].forEach(pair => { const sk = ((pair.it.sub||pair.it.subcategoria||'')+'').trim() || '—'; (bySub[sk] = bySub[sk] || []).push(pair); });
-        const subKeys = Object.keys(bySub).sort((a,b)=> a==='—'?1 : b==='—'?-1 : a.localeCompare(b,'es'));
-        const rows = subKeys.map(sk => {
-          const subLbl = sk==='—' ? 'Sin subcategoría' : sk;
-          const subHeader = '<div style="margin:4px 0 3px;padding:4px 8px;font-family:var(--ff);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text);background:var(--s3);border-left:3px solid var(--or);border-radius:0 5px 5px 0;display:flex;justify-content:space-between;align-items:center"><span style="opacity:.8">'+subLbl+'</span><span style="font-size:9px;color:var(--muted);font-weight:600">'+bySub[sk].length+'</span></div>';
-          return subHeader + bySub[sk].slice().sort((a,b)=>((a.it.nombre||a.it.name||'')+'').localeCompare(((b.it.nombre||b.it.name||'')+''),'es')).map(_renderRow).join('');
-        }).join('');
-        return catHeader + rows;
-      }).join('');
+  const itemsSection = _paItemsHTML(items, pa);
 
   // Progress bar
   const entries = Object.values(det);
@@ -6570,10 +6518,10 @@ async function verPA(idx) {
 
   const content = '<div style="margin-bottom:14px">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
-    + '<div><span style="font-size:22px;font-weight:800;color:'+barColor+'">'+pct+'%</span> <span style="font-size:11px;color:var(--muted)">concretado</span></div>'
-    + '<div style="text-align:right;font-size:11px;color:var(--muted)">'+comp+' comprado · '+noComp+' no comprado · '+items.length+' total</div>'
+    + '<div><span style="font-size:22px;font-weight:800;color:'+barColor+'" id="compra-pct-num">'+pct+'%</span> <span style="font-size:11px;color:var(--muted)">concretado</span></div>'
+    + '<div id="compra-pct-detalle" style="text-align:right;font-size:11px;color:var(--muted)">'+comp+' comprado · '+noComp+' no comprado · '+items.length+' total</div>'
     + '</div>'
-    + '<div style="height:8px;background:var(--s3);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:4px;transition:width .4s"></div></div>'
+    + '<div style="height:8px;background:var(--s3);border-radius:4px;overflow:hidden"><div id="compra-progress-fill" style="height:100%;width:'+pct+'%;background:'+barColor+';border-radius:4px;transition:width .4s"></div></div>'
     + '</div>'
     + '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'
     + '<div><label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:3px">Campamento</label><span style="font-size:13px;font-weight:600">'+(pa.campamento||'—')+'</span></div>'
@@ -6583,7 +6531,7 @@ async function verPA(idx) {
     + '</div>'
     + (!isEditor ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Lector — solo visualización</div>' : '')
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:8px">📦 Ítems del pedido ('+items.length+') <span style="font-size:8px;color:var(--muted)">v2</span></div>'
-    + itemsSection
+    + '<div id="pa-items-box">' + itemsSection + '</div>'
     + (isEditor ? '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'
       + '<button class="btn btn-ghost btn-sm" onclick="cambiarEstadoPA('+idx+')">🔄 Estado PA</button>'
       + '<button class="btn btn-ghost btn-sm" onclick="imprimirModalSC()">🖨 Imprimir</button>'
@@ -6602,6 +6550,69 @@ async function verPA(idx) {
   _recalcCI_PA(det, items.length);
 }
 
+
+// Render reutilizable de los ítems del PA (agrupado por categoría y subcategoría).
+// Usado por verPA y re-usado por setPAEstado/setPAItem para refrescar sin perder estado.
+function _paItemsHTML(items, pa) {
+  if (!items || !items.length) return '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">Sin ítems registrados</div>';
+  const CAT_MAP = {M:'🛒 Mercadería',L:'🧹 Limpieza y Descartables',H:'🛏 Hotelería',A:'💧 Agua, Gas y Leña',K:'🏪 Kiosco La Brea'};
+  const catOrder = ['M','L','H','A','K'];
+  const isEditor = esModoEditor();
+  const det = pa.itemsDetalle || {};
+  const byCat = {};
+  items.forEach((it, i) => { const c = it.cat || it.categoria || pa.cat || pa.categoria || 'M'; if(!byCat[c]) byCat[c]=[]; byCat[c].push({it,i}); });
+  const cats = catOrder.filter(c=>byCat[c]).concat(Object.keys(byCat).filter(c=>!catOrder.includes(c)));
+  let counter = 0;
+
+  const _row = ({it, i}) => {
+    counter++;
+    const d = det[i] || {};
+    const estado = d.estado || 'PRESUPUESTADO';
+    const stateClass = {COMPRADO:'compra-item-ok',NO_COMPRADO:'compra-item-no',PRESUPUESTADO:''}[estado]||'';
+    const itNombre = it.nombre || it.name || it.articulo || (typeof it==='string'?it:'—');
+    const itMarca  = it.marca || '';
+    const itCant   = it.cant || it.cantidad || it.qty || '';
+    const itMedida = it.medida || it.unidad || '';
+    const cantDisp = itCant ? (itCant + (itMedida?' '+itMedida:'')) : '—';
+    const comprobante = estado === 'COMPRADO' ? (
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;padding:8px 10px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:6px">'
+      + '<div style="font-size:10px;font-weight:700;color:green;width:100%">📄 Comprobante de compra</div>'
+      + '<label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)">Fecha<input type="date" id="pa-fc-'+i+'" value="'+(d.factura&&d.factura.fecha||'')+'" '+(isEditor?'onchange="setPAItem('+i+',\'fecha\',this.value)"':'disabled')+' style="font-size:11px;border:1px solid var(--border2);border-radius:4px;padding:3px 6px;background:var(--s3);color:var(--text);outline:none"></label>'
+      + '<label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)">N° Comprobante<input type="text" id="pa-fn-'+i+'" value="'+(d.factura&&d.factura.num||'')+'" placeholder="Ej: 0001-00012345" '+(isEditor?'oninput="setPAItem('+i+',\'num\',this.value)"':'disabled')+' style="font-size:11px;border:1px solid var(--border2);border-radius:4px;padding:3px 6px;width:160px;background:var(--s3);color:var(--text);outline:none"></label>'
+      + '<label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)">Proveedor<input type="text" id="pa-fp-'+i+'" value="'+(d.factura&&d.factura.proveedor||'')+'" placeholder="Nombre del proveedor" '+(isEditor?'oninput="setPAItem('+i+',\'proveedor\',this.value)"':'disabled')+' style="font-size:11px;border:1px solid var(--border2);border-radius:4px;padding:3px 6px;width:170px;background:var(--s3);color:var(--text);outline:none"></label>'
+      + '</div>') : '';
+    const justificacion = estado === 'NO_COMPRADO' ? (
+      '<div style="margin-top:6px"><input type="text" id="pa-just-'+i+'" value="'+(d.justificacion||'')+'" placeholder="Justificar por qué no se compró..." '+(isEditor?'oninput="setPAItem('+i+',\'justificacion\',this.value)"':'disabled')+' style="width:100%;font-size:11px;border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:6px 10px;background:rgba(239,68,68,.05);color:var(--text);outline:none;box-sizing:border-box"></div>') : '';
+    const acciones = isEditor
+      ? '<div style="display:flex;gap:4px;flex-shrink:0">'
+        + '<button onclick="setPAEstado('+i+',\'PRESUPUESTADO\')" style="padding:3px 8px;font-size:10px;border-radius:4px;border:1px solid var(--border2);cursor:pointer;font-family:var(--ff);background:'+(estado==='PRESUPUESTADO'?'var(--or)':'var(--s2)')+';color:'+(estado==='PRESUPUESTADO'?'#fff':'var(--muted)')+'">PPTO</button>'
+        + '<button onclick="setPAEstado('+i+',\'COMPRADO\')" style="padding:3px 8px;font-size:10px;border-radius:4px;border:1px solid rgba(34,197,94,.3);cursor:pointer;font-family:var(--ff);background:'+(estado==='COMPRADO'?'rgba(34,197,94,.2)':'var(--s2)')+';color:'+(estado==='COMPRADO'?'#4ade80':'var(--muted)')+'">COMPRADO</button>'
+        + '<button onclick="setPAEstado('+i+',\'NO_COMPRADO\')" style="padding:3px 8px;font-size:10px;border-radius:4px;border:1px solid rgba(239,68,68,.3);cursor:pointer;font-family:var(--ff);background:'+(estado==='NO_COMPRADO'?'rgba(239,68,68,.2)':'var(--s2)')+';color:'+(estado==='NO_COMPRADO'?'#f87171':'var(--muted)')+'">NO COMPRADO</button>'
+        + '</div>'
+      : '<span style="font-size:11px;font-weight:700;color:'+({COMPRADO:'#4ade80',NO_COMPRADO:'#f87171',PRESUPUESTADO:'var(--muted)'}[estado]||'var(--muted)')+'">'+({COMPRADO:'✔ Comprado',NO_COMPRADO:'✕ No comprado',PRESUPUESTADO:'⏳ Ppto'}[estado]||estado)+'</span>';
+    return '<div class="compra-item '+stateClass+'" style="margin-bottom:6px">'
+      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      + '<span style="font-family:var(--fm);color:var(--or);font-size:11px;flex-shrink:0">'+String(counter).padStart(2,'0')+'.</span>'
+      + '<span style="flex:1;font-size:13px;font-weight:500">'+itNombre+(itMarca?' <span style="color:var(--muted);font-size:11px">— '+itMarca+'</span>':'')+'</span>'
+      + '<span style="font-size:11px;color:var(--muted);white-space:nowrap">Cant: <strong>'+cantDisp+'</strong></span>'
+      + acciones
+      + '</div>' + comprobante + justificacion
+      + '</div>';
+  };
+
+  return cats.map(c => {
+    const catHeader = '<div style="padding:9px 0 5px;font-family:\'Barlow Condensed\',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);border-top:1px solid var(--border);margin-top:8px;display:flex;justify-content:space-between;align-items:center"><span>'+(CAT_MAP[c]||c)+'</span><span style="font-size:9px;color:var(--muted);font-weight:600">'+byCat[c].length+' ítem'+(byCat[c].length!==1?'s':'')+'</span></div>';
+    const bySub = {};
+    byCat[c].forEach(pair => { const sk = ((pair.it.sub||pair.it.subcategoria||'')+'').trim() || '—'; (bySub[sk]=bySub[sk]||[]).push(pair); });
+    const subKeys = Object.keys(bySub).sort((a,b)=> a==='—'?1 : b==='—'?-1 : a.localeCompare(b,'es'));
+    const body = subKeys.map(sk => {
+      const subLbl = sk==='—' ? 'Sin subcategoría' : sk;
+      const subHeader = '<div style="margin:4px 0 3px;padding:4px 8px;font-family:var(--ff);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text);background:var(--s3);border-left:3px solid var(--or);border-radius:0 5px 5px 0;display:flex;justify-content:space-between;align-items:center"><span style="opacity:.8">'+subLbl+'</span><span style="font-size:9px;color:var(--muted);font-weight:600">'+bySub[sk].length+'</span></div>';
+      return subHeader + bySub[sk].slice().sort((a,b)=>((a.it.nombre||a.it.name||'')+'').localeCompare(((b.it.nombre||b.it.name||'')+''),'es')).map(_row).join('');
+    }).join('');
+    return catHeader + body;
+  }).join('');
+}
 
 // ══ PA PURCHASE TRACKING ══════════════════════════════════════
 function renderItemsCompraPA(items, pa) {
@@ -6671,8 +6682,10 @@ function setPAEstado(iidx, newEstado) {
   if (!pa.itemsDetalle[iidx]) pa.itemsDetalle[iidx] = {};
   pa.itemsDetalle[iidx].estado = newEstado;
   if (newEstado !== 'COMPRADO') delete pa.itemsDetalle[iidx].factura;
-  // Re-render the items list
-  document.getElementById('compra-items-list').innerHTML = renderItemsCompraPA(pa.items||[], pa);
+  // Re-render the items list (mismo contenedor/renderer que usa verPA)
+  const box = document.getElementById('pa-items-box');
+  if (box) box.innerHTML = _paItemsHTML(pa.items||[], pa);
+  else { const legacy = document.getElementById('compra-items-list'); if (legacy) legacy.innerHTML = renderItemsCompraPA(pa.items||[], pa); }
   _recalcCI_PA(pa.itemsDetalle, (pa.items||[]).length);
 }
 
@@ -7620,11 +7633,11 @@ const _PALETA = ['#e85d25','#22c55e','#3b82f6','#a78bfa','#eab308','#ec4899','#1
 // Para lectura directa desde el navegador, la planilla debe estar PUBLICADA en la web:
 //   Archivo → Compartir → Publicar en la web → (hoja COMPRAS) → Formato CSV → Publicar.
 // Pegá esa URL (termina en output=csv) acá:
-const SHEET_DETALLE_CSV_URL = '';   // ← URL de "Publicar en la web" (CSV)
+const SHEET_DETALLE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2Q48MbSwVmddoCDaF1aTEjbIJj364NENqrsliZw8dP_ZJVhV7XbKVYc5bZaWjgM7WZAjExDV1PN5A/pub?gid=696441563&single=true&output=csv';   // Planilla COMPRAS publicada (CSV)
 // Fallback: endpoint export (funciona si la planilla es visible para cualquiera con el
 // enlace; puede ser bloqueado por CORS en algunos navegadores).
-const _SHEET_ID = '1kbvtrc20NELbbSj66g8lpBgiKEdaALHeZ_SdNOV0fb4';
-const _SHEET_GID = '1491641052';
+const _SHEET_ID = '1XZ1jW4O8cRMMK-MQYrlUJtSyS2UgQ6Oo98qAXHRuHUI';
+const _SHEET_GID = '696441563';
 const _SHEET_EXPORT_FALLBACK = 'https://docs.google.com/spreadsheets/d/' + _SHEET_ID + '/export?format=csv&gid=' + _SHEET_GID;
 
 // ── Carga desde Supabase (keyset por id, igual patrón que compras_proveedor) ──
@@ -7739,11 +7752,13 @@ function _procesarFilasDetalle(rows) {
   let cArea  = find('area','área');
   let cFecha = find('fecha');
   let cTipo  = find('tipo comprob','tipo de comp','tipo');
+  let cProv  = find('proveedor','razon social','razón social','razonsocial');
   if (cComp  < 0) cComp  = 3;
   if (cMonto < 0) cMonto = 16;
   if (cCamp  < 0) cCamp  = 19;
   if (cCat   < 0) cCat   = 21;
   if (cArea  < 0) cArea  = 22;
+  const hasProv = cProv >= 0;
 
   const out = [];
   let ncCount = 0;
@@ -7753,8 +7768,9 @@ function _procesarFilasDetalle(rows) {
     const camp = String(r[cCamp]||'').trim();
     const cat  = String(r[cCat]||'').trim();
     const area = String(r[cArea]||'').trim();
+    const prov = hasProv ? String(r[cProv]||'').trim() : '';
     let monto  = _parseMonto(r[cMonto]);
-    if (!comp && !camp && !area && !monto) continue;
+    if (!comp && !camp && !area && !monto && !prov) continue;
     const tipo = cTipo >= 0 ? String(r[cTipo]||'') : '';
     if (_esNC(comp, tipo)) { monto = -Math.abs(monto); ncCount++; }
     let fechaStr = '';
@@ -7770,13 +7786,20 @@ function _procesarFilasDetalle(rows) {
     }
     out.push({
       comprobante: comp, monto,
+      proveedor:  prov || 'SIN ESPECIFICAR',
       campamento: camp || 'SIN ESPECIFICAR',
       categoria:  cat  || 'SIN ESPECIFICAR',
       area:       area || 'SIN ESPECIFICAR',
       fecha: fechaStr
     });
   }
-  return { out, ncCount };
+  return { out, ncCount, hasProv };
+}
+
+// Deriva el dataset de COMPRAS POR PROVEEDOR desde el detalle (mismo Sheet)
+function _derivarComprasProvDesdeDetalle() {
+  comprasData = detalleData.map(d => ({ proveedor: d.proveedor || 'SIN ESPECIFICAR', monto: d.monto, fecha: d.fecha || '' }));
+  _lsSet('nielsen_compras_prov', JSON.stringify(comprasData));
 }
 
 // ── Guardar detalle en Supabase (full replace) ──
@@ -7820,12 +7843,16 @@ async function traerDetalleDesdeSheet(silencioso) {
     const wb = XLSX.read(txt, {type:'string'});
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-    const { out, ncCount } = _procesarFilasDetalle(rows);
+    const { out, ncCount, hasProv } = _procesarFilasDetalle(rows);
     if (!out.length) throw new Error('No se detectaron filas válidas en el CSV');
 
     detalleData = out;
     _lsSet('nielsen_compras_detalle', JSON.stringify(detalleData));
+    // Si la planilla trae columna Proveedor, alimentar también COMPRAS POR PROVEEDOR
+    if (hasProv) { _derivarComprasProvDesdeDetalle(); if (typeof poblarPeriodos==='function') poblarPeriodos(); }
+    _detalleSheetTS = Date.now();
     poblarPeriodosDet();
+    if (typeof renderComprasProv === 'function' && hasProv) renderComprasProv();
     renderComprasArea(); renderComprasCampamento();
     if (!silencioso) showToast('✅ ' + out.length + ' líneas leídas de la planilla' + (ncCount? ' ('+ncCount+' NC restadas)':''), 'ok');
     if (typeof esModoEditor === 'function' && esModoEditor()) await _guardarDetalleSB(out);
@@ -7837,14 +7864,23 @@ async function traerDetalleDesdeSheet(silencioso) {
   }
 }
 
-// ── Carga combinada: Supabase primero; si está vacío, intenta el Sheet ──
-async function _asegurarDetalle() {
-  await cargarDetalleSB();
-  if (!detalleData.length && (SHEET_DETALLE_CSV_URL || _SHEET_EXPORT_FALLBACK)) {
-    await traerDetalleDesdeSheet(true);   // silencioso
+// ── Carga unificada (Sheet primero, SIEMPRE) para las 3 secciones de Proveedores ──
+let _detalleSheetTS = 0;
+async function _asegurarDatosCompras() {
+  // Refresca del Sheet, pero evita re-bajar 23k filas si ya se hizo hace <45s
+  const fresco = (Date.now() - _detalleSheetTS) < 45000 && detalleData.length;
+  let ok = fresco ? true : await traerDetalleDesdeSheet(true);   // silencioso
+  if (!ok) {
+    // Fallback: Supabase / localStorage si el Sheet no está disponible
+    if (!detalleData.length) await cargarDetalleSB();
+    if (!comprasData.length) await cargarComprasSB();
   }
   poblarPeriodosDet();
+  if (typeof poblarPeriodos === 'function') poblarPeriodos();
 }
+
+// Compatibilidad: nombre anterior
+async function _asegurarDetalle() { return _asegurarDatosCompras(); }
 
 // ── Poblar años en ambos selects ──
 function poblarPeriodosDet() {
@@ -7896,14 +7932,40 @@ function _renderDetSeccion(cfg) {
   if (!detalleData.length) { if(empty)empty.style.display=''; if(content)content.style.display='none'; return; }
   if(empty)empty.style.display='none'; if(content)content.style.display='';
 
-  const { data, periodoTxt } = _filtrarDet(cfg.prefix);
+  let { data, periodoTxt } = _filtrarDet(cfg.prefix);
+
+  // Botones de filtro por área (drill-down a categorías) — solo sección Área
+  if (cfg.areaButtons) {
+    const cont = document.getElementById('det-a-areabtns');
+    if (cont) {
+      const areas = [...new Set(data.map(d=>d.area||'SIN ESPECIFICAR'))].sort((a,b)=>a.localeCompare(b,'es'));
+      cont.innerHTML = '';
+      const addBtn = (val,lbl) => {
+        const active = (cfg.areaFiltro||'') === val;
+        const b = document.createElement('button');
+        b.textContent = lbl;
+        b.style.cssText = 'padding:6px 12px;border-radius:7px;border:1px solid '+(active?'var(--or)':'var(--border2)')+';background:'+(active?'var(--or)':'var(--s2)')+';color:'+(active?'#fff':'var(--muted)')+';font-family:var(--ff);font-size:11px;font-weight:700;cursor:pointer';
+        b.onclick = () => setAreaFiltro(val);
+        cont.appendChild(b);
+      };
+      addBtn('', 'Todas');
+      areas.forEach(a => addBtn(a, a));
+    }
+    if (cfg.areaFiltro) data = data.filter(d => (d.area||'SIN ESPECIFICAR') === cfg.areaFiltro);
+    // Encabezado de tabla + título del 3er gráfico + visibilidad
+    const hdr = document.getElementById('det-a-dimhdr'); if (hdr) hdr.textContent = cfg.areaFiltro ? 'Categoría' : 'Área';
+    const catcard = document.getElementById('det-a-catcard'); if (catcard) catcard.style.display = cfg.areaFiltro ? 'none' : '';
+    const bt = document.getElementById('det-a-bartitle'); if (bt) bt.textContent = cfg.areaFiltro ? 'Monto por Categoría' : 'Monto por Área';
+    const tt = document.getElementById('det-a-tortatitle'); if (tt) tt.textContent = cfg.areaFiltro ? 'Distribución por Categoría' : 'Distribución por Área';
+  }
+
   const arr = _aggPorDim(data, cfg.dimKey);
   const totalMonto = arr.reduce((s,a)=>s+a.total,0);
   const totalComps = new Set(data.map(d=>d.comprobante).filter(Boolean)).size;
   const fmt = n => '$' + Math.round(n).toLocaleString('es-AR');
 
   document.getElementById(cfg.infoId).textContent =
-    '📅 ' + periodoTxt + '  ·  ' + arr.length + ' ' + cfg.dimPlural + ' · ' + totalComps.toLocaleString('es-AR') + ' comprobantes';
+    '📅 ' + periodoTxt + (cfg.areaFiltro ? '  ·  🏭 ' + cfg.areaFiltro : '') + '  ·  ' + arr.length + ' ' + cfg.dimPlural + ' · ' + totalComps.toLocaleString('es-AR') + ' comprobantes';
 
   // KPIs
   document.getElementById(cfg.kpisId).innerHTML = [
@@ -7966,12 +8028,21 @@ function _renderDetSeccion(cfg) {
   });
 }
 
+let _areaFiltro = '';
+function setAreaFiltro(a) { _areaFiltro = (_areaFiltro === a ? '' : a); renderComprasArea(); }
+
 function renderComprasArea() {
+  const drill = !!_areaFiltro;
   _renderDetSeccion({
     prefix:'det-a', emptyId:'det-a-empty', contentId:'det-a-content', infoId:'det-a-info',
     kpisId:'det-a-kpis', tableBodyId:'det-a-table-body',
     barId:'chart-area-bar', tortaId:'chart-area-torta', catId:'chart-area-cat',
-    dimKey:'area', dimSingular:'área', dimSingularCap:'Áreas', dimPlural:'áreas'
+    dimKey: drill ? 'categoria' : 'area',
+    dimSingular:    drill ? 'categoría'  : 'área',
+    dimSingularCap: drill ? 'Categorías' : 'Áreas',
+    dimPlural:      drill ? 'categorías' : 'áreas',
+    areaButtons: true,
+    areaFiltro: _areaFiltro
   });
 }
 function renderComprasCampamento() {
