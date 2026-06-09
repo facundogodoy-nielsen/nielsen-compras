@@ -7777,19 +7777,26 @@ function _fechaNormalizar(f) {
 function _procesarFilasDetalle(rows) {
   const hdr = (rows[0]||[]).map(h => String(h||'').toLowerCase().trim());
   const find = (...cands) => hdr.findIndex(h => cands.some(c => h.includes(c)));
-  let cComp  = find('comprobante','comprob','n° comp','nro comp');
-  let cMonto = find('precio total','total + iva','importe total','total c/iva','total con iva');
-  let cCamp  = find('campamento');
-  let cCat   = find('categoria','categoría');
-  let cArea  = find('area','área');
-  let cFecha = find('fecha');
+
+  // N° Comprobante = D (no confundir con "FECHA COMPROBANTE" = A)
+  let cComp = hdr.findIndex(h => (h.includes('comprobante')||h.includes('comprob')) && !h.includes('fecha'));
+  if (cComp < 0) cComp = find('n° comp','nº comp','nro comp');
+  if (cComp < 0) cComp = 3;   // D
+
+  // Monto = Q "PRECIO TOTAL + IVA + OTROS IMPUESTOS" (no la J "PRECIO TOTAL" sin IVA)
+  let cMonto = hdr.findIndex(h => h.includes('precio total') && (h.includes('iva')||h.includes('otros')||h.includes('impuesto')||h.includes('+')));
+  if (cMonto < 0) cMonto = find('total + iva','importe total','total c/iva','total con iva');
+  if (cMonto < 0) cMonto = find('precio total');   // último recurso (sin IVA)
+  if (cMonto < 0) cMonto = 16;  // Q
+
+  let cCamp  = find('campamento');           if (cCamp  < 0) cCamp  = 19;  // T
+  let cCat   = find('categoria','categoría');if (cCat   < 0) cCat   = 21;  // V
+  let cArea  = find('area','área');          if (cArea  < 0) cArea  = 22;  // W
+  let cProv  = find('proveedor','razon social','razón social','razonsocial'); if (cProv < 0) cProv = 4;  // E
+  let cFecha = find('fecha');                if (cFecha < 0) cFecha = 0;   // A (FECHA COMPROBANTE)
+  let cAnio  = find('año','anio','ano');     // B
+  let cMes   = hdr.findIndex(h => h === 'mes' || /\bmes\b/.test(h));  // C
   let cTipo  = find('tipo comprob','tipo de comp','tipo');
-  let cProv  = find('proveedor','razon social','razón social','razonsocial');
-  if (cComp  < 0) cComp  = 3;
-  if (cMonto < 0) cMonto = 16;
-  if (cCamp  < 0) cCamp  = 19;
-  if (cCat   < 0) cCat   = 21;
-  if (cArea  < 0) cArea  = 22;
   const hasProv = cProv >= 0;
 
   const out = [];
@@ -7806,6 +7813,15 @@ function _procesarFilasDetalle(rows) {
     const tipo = cTipo >= 0 ? String(r[cTipo]||'') : '';
     if (_esNC(comp, tipo)) { monto = -Math.abs(monto); ncCount++; }
     let fechaStr = (cFecha >= 0) ? _fechaNormalizar(r[cFecha]) : '';
+    // Período más confiable: usar AÑO (B) y MES (C) explícitos si están; el día sale de FECHA COMPROBANTE
+    if (cAnio >= 0 && cMes >= 0) {
+      const ay = parseInt(String(r[cAnio]).replace(/[^\d]/g,''), 10);
+      const me = parseInt(String(r[cMes]).replace(/[^\d]/g,''), 10);
+      if (ay >= 2000 && ay <= 2100 && me >= 1 && me <= 12) {
+        const day = /^\d{4}-\d{2}-(\d{2})/.test(fechaStr) ? fechaStr.slice(8,10) : '01';
+        fechaStr = ay + '-' + String(me).padStart(2,'0') + '-' + day;
+      }
+    }
     out.push({
       comprobante: comp, monto,
       proveedor:  prov || 'SIN ESPECIFICAR',
