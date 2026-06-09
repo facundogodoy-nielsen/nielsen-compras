@@ -7447,9 +7447,7 @@ async function importarComprasXLS(ev) {
       if (typeof monto === 'string') monto = parseFloat(monto.replace(/[^0-9.,-]/g,'').replace(/\./g,'').replace(',','.')) || 0;
       monto = parseFloat(monto) || 0;
       let fecha = colFecha >= 0 ? r[colFecha] : null;
-      let fechaStr = '';
-      if (fecha instanceof Date) fechaStr = fecha.toISOString().split('T')[0];
-      else if (fecha) fechaStr = String(fecha);
+      let fechaStr = _fechaNormalizar(fecha);
       compras.push({ proveedor:String(r[colProv]).trim(), monto, fecha:fechaStr });
     }
     comprasData = compras;
@@ -7742,6 +7740,40 @@ async function importarDetalleXLS(ev) {
 
 // ── Procesa filas (array de arrays, fila 0 = encabezados) → líneas de detalle ──
 // Detección por encabezado con fallback a letras fijas D=3,Q=16,T=19,V=21,W=22.
+// Serial de Excel/Google Sheets (epoch 1899-12-30) → 'YYYY-MM-DD'
+function _serialAFecha(n) {
+  const ms = Math.round((n - 25569) * 86400000);   // 25569 = días entre 1899-12-30 y 1970-01-01
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return '';
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
+}
+
+// Normaliza cualquier formato de fecha (Date, serial Excel, DD/MM/AAAA, AAAA-MM-DD) → 'YYYY-MM-DD'
+function _fechaNormalizar(f) {
+  if (f == null || f === '') return '';
+  if (f instanceof Date) {
+    if (isNaN(f.getTime())) return '';
+    return f.getUTCFullYear() + '-' + String(f.getUTCMonth()+1).padStart(2,'0') + '-' + String(f.getUTCDate()).padStart(2,'0');
+  }
+  if (typeof f === 'number') {
+    return (f >= 20000 && f <= 60000) ? _serialAFecha(f) : '';   // rango ~1954-2064
+  }
+  const s = String(f).trim();
+  if (!s) return '';
+  // Serial numérico como texto (ej. "45863" o "45863.9")
+  if (/^\d{4,6}(\.\d+)?$/.test(s)) {
+    const n = parseFloat(s);
+    if (n >= 20000 && n <= 60000) return _serialAFecha(n);
+  }
+  // DD/MM/AAAA o DD-MM-AAAA
+  const dm = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (dm) { const yy = dm[3].length===2 ? '20'+dm[3] : dm[3]; return yy + '-' + dm[2].padStart(2,'0') + '-' + dm[1].padStart(2,'0'); }
+  // AAAA-MM-DD (con o sin hora)
+  const ymd = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (ymd) return ymd[1] + '-' + ymd[2].padStart(2,'0') + '-' + ymd[3].padStart(2,'0');
+  return s.slice(0,10);
+}
+
 function _procesarFilasDetalle(rows) {
   const hdr = (rows[0]||[]).map(h => String(h||'').toLowerCase().trim());
   const find = (...cands) => hdr.findIndex(h => cands.some(c => h.includes(c)));
@@ -7773,17 +7805,7 @@ function _procesarFilasDetalle(rows) {
     if (!comp && !camp && !area && !monto && !prov) continue;
     const tipo = cTipo >= 0 ? String(r[cTipo]||'') : '';
     if (_esNC(comp, tipo)) { monto = -Math.abs(monto); ncCount++; }
-    let fechaStr = '';
-    if (cFecha >= 0) {
-      const f = r[cFecha];
-      if (f instanceof Date) fechaStr = f.toISOString().split('T')[0];
-      else if (f) {
-        const s = String(f).trim();
-        const dm = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-        if (dm) { const yy = dm[3].length===2 ? '20'+dm[3] : dm[3]; fechaStr = yy+'-'+dm[2].padStart(2,'0')+'-'+dm[1].padStart(2,'0'); }
-        else fechaStr = s.slice(0,10);
-      }
-    }
+    let fechaStr = (cFecha >= 0) ? _fechaNormalizar(r[cFecha]) : '';
     out.push({
       comprobante: comp, monto,
       proveedor:  prov || 'SIN ESPECIFICAR',
