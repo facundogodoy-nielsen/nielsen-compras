@@ -7718,10 +7718,17 @@ async function importarDetalleXLS(ev) {
   const file = ev.target.files[0]; if (!file) return;
   showToast('Procesando planilla COMPRAS...', 'ok');
   try {
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, {type:'array', cellDates:true});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    let rows;
+    const esCSV = /\.(csv|tsv|txt)$/i.test(file.name);
+    if (esCSV) {
+      const txt = await file.text();
+      rows = _parseCSV(txt);   // preserva el formato $ argentino (SheetJS lo rompe)
+    } else {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, {type:'array', cellDates:true});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    }
     if (!rows.length) { showToast('Planilla vacía', 'error'); return; }
 
     const { out, ncCount } = _procesarFilasDetalle(rows);
@@ -7774,6 +7781,35 @@ function _fechaNormalizar(f) {
   return s.slice(0,10);
 }
 
+// Parser de CSV propio (RFC-4180): respeta comillas, comas internas y "" escapadas.
+// Necesario porque SheetJS coacciona "$ 46.712,56" → 46.71256 (rompe el formato argentino).
+function _parseCSV(text) {
+  const rows = []; let row = [], field = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (c === '\r') { /* ignorar */ }
+      else field += c;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+// Nombre de mes (es) → número (1-12). Acepta "ene", "enero", "Ene.", etc.
+function _mesNombreANum(v) {
+  const s = String(v||'').toLowerCase().trim();
+  const m = {ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,set:9,oct:10,nov:11,dic:12};
+  for (const k in m) { if (s.indexOf(k) === 0) return m[k]; }
+  return 0;
+}
+
 function _procesarFilasDetalle(rows) {
   const hdr = (rows[0]||[]).map(h => String(h||'').toLowerCase().trim());
   const find = (...cands) => hdr.findIndex(h => cands.some(c => h.includes(c)));
@@ -7813,13 +7849,13 @@ function _procesarFilasDetalle(rows) {
     const tipo = cTipo >= 0 ? String(r[cTipo]||'') : '';
     if (_esNC(comp, tipo)) { monto = -Math.abs(monto); ncCount++; }
     let fechaStr = (cFecha >= 0) ? _fechaNormalizar(r[cFecha]) : '';
-    // Período más confiable: usar AÑO (B) y MES (C) explícitos si están; el día sale de FECHA COMPROBANTE
-    if (cAnio >= 0 && cMes >= 0) {
+    // FECHA COMPROBANTE (A) es la fuente principal. Si falta/es inválida, usar AÑO (B) + MES (C).
+    if (!/^\d{4}-\d{2}-\d{2}/.test(fechaStr) && cAnio >= 0 && cMes >= 0) {
       const ay = parseInt(String(r[cAnio]).replace(/[^\d]/g,''), 10);
-      const me = parseInt(String(r[cMes]).replace(/[^\d]/g,''), 10);
+      let me = parseInt(String(r[cMes]).replace(/[^\d]/g,''), 10);
+      if (!(me >= 1 && me <= 12)) me = _mesNombreANum(r[cMes]);   // "ene" → 1
       if (ay >= 2000 && ay <= 2100 && me >= 1 && me <= 12) {
-        const day = /^\d{4}-\d{2}-(\d{2})/.test(fechaStr) ? fechaStr.slice(8,10) : '01';
-        fechaStr = ay + '-' + String(me).padStart(2,'0') + '-' + day;
+        fechaStr = ay + '-' + String(me).padStart(2,'0') + '-01';
       }
     }
     out.push({
@@ -7878,9 +7914,7 @@ async function traerDetalleDesdeSheet(silencioso) {
     if (/^\s*</.test(txt) || /<html/i.test(txt.slice(0,200))) {
       throw new Error('La planilla no es pública. Publicala en la web como CSV.');
     }
-    const wb = XLSX.read(txt, {type:'string'});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    const rows = _parseCSV(txt);   // parser propio: preserva el formato $ argentino
     const { out, ncCount, hasProv } = _procesarFilasDetalle(rows);
     if (!out.length) throw new Error('No se detectaron filas válidas en el CSV');
 
