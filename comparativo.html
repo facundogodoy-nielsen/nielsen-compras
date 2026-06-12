@@ -677,6 +677,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
       <h3>⚙️ Análisis Automático</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-orange btn-sm" id="btnGenAnalisis" onclick="generarAnalisisAuto()">⚙️ Generar análisis</button>
+        <button class="btn btn-outline btn-sm comp-editor-only" id="btnGuardarCC" onclick="guardarAnalisisEnCC(false)" style="display:none">🏢 Guardar en Centro de Control</button>
       </div>
     </div>
     <div class="card-body">
@@ -1162,7 +1163,20 @@ async function guardarEnSupabase(showMsg) {
     if(el && !el.value) el.value=_currentCompNum;
   }
 
-  var savings = calcularAhorro();
+  var savings;
+  if (analysisResult && analysisResult.ganador) {
+    // Usar los valores del ANÁLISIS (con IVA) para que el Ahorro Generado en CC coincida
+    var _tot = analysisResult.totals || [];
+    var _maxIVA = _tot.reduce(function(m,t){ return (t.totalConIVA||0) > m ? (t.totalConIVA||0) : m; }, 0);
+    savings = {
+      elegido:   analysisResult.ganador.name,
+      precioMin: analysisResult.ganador.totalConIVA || 0,
+      precioMax: _maxIVA || (analysisResult.segundo ? (analysisResult.segundo.totalConIVA||0) : (analysisResult.ganador.totalConIVA||0)),
+      ahorro:    analysisResult.ahorro || 0
+    };
+  } else {
+    savings = calcularAhorro();
+  }
   var data = {
     num_comp:         _currentCompNum,
     num_sc:           numSC||null,
@@ -2583,7 +2597,24 @@ function generarAnalisisAuto(){
   _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct);
   _renderAAMemo(totals, ganador, segundo, ahorro, ahorroPct);
   showToast('✓ Análisis generado','ok');
+  // Guardado SISTEMÁTICO en Supabase → aparece en Centro de Control (Historial de CCP + Ahorro Generado)
+  guardarAnalisisEnCC(true);
   var _aaEl=document.getElementById('aaRendered'); if(_aaEl&&_aaEl.scrollIntoView)_aaEl.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// Guarda el análisis en Supabase (tabla 'comparativas') → Centro de Control: Historial de CCP + Ahorro Generado.
+async function guardarAnalisisEnCC(silent) {
+  if (!analysisResult || !analysisResult.ganador) { if(!silent) showToast('Generá el análisis primero','err'); return; }
+  if (!document.getElementById('asunto').value.trim()) { if(!silent) showToast('⚠️ Completá el asunto para guardar en el Centro de Control','err'); return; }
+  try {
+    await guardarEnSupabase(false);
+    if (!silent) {
+      var ah = analysisResult.ahorro || 0;
+      showToast('✅ Guardado en Centro de Control — Ahorro registrado: ' + _fmtMoney(ah), 'ok');
+    }
+  } catch(e) {
+    if (!silent) showToast('⚠️ No se pudo guardar en el Centro de Control: ' + e.message, 'err');
+  }
 }
 
 function _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct){

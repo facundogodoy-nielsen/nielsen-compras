@@ -1979,25 +1979,29 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div style="font-size:12px">Importá la planilla COMPRAS (columnas N° Comprobante, Precio Total+IVA+Otros, Campamento, Categoría, Área) o esperá la sincronización diaria.</div>
   </div>
   <div id="det-c-content" style="display:none">
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Filtrar por campamento — clic para ver sus categorías</div>
+      <div id="det-c-campbtns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px" id="det-c-kpis"></div>
     <div class="chart-grid-2">
       <div class="chart-card">
-        <div class="chart-card-title">Monto por Campamento</div>
+        <div class="chart-card-title" id="det-c-bartitle">Monto por Campamento</div>
         <div class="chart-box"><canvas id="chart-camp-bar"></canvas></div>
       </div>
       <div class="chart-card">
-        <div class="chart-card-title">Distribución por Campamento</div>
+        <div class="chart-card-title" id="det-c-tortatitle">Distribución por Campamento</div>
         <div class="chart-box"><canvas id="chart-camp-torta"></canvas></div>
       </div>
     </div>
-    <div class="chart-card" style="margin-bottom:18px">
+    <div class="chart-card" style="margin-bottom:18px" id="det-c-catcard">
       <div class="chart-card-title">Monto por Categoría (dentro del filtro)</div>
       <div class="chart-box short"><canvas id="chart-camp-cat"></canvas></div>
     </div>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:10px;background:var(--s1)">
       <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:420px">
         <thead><tr style="background:var(--s2);border-bottom:2px solid var(--border2)">
-          <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Campamento</th>
+          <th id="det-c-dimhdr" style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Campamento</th>
           <th style="padding:9px 12px;text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Comprobantes</th>
           <th style="padding:9px 12px;text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Monto Neto</th>
           <th style="padding:9px 12px;text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">% del Total</th>
@@ -8006,29 +8010,31 @@ function _renderDetSeccion(cfg) {
 
   let { data, periodoTxt } = _filtrarDet(cfg.prefix);
 
-  // Botones de filtro por área (drill-down a categorías) — solo sección Área
-  if (cfg.areaButtons) {
-    const cont = document.getElementById('det-a-areabtns');
+  // Botones de filtro (drill-down a categorías) — secciones Área y Campamento
+  if (cfg.filterButtons) {
+    const fDim = cfg.filterDim;                 // 'area' | 'campamento'
+    const fVal = cfg.filterVal || '';           // valor filtrado actual
+    const cont = document.getElementById(cfg.btnContainerId);
     if (cont) {
-      const areas = [...new Set(data.map(d=>d.area||'SIN ESPECIFICAR'))].sort((a,b)=>a.localeCompare(b,'es'));
+      const vals = [...new Set(data.map(d => d[fDim] || 'SIN ESPECIFICAR'))].sort((a,b)=>a.localeCompare(b,'es'));
       cont.innerHTML = '';
       const addBtn = (val,lbl) => {
-        const active = (cfg.areaFiltro||'') === val;
+        const active = fVal === val;
         const b = document.createElement('button');
         b.textContent = lbl;
         b.style.cssText = 'padding:6px 12px;border-radius:7px;border:1px solid '+(active?'var(--or)':'var(--border2)')+';background:'+(active?'var(--or)':'var(--s2)')+';color:'+(active?'#fff':'var(--muted)')+';font-family:var(--ff);font-size:11px;font-weight:700;cursor:pointer';
-        b.onclick = () => setAreaFiltro(val);
+        b.onclick = () => cfg.setFilterFn(val);
         cont.appendChild(b);
       };
-      addBtn('', 'Todas');
-      areas.forEach(a => addBtn(a, a));
+      addBtn('', 'Todos');
+      vals.forEach(v => addBtn(v, v));
     }
-    if (cfg.areaFiltro) data = data.filter(d => (d.area||'SIN ESPECIFICAR') === cfg.areaFiltro);
-    // Encabezado de tabla + título del 3er gráfico + visibilidad
-    const hdr = document.getElementById('det-a-dimhdr'); if (hdr) hdr.textContent = cfg.areaFiltro ? 'Categoría' : 'Área';
-    const catcard = document.getElementById('det-a-catcard'); if (catcard) catcard.style.display = cfg.areaFiltro ? 'none' : '';
-    const bt = document.getElementById('det-a-bartitle'); if (bt) bt.textContent = cfg.areaFiltro ? 'Monto por Categoría' : 'Monto por Área';
-    const tt = document.getElementById('det-a-tortatitle'); if (tt) tt.textContent = cfg.areaFiltro ? 'Distribución por Categoría' : 'Distribución por Área';
+    if (fVal) data = data.filter(d => (d[fDim] || 'SIN ESPECIFICAR') === fVal);
+    // Encabezado de tabla + títulos + visibilidad del 3er gráfico
+    const hdr = document.getElementById(cfg.dimHdrId); if (hdr) hdr.textContent = fVal ? 'Categoría' : cfg.dimHdrLabel;
+    const catcard = document.getElementById(cfg.catCardId); if (catcard) catcard.style.display = fVal ? 'none' : '';
+    const bt = document.getElementById(cfg.barTitleId); if (bt) bt.textContent = fVal ? 'Monto por Categoría' : cfg.barTitleLabel;
+    const tt = document.getElementById(cfg.tortaTitleId); if (tt) tt.textContent = fVal ? 'Distribución por Categoría' : cfg.tortaTitleLabel;
   }
 
   const arr = _aggPorDim(data, cfg.dimKey);
@@ -8037,7 +8043,7 @@ function _renderDetSeccion(cfg) {
   const fmt = n => '$' + Math.round(n).toLocaleString('es-AR');
 
   document.getElementById(cfg.infoId).textContent =
-    '📅 ' + periodoTxt + (cfg.areaFiltro ? '  ·  🏭 ' + cfg.areaFiltro : '') + '  ·  ' + arr.length + ' ' + cfg.dimPlural + ' · ' + totalComps.toLocaleString('es-AR') + ' comprobantes';
+    '📅 ' + periodoTxt + (cfg.filterVal ? '  ·  ' + (cfg.filterIcon||'') + ' ' + cfg.filterVal : '') + '  ·  ' + arr.length + ' ' + cfg.dimPlural + ' · ' + totalComps.toLocaleString('es-AR') + ' comprobantes';
 
   // KPIs
   document.getElementById(cfg.kpisId).innerHTML = [
@@ -8113,16 +8119,30 @@ function renderComprasArea() {
     dimSingular:    drill ? 'categoría'  : 'área',
     dimSingularCap: drill ? 'Categorías' : 'Áreas',
     dimPlural:      drill ? 'categorías' : 'áreas',
-    areaButtons: true,
-    areaFiltro: _areaFiltro
+    filterButtons:true, filterDim:'area', filterVal:_areaFiltro, setFilterFn:setAreaFiltro, filterIcon:'🏭',
+    btnContainerId:'det-a-areabtns', dimHdrId:'det-a-dimhdr', dimHdrLabel:'Área',
+    catCardId:'det-a-catcard',
+    barTitleId:'det-a-bartitle', barTitleLabel:'Monto por Área',
+    tortaTitleId:'det-a-tortatitle', tortaTitleLabel:'Distribución por Área'
   });
 }
+let _campFiltro = '';
+function setCampFiltro(c) { _campFiltro = (_campFiltro === c ? '' : c); renderComprasCampamento(); }
 function renderComprasCampamento() {
+  const drill = !!_campFiltro;
   _renderDetSeccion({
     prefix:'det-c', emptyId:'det-c-empty', contentId:'det-c-content', infoId:'det-c-info',
     kpisId:'det-c-kpis', tableBodyId:'det-c-table-body',
     barId:'chart-camp-bar', tortaId:'chart-camp-torta', catId:'chart-camp-cat',
-    dimKey:'campamento', dimSingular:'campamento', dimSingularCap:'Campamentos', dimPlural:'campamentos'
+    dimKey: drill ? 'categoria' : 'campamento',
+    dimSingular:    drill ? 'categoría'  : 'campamento',
+    dimSingularCap: drill ? 'Categorías' : 'Campamentos',
+    dimPlural:      drill ? 'categorías' : 'campamentos',
+    filterButtons:true, filterDim:'campamento', filterVal:_campFiltro, setFilterFn:setCampFiltro, filterIcon:'⛺',
+    btnContainerId:'det-c-campbtns', dimHdrId:'det-c-dimhdr', dimHdrLabel:'Campamento',
+    catCardId:'det-c-catcard',
+    barTitleId:'det-c-bartitle', barTitleLabel:'Monto por Campamento',
+    tortaTitleId:'det-c-tortatitle', tortaTitleLabel:'Distribución por Campamento'
   });
 }
 
