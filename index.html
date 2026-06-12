@@ -3250,18 +3250,23 @@ async function autorizarCCP(compId, numComp, asunto, montoStr, nivel) {
 async function renderComparativas(){
   const list=document.getElementById('comp-list'); if(!list) return;
   list.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted)"><div style="font-size:20px">⏳</div><div style="font-size:12px;margin-top:8px">Cargando comparativas...</div></div>';
-  let rows=[];
+  let rows=[]; let _err=null;
   try{
     const q=(document.getElementById('fcomp-buscar')?.value||'').toLowerCase();
-    const url=_SB_URL+'/rest/v1/comparativas?order=creado_at.desc&limit=100';
-    const r=await fetch(url,{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}});
-    if(r.ok) rows=await r.json();
+    const h={'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY};
+    let r=await fetch(_SB_URL+'/rest/v1/comparativas?select=*&order=creado_at.desc&limit=200',{headers:h});
+    if(!r.ok) r=await fetch(_SB_URL+'/rest/v1/comparativas?select=*&limit=200',{headers:h}); // fallback sin order
+    if(r.ok){ rows=await r.json(); }
+    else { _err='HTTP '+r.status+' — '+(await r.text()).slice(0,140); }
+    rows.sort((a,b)=>String(b.creado_at||b.id||'').localeCompare(String(a.creado_at||a.id||'')));
     if(q) rows=rows.filter(c=>((c.num_comp||'')+(c.num_sc||'')+(c.area||'')+(c.asunto||'')+(c.solicitante||'')).toLowerCase().includes(q));
-  }catch(e){}
+  }catch(e){ _err=e.message; }
   if(!rows.length){
     list.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:32px;margin-bottom:12px">📊</div>'
       +'<div style="font-size:14px;font-weight:600;margin-bottom:6px">Sin comparativas registradas</div>'
-      +'<div style="font-size:12px;max-width:360px;margin:0 auto">Las comparativas guardadas desde el Cuadro Comparativo aparecerán aquí.</div></div>';
+      +'<div style="font-size:12px;max-width:360px;margin:0 auto">Las comparativas guardadas desde el Cuadro Comparativo aparecerán aquí.</div>'
+      +(_err?'<div style="font-size:11px;color:#f87171;margin-top:14px;max-width:420px;margin-left:auto;margin-right:auto">⚠ Error al leer Supabase: '+_err+'<br>Puede faltar la tabla <b>comparativas</b> o alguna columna. Revisá el esquema.</div>':'')
+      +'</div>';
     return;
   }
   const usdRate = _ccp_getUSDRate();
@@ -3319,10 +3324,11 @@ async function renderComparativas(){
 
 async function renderAhorro(){
   try{
-    const r=await fetch(_SB_URL+'/rest/v1/comparativas?ahorro=gt.0&order=ahorro.desc&select=num_comp,num_sc,asunto,area,proveedor_elegido,precio_elegido,precio_max,ahorro,divisa,fecha',
-      {headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}});
-    if(!r.ok) throw new Error();
-    const data=await r.json();
+    const h={'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY};
+    let r=await fetch(_SB_URL+'/rest/v1/comparativas?select=*&limit=500',{headers:h});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    let data=await r.json();
+    data=data.filter(c=>Number(c.ahorro)>0).sort((a,b)=>(Number(b.ahorro)||0)-(Number(a.ahorro)||0));
     const total=data.reduce((s,c)=>s+(Number(c.ahorro)||0),0);
     const prom=data.length?Math.round(total/data.length):0;
     const max=data.length?Math.max(...data.map(c=>Number(c.ahorro)||0)):0;
