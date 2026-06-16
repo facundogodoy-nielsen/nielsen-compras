@@ -3711,6 +3711,111 @@ function listaPedidoPA() {
   _mostrarCajaCopia('📋 Lista de Pedido — PA ' + numTxt, txt);
 }
 
+// ── Imprimir selección por categoría/subcategoría (para mandar a cada proveedor) ──
+let _selPrintPA = null;
+function _escPA(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function imprimirSeleccionPA(){
+  const pa = paData[window._paIdx]; if(!pa){ showToast('No hay PA seleccionado','error'); return; }
+  const items = pa.items || [];
+  if(!items.length){ showToast('Este PA no tiene ítems','error'); return; }
+  const CAT_MAP = {M:'Mercadería',L:'Limpieza y Descartables',H:'Hotelería',A:'Agua, Gas y Leña',K:'Kiosco La Brea'};
+  const catOrder = ['M','L','H','A','K'];
+  const byCat = {};
+  items.forEach((it,i)=>{ const c=it.cat||it.categoria||pa.cat||pa.categoria||'M'; const sk=((it.sub||it.subcategoria||'')+'').trim()||'—'; (byCat[c]=byCat[c]||{}); (byCat[c][sk]=byCat[c][sk]||[]).push({it,i}); });
+  const cats = catOrder.filter(c=>byCat[c]).concat(Object.keys(byCat).filter(c=>!catOrder.includes(c)));
+  _selPrintPA = { pa, byCat, CAT_MAP };
+  let ov = document.getElementById('sel-print-overlay');
+  if(!ov){ ov = document.createElement('div'); ov.id='sel-print-overlay'; document.body.appendChild(ov); }
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
+  let body='';
+  cats.forEach(c=>{
+    const subs = Object.keys(byCat[c]).sort((a,b)=> a==='—'?1 : b==='—'?-1 : a.localeCompare(b,'es'));
+    const totCat = subs.reduce((s,sk)=>s+byCat[c][sk].length,0);
+    body += '<div style="margin:6px 0;border:1px solid var(--border);border-radius:8px;overflow:hidden">'
+      + '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--s2);cursor:pointer;font-weight:800;color:var(--or);font-family:var(--ff);font-size:12px;text-transform:uppercase;letter-spacing:1px">'
+      + '<input type="checkbox" class="selp-cat" data-cat="'+_escPA(c)+'" checked onchange="_selpToggleCat(this)"> '+(CAT_MAP[c]||c)+' <span style="color:var(--muted);font-weight:600;font-size:10px">('+totCat+')</span></label>';
+    subs.forEach(sk=>{
+      body += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 30px;cursor:pointer;font-size:12px;border-top:1px solid var(--border)">'
+        + '<input type="checkbox" class="selp-sub" data-cat="'+_escPA(c)+'" data-sub="'+_escPA(sk)+'" checked> '+(sk==='—'?'Sin subcategoría':_escPA(sk))+' <span style="color:var(--muted);font-size:10px">('+byCat[c][sk].length+')</span></label>';
+    });
+    body += '</div>';
+  });
+  const numTxt = (typeof normPA==='function' ? normPA(pa.numPA||'') : (pa.numPA||''));
+  ov.innerHTML = '<div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;max-width:520px;width:100%;max-height:85vh;display:flex;flex-direction:column">'
+    + '<div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">'
+    + '<div style="font-family:var(--ff);font-weight:800;color:var(--or);font-size:15px">🖨️ Imprimir selección — '+_escPA(numTxt)+'</div>'
+    + '<button onclick="var o=document.getElementById(\'sel-print-overlay\');if(o)o.remove();" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button></div>'
+    + '<div style="padding:12px 18px;overflow:auto">'
+    + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Destildá lo que NO querés imprimir. Útil para enviar a cada proveedor solo sus ítems.</div>'
+    + body + '</div>'
+    + '<div style="padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">'
+    + '<button class="btn btn-ghost btn-sm" onclick="var o=document.getElementById(\'sel-print-overlay\');if(o)o.remove();">Cancelar</button>'
+    + '<button onclick="_ejecutarImprimirSeleccionPA()" style="background:var(--or);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:700;cursor:pointer;font-family:var(--ff);font-size:13px">🖨️ Imprimir seleccionados</button>'
+    + '</div></div>';
+}
+
+function _selpToggleCat(cb){
+  document.querySelectorAll('#sel-print-overlay .selp-sub[data-cat="'+cb.dataset.cat+'"]').forEach(s=>{ s.checked = cb.checked; });
+}
+
+function _ejecutarImprimirSeleccionPA(){
+  if(!_selPrintPA) return;
+  const pa = _selPrintPA.pa, byCat = _selPrintPA.byCat, CAT_MAP = _selPrintPA.CAT_MAP;
+  const selSet = new Set();
+  document.querySelectorAll('#sel-print-overlay .selp-sub:checked').forEach(s=>{ selSet.add(s.dataset.cat+'|'+s.dataset.sub); });
+  if(!selSet.size){ showToast('Seleccioná al menos una categoría o subcategoría','error'); return; }
+  const catOrder = ['M','L','H','A','K'];
+  const cats = catOrder.filter(c=>byCat[c]).concat(Object.keys(byCat).filter(c=>!catOrder.includes(c)));
+  let rowsHTML='', totalItems=0;
+  cats.forEach(c=>{
+    const subs = Object.keys(byCat[c]).sort((a,b)=> a==='—'?1 : b==='—'?-1 : a.localeCompare(b,'es'));
+    let catRows='';
+    subs.forEach(sk=>{
+      if(!selSet.has(c+'|'+sk)) return;
+      catRows += '<tr><td colspan="3" style="background:#f3f3f3;font-weight:700;padding:5px 8px;font-size:12px">▸ '+(sk==='—'?'Sin subcategoría':_escPA(sk))+'</td></tr>';
+      byCat[c][sk].slice().sort((a,b)=>((a.it.nombre||a.it.name||'')+'').localeCompare(((b.it.nombre||b.it.name||'')+''),'es')).forEach(o=>{
+        const it=o.it; totalItems++;
+        const nombre=it.nombre||it.name||it.articulo||'—';
+        const marca=it.marca?' — '+it.marca:'';
+        const cant=(it.cant||it.cantidad||it.qty||'');
+        const med=it.medida||it.unidad||'';
+        catRows += '<tr><td style="padding:5px 8px;border-bottom:1px solid #eee">'+_escPA(nombre)+_escPA(marca)+'</td>'
+          +'<td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap">'+_escPA(String(cant))+'</td>'
+          +'<td style="padding:5px 8px;border-bottom:1px solid #eee">'+_escPA(med)+'</td></tr>';
+      });
+    });
+    if(catRows){ rowsHTML += '<tr><td colspan="3" style="background:#E8612A;color:#fff;font-weight:800;padding:6px 8px;font-size:12px;text-transform:uppercase;letter-spacing:1px">'+(CAT_MAP[c]||c)+'</td></tr>' + catRows; }
+  });
+  const numTxt = (typeof normPA==='function' ? normPA(pa.numPA||'') : (pa.numPA||''));
+  const fecha = pa.fecha ? formatFecha(pa.fecha) : '';
+  const win = window.open('','_blank','width=820,height=720');
+  if(!win){ alert('Bloqueador de popups activo — permití ventanas emergentes'); return; }
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+_escPA(numTxt)+'</title><style>'
+    + 'body{font-family:Arial,sans-serif;padding:24px;color:#222;font-size:13px}'
+    + 'table{width:100%;border-collapse:collapse;margin-top:10px}'
+    + '.hdr{border-bottom:2px solid #E8612A;padding-bottom:10px;margin-bottom:14px}'
+    + '.brand{font-weight:800;letter-spacing:2px;color:#E8612A;font-size:14px}'
+    + '.num{font-size:22px;font-weight:800;color:#E8612A;letter-spacing:1px;margin-top:6px}'
+    + '.meta{color:#555;font-size:12px;margin:2px 0}'
+    + 'th{background:#fff;border-bottom:2px solid #999;padding:6px 8px;text-align:left}'
+    + '</style></head><body>'
+    + '<div class="hdr"><div class="brand">NIELSEN LOGÍSTICA Y EXPEDICIONES S.A.</div></div>'
+    + '<div class="num">'+_escPA(numTxt)+'</div>'
+    + '<div class="meta"><b>Campamento:</b> '+_escPA(pa.campamento||'—')+'</div>'
+    + '<div class="meta"><b>Solicitante:</b> '+_escPA(pa.solicitante||'—')+'</div>'
+    + (fecha?'<div class="meta"><b>Fecha:</b> '+fecha+'</div>':'')
+    + '<div class="meta"><b>Ítems:</b> '+totalItems+'</div>'
+    + '<table><thead><tr><th>Artículo</th><th style="text-align:center">Cant.</th><th>U.M.</th></tr></thead><tbody>'
+    + rowsHTML
+    + '</tbody></table>'
+    + '<scr'+'ipt>setTimeout(function(){window.print();window.close();},400);<'+'/scr'+'ipt>'
+    + '</body></html>');
+  win.document.close();
+  const ov=document.getElementById('sel-print-overlay'); if(ov) ov.remove();
+}
+
+
 // ── Caja modal con texto copiable (reutilizable) ──
 function _mostrarCajaCopia(titulo, texto) {
   let ov = document.getElementById('modal-copia');
@@ -6542,12 +6647,13 @@ async function verPA(idx) {
     + (!isEditor ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Lector — solo visualización</div>' : '')
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:8px">📦 Ítems del pedido ('+items.length+') <span style="font-size:8px;color:var(--muted)">v2</span></div>'
     + '<div id="pa-items-box">' + itemsSection + '</div>'
-    + (isEditor ? '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'
+    + (isEditor ? '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap">'
       + '<button class="btn btn-ghost btn-sm" onclick="cambiarEstadoPA('+idx+')">🔄 Estado PA</button>'
+      + '<button class="btn btn-ghost btn-sm" onclick="imprimirSeleccionPA()">🖨 Imprimir selección</button>'
       + '<button class="btn btn-ghost btn-sm" onclick="imprimirModalSC()">🖨 Imprimir</button>'
       + '<button onclick="confirmarCompraPA()" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--ff)">✅ Guardar</button>'
       + '</div>'
-      : '<div style="text-align:right;margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="imprimirModalSC()">🖨 Imprimir</button></div>');
+      : '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="imprimirSeleccionPA()">🖨 Imprimir selección</button><button class="btn btn-ghost btn-sm" onclick="imprimirModalSC()">🖨 Imprimir</button></div>');
 
   // Update modal sub-title
   var subEl = document.getElementById('modal-sc-sub');

@@ -1265,33 +1265,32 @@ const OC_PREFIX = 'PA-' + new Date().getFullYear() + '-';
 
 async function getNextOC(){
   const anio = new Date().getFullYear();
+  const prefix = 'PA-' + anio + '-';
+  const maxDe = (list, key) => {
+    let maxN = 0;
+    (list||[]).forEach(row => {
+      const s = String((row && (row[key] ?? row.numPA ?? row.num_pa ?? row.oc)) || '').replace(/^OCC-/,'PA-');
+      const m = s.match(/^PA-(\d{4})-(\d+)/);
+      if (m && m[1] === String(anio)) { const n = parseInt(m[2],10)||0; if (n > maxN) maxN = n; }
+    });
+    return maxN;
+  };
+  // 1. Fuente principal: el Historial de PA del Centro de Control (tabla pedidos_abastecimiento)
   try {
-    // 1. Get MAX existing PA number from Supabase
-    const rmax = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&num_pa=like.PA-'+anio+'*&order=num_pa.desc&limit=1', {
+    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa', {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
     });
-    if(rmax.ok){
-      const rows = await rmax.json();
-      let maxN = 0;
-      if(rows && rows.length && rows[0].num_pa){
-        const parts = rows[0].num_pa.split('-');
-        maxN = parseInt(parts[parts.length-1]) || 0;
-      }
-      // 2. Increment counter in Supabase to max+1
-      const next = maxN + 1;
-      // Update counter so it stays in sync
-      await fetch(_SB_URL+'/rest/v1/counters?name=eq.pa_'+anio, {
-        method:'PATCH',
-        headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
-        body: JSON.stringify({value: next - 1})
-      }).catch(()=>{});
-      return 'PA-'+anio+'-'+String(next).padStart(4,'0');
+    if (r.ok) {
+      const rows = await r.json();
+      return prefix + String(maxDe(rows,'num_pa') + 1).padStart(4,'0');
     }
   } catch(e) {}
-  // Fallback
-  const n = parseInt(localStorage.getItem(OC_KEY) || '0') + 1;
-  localStorage.setItem(OC_KEY, n);
-  return 'PA-' + new Date().getFullYear() + '-' + String(n).padStart(4,'0');
+  // 2. Fallback de SOLO LECTURA: cache local de PAs (NO incrementa nada por entrar)
+  try {
+    const cache = JSON.parse(localStorage.getItem('nielsen_pa_2026') || '[]');
+    return prefix + String(maxDe(cache,'numPA') + 1).padStart(4,'0');
+  } catch(e) {}
+  return prefix + '0001';
 }
 
 async function resetearNumero(){
