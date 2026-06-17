@@ -1277,8 +1277,9 @@ async function getNextOC(){
   };
   // 1. Fuente principal: el Historial de PA del Centro de Control (tabla pedidos_abastecimiento)
   try {
-    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa', {
-      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
+    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&_ts='+Date.now(), {
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
+      cache:'no-store'
     });
     if (r.ok) {
       const rows = await r.json();
@@ -1291,6 +1292,23 @@ async function getNextOC(){
     return prefix + String(maxDe(cache,'numPA') + 1).padStart(4,'0');
   } catch(e) {}
   return prefix + '0001';
+}
+
+// Devuelve un N° PA único. Si 'base' ya existe en CC, agrega " (1)", " (2)"… para no pisar el existente.
+async function _numPAUnico(base){
+  try {
+    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&_ts='+Date.now(), {
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
+      cache:'no-store'
+    });
+    if(!r.ok) return base;
+    const rows = await r.json();
+    const existentes = new Set((rows||[]).map(x => String(x.num_pa||'').trim()));
+    if(!existentes.has(base)) return base;
+    let i = 1;
+    while(existentes.has(base + ' (' + i + ')')) i++;
+    return base + ' (' + i + ')';
+  } catch(e){ return base; }
 }
 
 async function resetearNumero(){
@@ -2346,9 +2364,15 @@ async function guardarPedidoActual(){
   const items = getActivos();
   if(!items.length){ toast('No hay ítems en el pedido actual.','err'); return false; }
   const d = getDatos();
+  // Asegurar N° único: si justo coincide con uno ya cargado en CC, agrega "(1)", "(2)"…
+  const ocFinal = await _numPAUnico((d.nroPedido||'').trim());
+  if (ocFinal !== (d.nroPedido||'').trim()) {
+    toast('⚠️ El N° ' + d.nroPedido + ' ya existía. Se guardó como ' + ocFinal, 'err');
+    const _np = document.getElementById('nroPedido'); if(_np) _np.value = ocFinal;
+  }
   const pedido = {
     id: Date.now(),
-    oc: d.nroPedido,
+    oc: ocFinal,
     fecha: d.fechaPedido || new Date().toISOString().split('T')[0],
     fechaEntrega: d.fechaEntrega||'',
     solicitante: d.solicitante||'—',
@@ -2365,7 +2389,7 @@ async function guardarPedidoActual(){
   // ── INTEGRACIÓN: registrar en CC (await → el próximo Nº lo toma actualizado) + email ──
   await _guardarPAenCC(pedido);
   _enviarEmailPA(pedido);
-  toast(`✅ Pedido ${d.nroPedido} confirmado y enviado.`,'ok');
+  toast(`✅ Pedido ${ocFinal} confirmado y enviado.`,'ok');
   renderHistorial();
   return true;
 }

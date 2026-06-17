@@ -3936,8 +3936,9 @@ async function sbInsert(tabla, obj) {
 
 async function sbSelect(tabla, params='') {
   try {
-    const r = await fetch(_SB_URL + '/rest/v1/' + tabla + '?order=creado_at.desc.nullslast&limit=1000' + params, {
-      headers: { 'apikey': _SB_KEY, 'Authorization': 'Bearer ' + _SB_KEY }
+    const r = await fetch(_SB_URL + '/rest/v1/' + tabla + '?order=creado_at.desc.nullslast&limit=1000' + params + '&_ts=' + Date.now(), {
+      headers: { 'apikey': _SB_KEY, 'Authorization': 'Bearer ' + _SB_KEY },
+      cache: 'no-store'
     });
     if (!r.ok) return null;
     return await r.json();
@@ -6247,12 +6248,26 @@ actualizarPreview();
 
 
 // ── PA helpers (espejo de Pedidos V3) ──
+function _paEstadoItem(pa, i) {
+  const det = (pa.itemsDetalle && pa.itemsDetalle[i]) || null;
+  const it = (pa.items && pa.items[i]) || {};
+  return (det && det.estado) || it.estadoCompra || '';
+}
+function _paComprados(pa) {
+  const items = pa.items || [];
+  let n = 0;
+  for (let i=0;i<items.length;i++) if (_paEstadoItem(pa,i) === 'COMPRADO') n++;
+  return n;
+}
 function calcPctPA(pa) {
   const items = pa.items || [];
   if (!items.length) return 0;
-  const ok = items.filter(i => i.estado === 'ok').length;
-  const parcial = items.filter(i => i.estado === 'parcial').length;
-  return Math.round((ok + parcial * 0.5) / items.length * 100);
+  let concretados = 0;
+  for (let i=0;i<items.length;i++) {
+    const est = _paEstadoItem(pa,i);
+    if (est === 'COMPRADO' || est === 'NO_COMPRADO') concretados++;
+  }
+  return Math.round(concretados / items.length * 100);
 }
 
 function calcEstadoPA(pa) {
@@ -6474,27 +6489,37 @@ async function renderHistorialPA() {
   // 1. Intentar Supabase primero
   const rows = await sbSelect('pedidos_abastecimiento');
   if (rows && Array.isArray(rows)) {
-    paData = rows.map(r => ({
-      numPA:       normPA(r.num_pa),
-      fecha:       r.fecha || '',
-      fechaEntrega: r.fecha_entrega || '',
-      solicitante: r.solicitante || '',
-      campamento:  r.campamento || '',
-      categoria:   r.categoria || '',
-      cat:         r.categoria || r.cat || '',
-      area:        r.area || '',
-      obs:         r.obs || '',
-      items:       (function(v){
-        if (!v) return [];
-        if (Array.isArray(v)) return v;
-        if (typeof v === 'string') { try { const p=JSON.parse(v); return Array.isArray(p)?p:[]; } catch(e){} }
-        return [];
-      })(r.items),
-      estado:      r.estado || 'PENDIENTE',
-      origen:      r.origen || '',
-      creado:      r.creado_at || '',
-      _sbId:       r.id
-    }));
+    paData = rows.map(r => {
+      let itemsArr = [];
+      if (Array.isArray(r.items)) itemsArr = r.items;
+      else if (typeof r.items === 'string') { try { const p = JSON.parse(r.items); if (Array.isArray(p)) itemsArr = p; } catch(e){} }
+      const itemsDetalle = {};
+      itemsArr.forEach((it,i) => {
+        if (it && (it.estadoCompra || it.factura || it.justificacion)) {
+          itemsDetalle[i] = { estado: it.estadoCompra || 'PRESUPUESTADO' };
+          if (it.factura) itemsDetalle[i].factura = it.factura;
+          if (it.justificacion) itemsDetalle[i].justificacion = it.justificacion;
+        }
+      });
+      return {
+        numPA:       normPA(r.num_pa),
+        _rawNumPA:   r.num_pa,
+        fecha:       r.fecha || '',
+        fechaEntrega: r.fecha_entrega || '',
+        solicitante: r.solicitante || '',
+        campamento:  r.campamento || '',
+        categoria:   r.categoria || '',
+        cat:         r.categoria || r.cat || '',
+        area:        r.area || '',
+        obs:         r.obs || '',
+        items:       itemsArr,
+        itemsDetalle: itemsDetalle,
+        estado:      r.estado || 'PENDIENTE',
+        origen:      r.origen || '',
+        creado:      r.creado_at || '',
+        _sbId:       r.id
+      };
+    });
     _lsSet('nielsen_pa_2026', JSON.stringify(paData));
   } else {
     // Fallback localStorage
@@ -6538,7 +6563,7 @@ async function renderHistorialPA() {
     const realIdx = paData.indexOf(pa);
     const items = pa.items || [];
     const pct = calcPctPA(pa);
-    const okCnt = items.filter(i=>i.estado==='ok').length;
+    const okCnt = _paComprados(pa);
     const catLabels = {M:'Mercadería',L:'Limpieza',H:'Hotelería',A:'Agua/Gas',K:'Kiosco'};
     const pctColor = pct===100?'var(--green)':pct>0?'var(--yellow)':'var(--muted)';
     return '<tr>' +
@@ -6850,21 +6875,46 @@ async function confirmarCompraPA() {
     }
     if (fj) pa.itemsDetalle[i].justificacion = fj.value;
   });
-  // Calculate pct
+  // Volcar el seguimiento DENTRO de items[] (columna jsonb que YA existe en la tabla)
+  (pa.items||[]).forEach((it,i) => {
+    const d = pa.itemsDetalle[i];
+    if (d) {
+      it.estadoCompra = d.estado || 'PRESUPUESTADO';
+      if (d.estado === 'COMPRADO' && d.factura) it.factura = d.factura; else delete it.factura;
+      if (d.estado === 'NO_COMPRADO' && d.justificacion) it.justificacion = d.justificacion; else delete it.justificacion;
+    }
+  });
   const total = (pa.items||[]).length;
   const entries = Object.values(pa.itemsDetalle);
   const comprados = entries.filter(e => e.estado==='COMPRADO').length;
   const noComprados = entries.filter(e => e.estado==='NO_COMPRADO').length;
-  const pct = total ? Math.round(((comprados+noComprados)/total)*100) : 0;
+  const concretados = comprados + noComprados;
+  const pct = total ? Math.round((concretados/total)*100) : 0;
   pa.pctComprado = pct;
   pa.tieneAlerta = noComprados > 0;
-  if (pct === 100) pa.estado = noComprados > 0 ? 'ENTREGADO' : 'ENTREGADO';
-  // Save to Supabase
-  const patch = { items_detalle: pa.itemsDetalle, pct_comprado: pct, tiene_alerta: pa.tieneAlerta, estado: pa.estado };
-  if (pa.numPA) await sbPatch('pedidos_abastecimiento', 'num_pa', pa.numPA, patch);
+  pa.estado = pct === 100 ? 'ENTREGADO' : (concretados > 0 ? 'EN PROCESO' : 'PENDIENTE');
+  // Guardar en Supabase: items (con seguimiento) + estado. Patch por id (robusto, no por nº normalizado).
+  let ok = false;
+  try {
+    const filtro = (pa._sbId != null && pa._sbId !== '')
+      ? 'id=eq.' + encodeURIComponent(pa._sbId)
+      : 'num_pa=eq.' + encodeURIComponent(pa._rawNumPA || pa.numPA || '');
+    const r = await fetch(_SB_URL + '/rest/v1/pedidos_abastecimiento?' + filtro, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=representation'},
+      body: JSON.stringify({ items: pa.items, estado: pa.estado })
+    });
+    if (r.ok) { const arr = await r.json(); ok = Array.isArray(arr) && arr.length > 0; }
+    else { console.error('PATCH PA error', await r.text()); }
+  } catch(e) { console.error('PATCH PA exception', e); }
   _lsSet('nielsen_pa_2026', JSON.stringify(paData));
-  renderHistorialPA();
-  showToast('✅ Estado de compra guardado', 'ok');
+  if (ok) {
+    showToast('✅ Estado de compra guardado', 'ok');
+    cerrarModal();
+    renderHistorialPA();
+  } else {
+    showToast('⚠️ No se pudo guardar en Supabase. Verificá conexión / que el N° PA exista.', 'error');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
