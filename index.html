@@ -6584,9 +6584,28 @@ async function renderHistorialPA() {
         _sbId:       r.id
       };
     });
+    // ── NO destruir respaldos: preservar los PA que están en local pero NO en Supabase ──
+    let _localPA = [];
+    try { _localPA = JSON.parse(localStorage.getItem('nielsen_pa_2026') || '[]'); } catch(e) {}
+    const _dbNumsPA = new Set(paData.map(p => normPA(p.numPA || '')).filter(Boolean));
+    const _soloLocalPA = _localPA.filter(p => {
+      const n = normPA(p.numPA || p._rawNumPA || '');
+      return n && !_dbNumsPA.has(n);
+    });
+    paData = paData.concat(_soloLocalPA);
     _lsSet('nielsen_pa_2026', JSON.stringify(paData));
+    // RECUPERACIÓN AUTOMÁTICA: re-subir a Supabase los que sólo estaban en local
+    if (_soloLocalPA.length && !window._reinsertPAInProgress) {
+      window._reinsertPAInProgress = true;
+      (async () => {
+        let rec = 0;
+        for (const pa of _soloLocalPA) { if (await _sbInsertPA(pa)) rec++; }
+        window._reinsertPAInProgress = false;
+        if (rec) { showToast('🔄 ' + rec + ' PA recuperado(s) y re-sincronizado(s) con Supabase', 'ok'); }
+      })();
+    }
   } else {
-    // Fallback localStorage
+    // Fallback localStorage (Supabase offline) — usar TODO lo local, no perder nada
     paData = JSON.parse(localStorage.getItem('nielsen_pa_2026') || '[]');
   }
 
@@ -6985,6 +7004,63 @@ async function confirmarCompraPA() {
 
 
 // ══ RECUPERAR SC FALTANTES: sync localStorage → Supabase ══
+// Inserta una SC en Supabase (reutilizable: recuperación manual y automática)
+async function _sbInsertSC(sc) {
+  const payload = {
+    num_sc:       sc.numSC || sc.num || '',
+    num_op:       sc.numOP || sc.numPC || '',
+    area:         sc.area || '',
+    subarea:      sc.subarea || '',
+    solicitante:  sc.solicitante || '',
+    email:        sc.email || '',
+    fecha:        sc.fecha || new Date().toISOString().split('T')[0],
+    fecha_limite: sc.fechaLimite || '',
+    criticidad:   sc.criticidad || 'MEDIA',
+    os:           sc.os || '',
+    os_asunto:    sc.osAsunto || '',
+    os_desc:      sc.osDesc || '',
+    os_resp:      sc.osResp || '',
+    destino:      sc.destino || '',
+    motivo:       sc.motivo || '',
+    items:        sc.items || '',
+    obs:          sc.obs || '',
+    panolero:     sc.panolero || '',
+    estado:       sc.estado || 'PENDIENTE'
+  };
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
+      body: JSON.stringify(payload)
+    });
+    return (r.ok || r.status === 201);
+  } catch(e) { console.error('insert SC', e.message); return false; }
+}
+
+// Inserta un PA en Supabase (reutilizable)
+async function _sbInsertPA(pa) {
+  const payload = {
+    num_pa:        pa.numPA || pa._rawNumPA || '',
+    fecha:         pa.fecha || '',
+    fecha_entrega: pa.fechaEntrega || '',
+    solicitante:   pa.solicitante || '',
+    campamento:    pa.campamento || '',
+    categoria:     pa.categoria || pa.cat || '',
+    obs:           pa.obs || '',
+    items:         pa.items || [],
+    estado:        pa.estado || 'PENDIENTE',
+    origen:        pa.origen || 'RECUPERADO'
+  };
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/pedidos_abastecimiento', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
+      body: JSON.stringify(payload)
+    });
+    return (r.ok || r.status === 201);
+  } catch(e) { console.error('insert PA', e.message); return false; }
+}
+
 async function recuperarSCsFaltantes() {
   if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
 
@@ -7327,10 +7403,27 @@ async function recargarSCsDesdeLS() {
       _sbId:      r.id   // UUID de Supabase
     }));
     _sbOnline = true;
-    scs = fromDB;
-    // Reemplazar localStorage con datos frescos de Supabase (borra registros locales huérfanos)
+    // ── NO destruir respaldos: preservar las SC que están en local pero NO en Supabase ──
+    let _localSC = [];
+    try { _localSC = JSON.parse(localStorage.getItem('nielsen_scs_2026') || '[]'); } catch(e) {}
+    const _dbNums = new Set(fromDB.map(s => normSCCode(s.numSC)).filter(Boolean));
+    const _soloLocal = _localSC.filter(sc => {
+      const n = normSCCode(sc.numSC || sc.num || '');
+      return n && !_dbNums.has(n);
+    });
+    scs = fromDB.concat(_soloLocal);
     _lsSet('nielsen_scs_2026', JSON.stringify(scs));
     actualizarContadores();
+    // RECUPERACIÓN AUTOMÁTICA: re-subir a Supabase las que sólo estaban en local
+    if (_soloLocal.length && !window._reinsertSCInProgress) {
+      window._reinsertSCInProgress = true;
+      (async () => {
+        let rec = 0;
+        for (const sc of _soloLocal) { if (await _sbInsertSC(sc)) rec++; }
+        window._reinsertSCInProgress = false;
+        if (rec) { showToast('🔄 ' + rec + ' SC recuperada(s) y re-sincronizada(s) con Supabase', 'ok'); }
+      })();
+    }
     return;
   }
   // 2. Fallback: localStorage (Supabase offline)
