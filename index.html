@@ -1476,6 +1476,9 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <button class="btn btn-ghost btn-sm" onclick="descargarPlantillaSC()" title="Descarga la plantilla con el formato correcto">
         📋 Descargar Plantilla
       </button>
+      <button class="btn btn-ghost btn-sm" onclick="respaldarTodo()" title="Descarga un respaldo completo (SC + PA) — sin riesgo, solo lectura">
+        ⬇️ Respaldar todo
+      </button>
     </div>
   </div>
   <div class="card" style="padding:14px 20px;margin-bottom:16px">
@@ -1707,7 +1710,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <div class="pg-sub">Pedidos generados desde el Sistema de Pedidos de Campamentos (PA)</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">⬆️ Importar Excel
+        <input type="file" accept=".xlsx,.xls" onchange="importarPAsExcel(event)" style="display:none">
+      </label>
       <button class="btn btn-ghost btn-sm" onclick="exportarPA()">⬇️ Exportar Excel</button>
+      <button class="btn btn-ghost btn-sm" onclick="respaldarTodo()" title="Descarga un respaldo completo (SC + PA) — sin riesgo, solo lectura">⬇️ Respaldar todo</button>
     </div>
   </div>
   <!-- Filtros PA -->
@@ -4313,12 +4320,75 @@ function cerrarLimpiarConfirm() { document.getElementById('limpiar-confirm-ov').
 function lcpinDigit(d) { if(_lcpinBuf.length>=4)return; _lcpinBuf+=d; _updPinDots('lcpd','lcpin-err'); if(_lcpinBuf.length===4) setTimeout(ejecutarLimpiar,100); }
 function lcpinDel()    { _lcpinBuf=_lcpinBuf.slice(0,-1); _updPinDots('lcpd','lcpin-err'); document.getElementById('lcpin-err').textContent=''; }
 function lcpinClear()  { _lcpinBuf=''; _updPinDots('lcpd','lcpin-err'); document.getElementById('lcpin-err').textContent=''; }
+// Respaldo manual completo: trae SC y PA frescos de Supabase + copias locales y descarga un JSON. Solo lectura.
+async function respaldarTodo() {
+  showToast('Generando respaldo...', 'ok');
+  async function trae(tabla) {
+    try {
+      const r = await fetch(_SB_URL + '/rest/v1/' + tabla + '?select=*&_ts=' + Date.now(), {
+        headers: { 'apikey': _SB_KEY, 'Authorization': 'Bearer ' + _SB_KEY }, cache: 'no-store'
+      });
+      if (r.ok) return await r.json();
+    } catch(e) {}
+    return null;
+  }
+  const sc = await trae('solicitudes_compra');
+  const pa = await trae('pedidos_abastecimiento');
+  let scLocal = [], paLocal = [];
+  try { scLocal = JSON.parse(localStorage.getItem('nielsen_scs_2026') || '[]'); } catch(e) {}
+  try { paLocal = JSON.parse(localStorage.getItem('nielsen_pa_2026')  || '[]'); } catch(e) {}
+  const out = {
+    fecha: new Date().toISOString(),
+    origen: 'RESPALDO_MANUAL',
+    resumen: { sc_nube: (sc||[]).length, pa_nube: (pa||[]).length, sc_local: scLocal.length, pa_local: paLocal.length },
+    solicitudes_compra: sc || [],
+    pedidos_abastecimiento: pa || [],
+    local_scs: scLocal,
+    local_pa: paLocal
+  };
+  try {
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'nielsen_respaldo_' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    showToast('✅ Respaldo descargado — SC: ' + out.resumen.sc_nube + ' · PA: ' + out.resumen.pa_nube, 'ok');
+  } catch(e) { showToast('No se pudo generar el respaldo', 'error'); }
+}
+
+// Descarga un respaldo JSON completo (SC + PA + OP). Red de seguridad ante borrados.
+function _descargarRespaldo() {
+  try {
+    const data = {
+      fecha: new Date().toISOString(),
+      scs:    (typeof scs    !== 'undefined' ? scs    : []),
+      paData: (typeof paData !== 'undefined' ? paData : []),
+      opData: (typeof opData !== 'undefined' ? opData : [])
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'nielsen_respaldo_' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch(e) { console.error('respaldo', e); }
+}
+
 function ejecutarLimpiar() {
   if(_lcpinBuf!==EDITOR_PIN){ _lcpinBuf=''; _updPinDots('lcpd','lcpin-err'); document.getElementById('lcpin-err').textContent='❌ PIN incorrecto'; _shake('limpiar-confirm-ov'); return; }
   cerrarLimpiarConfirm();
   const limpiarSC = _limpiarSel.has('sc') || _limpiarSel.has('todo');
   const limpiarOP = _limpiarSel.has('op') || _limpiarSel.has('todo');
   const limpiarPA = _limpiarSel.has('pa') || _limpiarSel.has('todo');
+  // BLINDAJE: respaldo automático + confirmación final antes de borrar de la NUBE
+  if (limpiarSC || limpiarPA) {
+    _descargarRespaldo();
+    if (!confirm('⚠️ ATENCIÓN: esto borra de la NUBE (y de TODOS los dispositivos) el historial seleccionado, de forma DEFINITIVA.\n\nYa se descargó un respaldo JSON por las dudas.\n\n¿Confirmás el borrado definitivo?')) {
+      showToast('Borrado cancelado — no se eliminó nada','ok');
+      return;
+    }
+  }
   if(limpiarSC){
     scs=[]; contadorPorArea={};
     localStorage.removeItem('nielsen_scs_2026');
@@ -7347,6 +7417,96 @@ function eliminarPA(idx) {
   renderHistorialPA();
   showToast('PA eliminado', 'ok');
 }
+
+async function importarPAsExcel(event) {
+  if (!esModoEditor()) { showToast('⛔ Solo disponible en Modo Editor','error'); event.target.value=''; return; }
+  const file = event.target.files[0]; if (!file) return;
+  if (typeof XLSX === 'undefined') { showToast('Librería Excel no disponible','error'); return; }
+  showToast('Procesando pedidos...','ok');
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(new Uint8Array(buf), { type:'array', cellDates:true });
+    const sheetName = wb.SheetNames.includes('PEDIDOS') ? 'PEDIDOS' : wb.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header:1, defval:'' });
+    if (rows.length < 2) { showToast('El archivo no tiene datos','error'); return; }
+    const KW = ['pa','solicitante','campamento','categoria','articulo','cantidad','fecha'];
+    let headerRow = 0, best = -1;
+    for (let i=0;i<=Math.min(rows.length-1,7);i++){
+      const low=(rows[i]||[]).map(c=>String(c||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''));
+      const sc=KW.filter(k=>low.some(c=>c.includes(k))).length;
+      if(sc>best){best=sc;headerRow=i;}
+    }
+    const hdrs = rows[headerRow].map(h=>String(h||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9\s]/g,'').trim());
+    const cmap = {
+      'n pa':'numpa','num pa':'numpa','n de pa':'numpa','npa':'numpa','pa':'numpa','n pedido':'numpa','numero pa':'numpa','n de pedido':'numpa',
+      'solicitante':'solicitante','nombre':'solicitante',
+      'campamento':'campamento','destino':'campamento',
+      'categoria':'categoria',
+      'fecha':'fecha','fecha pedido':'fecha',
+      'fecha entrega':'fechaEntrega','entrega':'fechaEntrega','fecha de entrega':'fechaEntrega',
+      'articulo':'articulo','item':'articulo','detalle':'articulo','material':'articulo','nombre articulo':'articulo','producto':'articulo',
+      'cantidad':'cant','cant':'cant',
+      'unidad':'medida','um':'medida','medida':'medida','unidad de medida':'medida',
+      'observaciones':'obs','obs':'obs'
+    };
+    const idx = {};
+    hdrs.forEach((h,i)=>{ if(cmap[h]!==undefined) idx[cmap[h]]=i; });
+    if (idx.numpa===undefined || idx.articulo===undefined) { showToast('No se encontraron las columnas N° PA / Artículo','error'); event.target.value=''; return; }
+    const CAT = t => { const x=String(t||'').toLowerCase(); if(x.includes('kiosco'))return'K'; if(x.includes('mercader'))return'M'; if(x.includes('limpieza')||x.includes('descartable'))return'L'; if(x.includes('agua')||x.includes('gas')||x.includes('lena'))return'A'; if(x.includes('hoteler'))return'H'; return String(t||'M').toUpperCase().slice(0,1)||'M'; };
+    const fdate = v => { if(v instanceof Date) return v.toISOString().split('T')[0]; return String(v||'').trim(); };
+    const grupos = {};
+    for (let i=headerRow+1;i<rows.length;i++){
+      const row = rows[i]; if(!row || row.every(v=>v===''||v==null||v===undefined)) continue;
+      const numpa = String(row[idx.numpa]||'').trim();
+      if(!numpa) continue;
+      if(!grupos[numpa]){
+        grupos[numpa] = {
+          numPA: numpa,
+          solicitante:  idx.solicitante!==undefined ? String(row[idx.solicitante]||'').trim() : '',
+          campamento:   idx.campamento!==undefined ? String(row[idx.campamento]||'').trim() : '',
+          categoria:    idx.categoria!==undefined ? CAT(row[idx.categoria]) : 'M',
+          fecha:        idx.fecha!==undefined ? fdate(row[idx.fecha]) : '',
+          fechaEntrega: idx.fechaEntrega!==undefined ? fdate(row[idx.fechaEntrega]) : '',
+          obs:          idx.obs!==undefined ? String(row[idx.obs]||'').trim() : '',
+          items: []
+        };
+      }
+      const art = String(row[idx.articulo]||'').trim();
+      if(art){
+        grupos[numpa].items.push({
+          nombre: art,
+          cant:   idx.cant!==undefined ? String(row[idx.cant]||'').trim() : '',
+          medida: idx.medida!==undefined ? String(row[idx.medida]||'').trim() : '',
+          cat:    grupos[numpa].categoria
+        });
+      }
+    }
+    const pedidos = Object.values(grupos);
+    if(!pedidos.length){ showToast('No se detectaron pedidos válidos','error'); event.target.value=''; return; }
+    let existentes = new Set();
+    try {
+      const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&_ts='+Date.now(),{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},cache:'no-store'});
+      if(r.ok){ const rr=await r.json(); rr.forEach(x=>existentes.add(normPA(String(x.num_pa||'')))); }
+    } catch(e){}
+    const nuevos = pedidos.filter(p => !existentes.has(normPA(p.numPA)));
+    const saltados = pedidos.length - nuevos.length;
+    if(!nuevos.length){ showToast('✅ Todos los PA del archivo ya existen — nada para importar','ok'); event.target.value=''; return; }
+    if(!confirm('Se importarán '+nuevos.length+' PA'+(saltados?(' ('+saltados+' ya existían, se omiten)'):'')+'.\n¿Continuar?')){ event.target.value=''; return; }
+    let ok=0, fail=0;
+    for(const p of nuevos){
+      const pa = { numPA:p.numPA, _rawNumPA:p.numPA, fecha:p.fecha, fechaEntrega:p.fechaEntrega, solicitante:p.solicitante, campamento:p.campamento, categoria:p.categoria, cat:p.categoria, obs:p.obs, items:p.items, estado:'PENDIENTE', origen:'IMPORTACION_EXCEL' };
+      if(await _sbInsertPA(pa)) ok++; else fail++;
+    }
+    showToast('✅ '+ok+' PA importado(s)'+(fail?(' — '+fail+' con error'):'')+(saltados?(' · '+saltados+' ya existían'):''), ok>0?'ok':'error');
+    event.target.value='';
+    await renderHistorialPA();
+  } catch(e) {
+    console.error('importarPAsExcel', e);
+    showToast('Error al procesar el Excel: '+e.message,'error');
+    event.target.value='';
+  }
+}
+
 
 function exportarPA() {
   if (typeof XLSX === 'undefined') { showToast('Librería no disponible', 'error'); return; }
