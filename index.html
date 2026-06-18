@@ -340,6 +340,17 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 
 /* ── KANBAN ── */
 .kanban { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
+.kanban-col { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; min-width: 0; }
+.kanban-col-hdr { display:flex; align-items:center; justify-content:space-between; padding:8px 0; margin-bottom:10px; border-bottom:1px solid var(--border); }
+.kanban-cnt { font-size:10px; font-weight:800; background:var(--s3); color:var(--text); border-radius:10px; padding:1px 8px; }
+/* hasta ~4 tarjetas visibles; el resto se scrollea */
+.kanban-cards { max-height: 540px; overflow-y: auto; overflow-x: hidden; display:flex; flex-direction:column; padding-right:4px; -webkit-overflow-scrolling:touch; }
+.kanban-cards::-webkit-scrollbar { width:8px; }
+.kanban-cards::-webkit-scrollbar-thumb { background:var(--border2); border-radius:4px; }
+.kanban-cards::-webkit-scrollbar-track { background:transparent; }
+/* cada solicitud delimitada + separación entre ellas */
+.kanban-card { background: var(--s2); border:1px solid var(--border); border-radius:9px; padding:11px 12px; margin-bottom:12px; }
+.kanban-card:last-child { margin-bottom:0; }
 .kb-col { background: var(--s1); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
 .kb-col-title { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
 .kb-card { background: var(--s2); border: 1px solid var(--border); border-radius: 7px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: all .15s; border-left: 3px solid var(--or); }
@@ -3424,6 +3435,7 @@ function renderKanban() {
   renderKbPctPanel(filteredScs);
   filteredScs.forEach(sc=>{const idx=scs.indexOf(sc);(groups[sc.estado||'PENDIENTE']||(groups[sc.estado]=[])) && groups[sc.estado||'PENDIENTE'].push({sc,idx});});
   function pctSC(sc){
+    if(sc.estado==='CANCELADA') return 100;   // cancelada = finalizada
     // Prefer itemsDetalle for accurate calc
     if(sc.itemsDetalle && Object.keys(sc.itemsDetalle).length>0){
       const lineas=(sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
@@ -3466,7 +3478,7 @@ function renderKanban() {
       +'<div style="display:flex;align-items:center;gap:8px">'
       +'<span style="font-size:10px;color:var(--muted)">'+avgPct+'%</span>'
       +'<span class="kanban-cnt">'+col.length+'</span>'
-      +'</div></div>'+cards+'</div>';
+      +'</div></div><div class="kanban-cards">'+cards+'</div></div>';
   }).join('')+'</div>';
 }
 
@@ -3490,7 +3502,12 @@ function verSC(idx) {
     ? (sc.area === 'MANTENIMIENTO' ? `MANTENIMIENTO › ${sc.subarea}` : `${sc.area} › ${sc.subarea}`)
     : sc.area;
   const lineas = (sc.items || '').split('\n').map(l => l.trim()).filter(l => l);
+  const _cj = sc.justificacionCancel || ((sc.obs||'').includes('⛔ CANCELADA:') ? ((sc.obs.split('⛔ CANCELADA:')[1]||'').trim()) : '');
+  const _cancelBanner = (sc.estado === 'CANCELADA')
+    ? `<div style="margin-bottom:14px;padding:12px 16px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);border-radius:10px;color:#f87171;font-size:13px"><strong>⛔ SOLICITUD CANCELADA</strong>${_cj?'<div style="margin-top:4px;color:var(--text);font-weight:400">Motivo: '+_cj+'</div>':''}</div>`
+    : '';
   document.getElementById('modal-sc-body').innerHTML = `
+    ${_cancelBanner}
     ${modoEditarSC && esModoEditor() ? renderEditGridSC(sc, idx) + '<div style="display:none">' : ''}
     ${!modoEditarSC && esModoEditor() ? `<div class="sc-edit-panel">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:12px">✏️ Editar Solicitud — PIN requerido al guardar</div>
@@ -3570,8 +3587,11 @@ function verSC(idx) {
         ${renderItemsCompra(lineas, sc)}
       </div>
 
-      ${esModoEditor() ? `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <button class="btn btn-ghost btn-sm" onclick="limpiarConfirmacion()">↩ Limpiar todo</button>
+      ${esModoEditor() ? `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="limpiarConfirmacion()">↩ Limpiar todo</button>
+          ${sc.estado!=='CANCELADA' ? `<button class="btn btn-sm" style="background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.4);font-weight:700" onclick="cancelarSC(${idx})">⛔ Cancelar SC</button>` : ''}
+        </div>
         <button class="btn btn-green" onclick="confirmarCompraFinal()" style="padding:9px 20px;font-size:13px;font-weight:700;letter-spacing:.5px">
           ✅ Confirmar
         </button>
@@ -3609,6 +3629,50 @@ function verSC(idx) {
 
 function cerrarModal() { document.getElementById('modal-sc').classList.remove('open'); }
 function abrirModalSC(idx) { verSC(idx); } // alias usado por Panel de Control
+
+// CANCELAR una SC: PIN 2026 + justificación obligatoria. Marca CANCELADA, completa el % y finaliza.
+async function cancelarSC(idx) {
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
+  const sc = scs[idx != null ? idx : window._scIdx]; if (!sc) return;
+  if (sc.estado === 'CANCELADA') { showToast('Esta solicitud ya está cancelada','error'); return; }
+  const pin = prompt('Para CANCELAR la solicitud ingresá el PIN de confirmación:');
+  if (pin === null) return;
+  if (pin.trim() !== '2026') { showToast('⛔ PIN incorrecto — cancelación abortada','error'); return; }
+  let justif = prompt('Justificación de la cancelación (OBLIGATORIA):');
+  if (justif === null) return;
+  justif = (justif||'').trim();
+  if (!justif) { showToast('⛔ La justificación es obligatoria','error'); return; }
+  // Actualizar la SC
+  sc.estado = 'CANCELADA';
+  sc.pctComprado = 100;          // concreción completa → SC finalizada
+  sc.tipoCompra = 'CANCELADA';
+  sc.tieneAlerta = false;
+  sc.justificacionCancel = justif;
+  sc.fechaCancelacion = new Date().toISOString();
+  const baseObs = (sc.obs || '').split('⛔ CANCELADA:')[0].trim();
+  sc.obs = (baseObs ? baseObs + '  ·  ' : '') + '⛔ CANCELADA: ' + justif;
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
+  // Guardar en Supabase (solo columnas existentes)
+  let ok = false;
+  if (sc.numSC) {
+    try {
+      const r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra?num_sc=eq.' + encodeURIComponent(sc.numSC), {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=representation'},
+        body: JSON.stringify({ estado:'CANCELADA', pct_comprado:100, tipo_compra:'CANCELADA', tiene_alerta:false, obs: sc.obs })
+      });
+      if (r.ok) { const arr = await r.json(); ok = Array.isArray(arr) && arr.length > 0; }
+      else console.error('PATCH cancelar SC', await r.text());
+    } catch(e) { console.error('cancelarSC', e); }
+  } else { ok = true; }
+  if (typeof actualizarContadores === 'function') actualizarContadores();
+  cerrarModal();
+  if (typeof renderHistorial === 'function') renderHistorial();
+  if (typeof renderKanban === 'function') renderKanban();
+  const av = document.querySelector('.view.active');
+  if (av && av.id === 'view-panel' && typeof renderPanel === 'function') renderPanel();
+  showToast(ok ? '⛔ Solicitud cancelada y finalizada' : '⚠️ Cancelada localmente (no se pudo guardar en Supabase)', ok ? 'ok' : 'error');
+}
 document.getElementById('modal-sc').addEventListener('click', e => { if (e.target === document.getElementById('modal-sc')) cerrarModal(); });
 
 function cambiarEstado(idx, estado) {
@@ -6481,7 +6545,7 @@ function _buildKanbanPA() {
       +'<div style="display:flex;align-items:center;gap:8px">'
       +'<span style="font-size:10px;color:var(--muted)">'+avgPct+'%</span>'
       +'<span class="kanban-cnt">'+col.items.length+'</span>'
-      +'</div></div>'+cards+'</div>';
+      +'</div></div><div class="kanban-cards">'+cards+'</div></div>';
   }).join('')+'</div>';
 }
 
