@@ -937,7 +937,7 @@ async function sbGetNextCompNum() {
   var prefix = 'CC-' + anio + '-';
   // Tomar como referencia el ÚLTIMO CCP real de la tabla comparativas (idempotente: no sube por entrar)
   try {
-    var r = await fetch(_SB_URL + '/rest/v1/comparativas?select=num_comp&_ts=' + Date.now(), {
+    var r = await fetch(_SB_URL + '/rest/v1/comparativas?select=num_comp', {
       headers: { 'apikey': _SB_KEY, 'Authorization': 'Bearer ' + _SB_KEY }, cache: 'no-store'
     });
     if (r.ok) {
@@ -2959,7 +2959,7 @@ async function renderHistCCP(){
   var q=(si?si.value:'').toLowerCase();
   var rows=[]; var err=null;
   try{
-    var r=await fetch(_SB_URL+'/rest/v1/comparativas?select=*&_ts='+Date.now(),{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},cache:'no-store'});
+    var r=await fetch(_SB_URL+'/rest/v1/comparativas?select=*',{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},cache:'no-store'});
     if(r.ok){ rows=await r.json(); }
     else { err='HTTP '+r.status+' '+(await r.text()).slice(0,120); }
   }catch(e){ err=e.message; }

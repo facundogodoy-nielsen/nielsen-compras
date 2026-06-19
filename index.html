@@ -4007,7 +4007,7 @@ async function sbInsert(tabla, obj) {
 
 async function sbSelect(tabla, params='') {
   try {
-    const r = await fetch(_SB_URL + '/rest/v1/' + tabla + '?order=creado_at.desc.nullslast&limit=1000' + params + '&_ts=' + Date.now(), {
+    const r = await fetch(_SB_URL + '/rest/v1/' + tabla + '?order=creado_at.desc.nullslast&limit=1000' + params, {
       headers: { 'apikey': _SB_KEY, 'Authorization': 'Bearer ' + _SB_KEY },
       cache: 'no-store'
     });
@@ -4325,7 +4325,7 @@ async function respaldarTodo() {
   showToast('Generando respaldo...', 'ok');
   async function trae(tabla) {
     try {
-      const r = await fetch(_SB_URL + '/rest/v1/' + tabla + '?select=*&_ts=' + Date.now(), {
+      const r = await fetch(_SB_URL + '/rest/v1/' + tabla + '?select=*', {
         headers: { 'apikey': _SB_KEY, 'Authorization': 'Bearer ' + _SB_KEY }, cache: 'no-store'
       });
       if (r.ok) return await r.json();
@@ -7485,7 +7485,7 @@ async function importarPAsExcel(event) {
     if(!pedidos.length){ showToast('No se detectaron pedidos válidos','error'); event.target.value=''; return; }
     let existentes = new Set();
     try {
-      const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&_ts='+Date.now(),{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},cache:'no-store'});
+      const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa',{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},cache:'no-store'});
       if(r.ok){ const rr=await r.json(); rr.forEach(x=>existentes.add(normPA(String(x.num_pa||'')))); }
     } catch(e){}
     const nuevos = pedidos.filter(p => !existentes.has(normPA(p.numPA)));

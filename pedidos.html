@@ -1277,7 +1277,7 @@ async function getNextOC(){
   };
   // 1. Fuente principal: el Historial de PA del Centro de Control (tabla pedidos_abastecimiento)
   try {
-    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&_ts='+Date.now(), {
+    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa', {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
       cache:'no-store'
     });
@@ -1297,7 +1297,7 @@ async function getNextOC(){
 // Devuelve un N° PA único. Si 'base' ya existe en CC, agrega " (1)", " (2)"… para no pisar el existente.
 async function _numPAUnico(base){
   try {
-    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&_ts='+Date.now(), {
+    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa', {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
       cache:'no-store'
     });
