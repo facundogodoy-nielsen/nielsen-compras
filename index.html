@@ -1179,6 +1179,8 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 .area-chip{padding:5px 11px;border-radius:14px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);font-family:var(--ff);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
 .area-chip:hover{border-color:var(--or);color:var(--or)}
 .area-chip.active{background:var(--or);border-color:var(--or);color:#fff}
+.ce-lbl{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;font-weight:600}
+.ce-inp{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px;box-sizing:border-box}
 </style>
 </head>
 <body>
@@ -1853,6 +1855,27 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="pg-title">AHORRO <span>GENERADO</span></div>
     <div class="pg-sub">Ahorro total logrado eligiendo el mejor presupuesto en cada comparativa</div>
   </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+    <select id="aho-filtro-tipo" onchange="onAhoFiltroChange()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
+      <option value="todo">Todo el histórico</option>
+      <option value="anio">Por año</option>
+      <option value="mes">Por mes</option>
+      <option value="periodo">Período (rango)</option>
+    </select>
+    <select id="aho-filtro-anio" onchange="renderAhorro()" style="display:none;padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px"></select>
+    <select id="aho-filtro-mes" onchange="renderAhorro()" style="display:none;padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
+      <option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option>
+      <option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option>
+      <option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option>
+      <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+    </select>
+    <span id="aho-filtro-rango" style="display:none;gap:6px;align-items:center">
+      <input type="date" id="aho-filtro-desde" onchange="renderAhorro()" title="Desde" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:12px">
+      <span style="color:var(--muted);font-size:12px">a</span>
+      <input type="date" id="aho-filtro-hasta" onchange="renderAhorro()" title="Hasta" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:12px">
+    </span>
+    <button class="btn btn-ghost btn-sm" onclick="renderAhorro()">🔄 Actualizar</button>
+  </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px">
     <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:16px">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Ahorro total</div>
@@ -1869,6 +1892,16 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:16px">
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Ahorro máximo</div>
       <div id="aho-max" style="font-size:22px;font-weight:800;color:var(--or);margin-top:6px">—</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:18px">
+    <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">📊 Ahorro por área</div>
+      <div style="position:relative;height:240px"><canvas id="aho-chart-area"></canvas></div>
+    </div>
+    <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">📈 Ahorro por mes</div>
+      <div style="position:relative;height:240px"><canvas id="aho-chart-mes"></canvas></div>
     </div>
   </div>
   <div id="ahorro-list"></div>
@@ -3304,7 +3337,90 @@ async function autorizarCCP(compId, numComp, asunto, montoStr, nivel) {
   renderComparativas();
 }
 
+// ── Editar Historial de CCP (Ajustes, PIN 1102) — impacta también en Comparativo ──
+var _ccpEditRows = [];
+function abrirEditarHistCCP(){
+  var ov=document.getElementById('ccpedit-ov'); if(!ov) return;
+  ov.classList.add('open');
+  document.getElementById('ccpedit-pin-stage').style.display='';
+  document.getElementById('ccpedit-form-stage').style.display='none';
+  var err=document.getElementById('ccpedit-pin-err'); if(err) err.style.display='none';
+  var pin=document.getElementById('ccpedit-pin'); if(pin){ pin.value=''; setTimeout(function(){ pin.focus(); },120); }
+}
+function cerrarEditarHistCCP(){ var ov=document.getElementById('ccpedit-ov'); if(ov) ov.classList.remove('open'); }
+async function _ccpEditUnlock(){
+  var pin=(document.getElementById('ccpedit-pin').value||'').trim();
+  if(pin!=='1102'){ document.getElementById('ccpedit-pin-err').style.display='block'; return; }
+  document.getElementById('ccpedit-pin-stage').style.display='none';
+  document.getElementById('ccpedit-form-stage').style.display='';
+  await _ccpEditLoadList();
+}
+async function _ccpEditLoadList(){
+  var sel=document.getElementById('ccpedit-select');
+  sel.innerHTML='<option>Cargando...</option>';
+  try{
+    var r=await fetch(_SB_URL+'/rest/v1/comparativas?select=*&order=creado_at.desc&limit=300',{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},cache:'no-store'});
+    _ccpEditRows = r.ok ? await r.json() : [];
+  }catch(e){ _ccpEditRows=[]; }
+  if(!_ccpEditRows.length){ sel.innerHTML='<option value="">(sin comparativas guardadas)</option>'; return; }
+  sel.innerHTML=_ccpEditRows.map(function(c,i){
+    var t=(c.num_comp||'(s/n)')+' — '+String(c.asunto||'').slice(0,45);
+    return '<option value="'+i+'">'+t.replace(/</g,'&lt;')+'</option>';
+  }).join('');
+  _ccpEditPick();
+}
+function _ccpEditPick(){
+  var i=parseInt(document.getElementById('ccpedit-select').value); if(isNaN(i)) return;
+  var c=_ccpEditRows[i]; if(!c) return;
+  var set=function(id,v){ var el=document.getElementById(id); if(el) el.value=(v==null?'':v); };
+  set('ce-num_comp',c.num_comp); set('ce-num_sc',c.num_sc); set('ce-asunto',c.asunto);
+  set('ce-solicitante',c.solicitante); set('ce-area',c.area); set('ce-divisa',(c.divisa||'ARS'));
+  set('ce-fecha',String(c.fecha||'').slice(0,10)); set('ce-proveedor_elegido',c.proveedor_elegido);
+  set('ce-precio_elegido',c.precio_elegido); set('ce-precio_max',c.precio_max); set('ce-ahorro',c.ahorro);
+  set('ce-estado',c.estado); set('ce-observaciones',c.observaciones);
+}
+async function _ccpEditGuardar(){
+  var i=parseInt(document.getElementById('ccpedit-select').value);
+  if(isNaN(i)){ showToast('Elegí una comparativa','error'); return; }
+  var c=_ccpEditRows[i];
+  if(!c || c.id==null){ showToast('Comparativa inválida','error'); return; }
+  var val=function(id){ var el=document.getElementById(id); return el?el.value:''; };
+  var numD=function(id){ var v=parseFloat(val(id)); return isNaN(v)?0:v; };
+  var payload={
+    num_comp: val('ce-num_comp').trim()||null,
+    num_sc: val('ce-num_sc').trim()||null,
+    asunto: val('ce-asunto').trim(),
+    solicitante: val('ce-solicitante').trim(),
+    area: val('ce-area').trim(),
+    divisa: val('ce-divisa'),
+    fecha: val('ce-fecha')||null,
+    proveedor_elegido: val('ce-proveedor_elegido').trim()||null,
+    precio_elegido: numD('ce-precio_elegido'),
+    precio_max: numD('ce-precio_max'),
+    ahorro: numD('ce-ahorro'),
+    estado: val('ce-estado').trim()||null,
+    observaciones: val('ce-observaciones').trim()
+  };
+  try{
+    var r=await fetch(_SB_URL+'/rest/v1/comparativas?id=eq.'+encodeURIComponent(c.id),{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=representation'},
+      body:JSON.stringify(payload)
+    });
+    if(r.ok){
+      var arr=await r.json();
+      if(arr && arr.length){
+        _ccpEditRows[i]=arr[0];
+        showToast('✅ '+(payload.num_comp||'CCP')+' actualizado (impacta en Comparativo)','ok');
+        try{ renderComparativas(); }catch(e){}
+        try{ renderAhorro(); }catch(e){}
+      } else { showToast('No se actualizó (0 filas).','error'); }
+    } else { showToast('Error al guardar (HTTP '+r.status+')','error'); }
+  }catch(e){ showToast('Error: '+e.message,'error'); }
+}
+
 async function eliminarCCP(id, numComp){
+
   if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
   if(!confirm('¿Eliminar la comparativa '+(numComp||'')+'?\nEsta acción no se puede deshacer.')) return;
   try{
@@ -3390,32 +3506,83 @@ async function renderComparativas(){
     +'<div style="font-size:10px;color:var(--muted);margin-top:8px;padding:0 4px">Tipo de cambio USD: $'+(usdRate.toLocaleString('es-AR'))+ ' — Actualizar en ⚙️ Ajustes</div>';
 }
 
+var _ahoCharts = {};
+function onAhoFiltroChange(){
+  var tipo=document.getElementById('aho-filtro-tipo').value;
+  var anio=document.getElementById('aho-filtro-anio');
+  var mes=document.getElementById('aho-filtro-mes');
+  var rango=document.getElementById('aho-filtro-rango');
+  if(anio) anio.style.display=(tipo==='anio'||tipo==='mes')?'':'none';
+  if(mes)  mes.style.display=(tipo==='mes')?'':'none';
+  if(rango) rango.style.display=(tipo==='periodo')?'inline-flex':'none';
+  renderAhorro();
+}
+function _ahoFechaStr(c){ return String(c.fecha||c.creado_at||'').slice(0,10); }
+function _ahoEnPeriodo(c){
+  var tEl=document.getElementById('aho-filtro-tipo'); var tipo=tEl?tEl.value:'todo';
+  if(tipo==='todo') return true;
+  var f=_ahoFechaStr(c); if(!f) return false;
+  if(tipo==='anio'){ var a=document.getElementById('aho-filtro-anio').value; return !a||f.slice(0,4)===a; }
+  if(tipo==='mes'){ var a=document.getElementById('aho-filtro-anio').value; var m=document.getElementById('aho-filtro-mes').value; var ym=(a||f.slice(0,4))+'-'+m; return f.slice(0,7)===ym; }
+  if(tipo==='periodo'){ var d=document.getElementById('aho-filtro-desde').value, hh=document.getElementById('aho-filtro-hasta').value; if(d&&f<d)return false; if(hh&&f>hh)return false; return true; }
+  return true;
+}
+function _ahoFillYears(rows){
+  var sel=document.getElementById('aho-filtro-anio'); if(!sel) return;
+  var cur=sel.value, years={};
+  rows.forEach(function(c){ var y=_ahoFechaStr(c).slice(0,4); if(y) years[y]=1; });
+  var list=Object.keys(years).sort().reverse();
+  if(!list.length) list=[String(new Date().getFullYear())];
+  sel.innerHTML=list.map(function(y){ return '<option value="'+y+'">'+y+'</option>'; }).join('');
+  if(cur && list.indexOf(cur)>=0) sel.value=cur;
+}
+function _ahoDestroyCharts(){ Object.keys(_ahoCharts).forEach(function(k){ try{ _ahoCharts[k].destroy(); }catch(e){} }); _ahoCharts={}; }
+function _ahoDrawCharts(data, divisa){
+  if(typeof Chart==='undefined') return;
+  _ahoDestroyCharts();
+  var or='#E85D25', grid='rgba(255,255,255,.08)', tick='rgba(255,255,255,.6)';
+  var fmtAxis=function(v){ return divisa+' '+Number(v).toLocaleString('es-AR'); };
+  var baseOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return fmtAxis(ctx.parsed.y);}}}},
+    scales:{x:{ticks:{color:tick,font:{size:10}},grid:{display:false}},y:{ticks:{color:tick,font:{size:10},callback:function(v){return Number(v).toLocaleString('es-AR');}},grid:{color:grid}}}};
+  var porArea={}; data.forEach(function(c){ var a=(c.area||'Sin área').toUpperCase(); porArea[a]=(porArea[a]||0)+(Number(c.ahorro)||0); });
+  var aKeys=Object.keys(porArea).sort(function(x,y){ return porArea[y]-porArea[x]; });
+  var cA=document.getElementById('aho-chart-area');
+  if(cA) _ahoCharts.area=new Chart(cA,{type:'bar',data:{labels:aKeys,datasets:[{data:aKeys.map(function(k){return Math.round(porArea[k]);}),backgroundColor:or,borderRadius:6}]},options:baseOpts});
+  var porMes={}; data.forEach(function(c){ var m=_ahoFechaStr(c).slice(0,7); if(m) porMes[m]=(porMes[m]||0)+(Number(c.ahorro)||0); });
+  var mKeys=Object.keys(porMes).sort().slice(-12);
+  var cM=document.getElementById('aho-chart-mes');
+  if(cM) _ahoCharts.mes=new Chart(cM,{type:'bar',data:{labels:mKeys,datasets:[{data:mKeys.map(function(k){return Math.round(porMes[k]);}),backgroundColor:'#22c55e',borderRadius:6}]},options:baseOpts});
+}
 async function renderAhorro(){
   try{
     const h={'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY};
     let r=await fetch(_SB_URL+'/rest/v1/comparativas?select=*&limit=500',{headers:h});
     if(!r.ok) throw new Error('HTTP '+r.status);
-    let data=await r.json();
-    data=data.filter(c=>Number(c.ahorro)>0).sort((a,b)=>(Number(b.ahorro)||0)-(Number(a.ahorro)||0));
+    let all=await r.json();
+    all=all.filter(c=>Number(c.ahorro)>0);
+    _ahoFillYears(all);
+    let data=all.filter(_ahoEnPeriodo).sort((a,b)=>(Number(b.ahorro)||0)-(Number(a.ahorro)||0));
     const total=data.reduce((s,c)=>s+(Number(c.ahorro)||0),0);
     const prom=data.length?Math.round(total/data.length):0;
     const max=data.length?Math.max(...data.map(c=>Number(c.ahorro)||0)):0;
-    const divisa=data.length?data[0].divisa:'$';
+    const divisa=data.length?(data[0].divisa||'$'):'$';
     setEl('aho-total', total?(divisa+' '+total.toLocaleString('es-AR',{minimumFractionDigits:2})):'—');
     setEl('aho-comp',  data.length);
     setEl('aho-prom',  prom?(divisa+' '+prom.toLocaleString('es-AR',{minimumFractionDigits:2})):'—');
     setEl('aho-max',   max?(divisa+' '+max.toLocaleString('es-AR',{minimumFractionDigits:2})):'—');
-    // Show top savings list
+    _ahoDrawCharts(data, divisa);
     const list=document.getElementById('ahorro-list');
-    if(list&&data.length){
-      list.innerHTML='<div class="card"><div class="tbl-wrap"><table><thead><tr>'
-        +'<th>N° Comp.</th><th>N° SC</th><th>Asunto</th><th>Proveedor elegido</th><th>Precio elegido</th><th>Precio máx.</th><th>Ahorro</th></tr></thead><tbody>'
-        +data.slice(0,20).map(c=>{
-          const fmt=v=>c.divisa+' '+Number(v||0).toLocaleString('es-AR',{minimumFractionDigits:2});
+    if(list){
+      if(!data.length){ list.innerHTML='<div style="text-align:center;padding:30px;color:var(--muted)">Sin ahorros en el período seleccionado.</div>'; }
+      else list.innerHTML='<div class="card"><div class="tbl-wrap"><table><thead><tr>'
+        +'<th>N° Comp.</th><th>N° SC</th><th>Asunto</th><th>Área</th><th>Proveedor elegido</th><th>Precio elegido</th><th>Precio máx.</th><th>Ahorro</th></tr></thead><tbody>'
+        +data.slice(0,30).map(c=>{
+          const fmt=v=>(c.divisa||'$')+' '+Number(v||0).toLocaleString('es-AR',{minimumFractionDigits:2});
           return '<tr>'
             +`<td class="mono" style="color:var(--or);font-weight:700">${c.num_comp||'—'}</td>`
             +`<td class="mono">${c.num_sc||'—'}</td>`
             +`<td>${c.asunto||'—'}</td>`
+            +`<td>${c.area||'—'}</td>`
             +`<td style="font-weight:600">${c.proveedor_elegido||'—'}</td>`
             +`<td>${fmt(c.precio_elegido)}</td>`
             +`<td style="color:var(--muted)">${fmt(c.precio_max)}</td>`
@@ -3426,6 +3593,7 @@ async function renderAhorro(){
     }
   }catch(e){
     setEl('aho-total','—');setEl('aho-comp',0);setEl('aho-prom','—');setEl('aho-max','—');
+    _ahoDestroyCharts();
   }
 }
 
@@ -8849,6 +9017,48 @@ window.addEventListener('orientationchange', () => {
   </div>
 </div>
 
+<!-- ══ EDITAR HISTORIAL DE CCP ══ -->
+<div class="cc-ov" id="ccpedit-ov" onclick="if(event.target===this)cerrarEditarHistCCP()">
+  <div class="settings-box" style="max-width:580px">
+    <div class="settings-hdr">
+      <span class="settings-title">✏️ Editar Historial de CCP</span>
+      <button class="settings-close" onclick="cerrarEditarHistCCP()">✕</button>
+    </div>
+    <div class="settings-body">
+      <div id="ccpedit-pin-stage">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Esta sección permite editar todos los campos de una comparativa guardada. Los cambios impactan también en Comparativo. Ingresá el PIN:</div>
+        <input type="password" id="ccpedit-pin" inputmode="numeric" placeholder="PIN" onkeydown="if(event.key==='Enter')_ccpEditUnlock()"
+          style="width:100%;padding:11px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:15px;letter-spacing:4px;text-align:center">
+        <div id="ccpedit-pin-err" style="color:#f87171;font-size:12px;margin-top:8px;display:none">PIN incorrecto.</div>
+        <button onclick="_ccpEditUnlock()" style="width:100%;margin-top:12px;padding:10px;border-radius:8px;border:1.5px solid rgba(232,93,37,.4);background:rgba(232,93,37,.12);color:var(--or);font-family:var(--ff);font-size:13px;font-weight:700;cursor:pointer">🔓 Desbloquear</button>
+      </div>
+      <div id="ccpedit-form-stage" style="display:none">
+        <label style="font-size:11px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:.5px">Comparativa a editar</label>
+        <select id="ccpedit-select" onchange="_ccpEditPick()" style="width:100%;margin:6px 0 14px;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px"></select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label class="ce-lbl">N° CCP</label><input id="ce-num_comp" class="ce-inp"></div>
+          <div><label class="ce-lbl">N° SC</label><input id="ce-num_sc" class="ce-inp"></div>
+          <div style="grid-column:1/3"><label class="ce-lbl">Asunto</label><input id="ce-asunto" class="ce-inp"></div>
+          <div><label class="ce-lbl">Solicitante</label><input id="ce-solicitante" class="ce-inp"></div>
+          <div><label class="ce-lbl">Área</label><input id="ce-area" class="ce-inp"></div>
+          <div><label class="ce-lbl">Divisa</label><select id="ce-divisa" class="ce-inp"><option value="ARS">ARS</option><option value="USD">USD</option></select></div>
+          <div><label class="ce-lbl">Fecha</label><input id="ce-fecha" type="date" class="ce-inp"></div>
+          <div style="grid-column:1/3"><label class="ce-lbl">Proveedor elegido</label><input id="ce-proveedor_elegido" class="ce-inp"></div>
+          <div><label class="ce-lbl">Precio elegido</label><input id="ce-precio_elegido" type="number" step="0.01" class="ce-inp"></div>
+          <div><label class="ce-lbl">Precio máx.</label><input id="ce-precio_max" type="number" step="0.01" class="ce-inp"></div>
+          <div><label class="ce-lbl">Ahorro</label><input id="ce-ahorro" type="number" step="0.01" class="ce-inp"></div>
+          <div><label class="ce-lbl">Estado</label><input id="ce-estado" class="ce-inp"></div>
+          <div style="grid-column:1/3"><label class="ce-lbl">Observaciones</label><textarea id="ce-observaciones" class="ce-inp" rows="2" style="resize:vertical"></textarea></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+          <button onclick="cerrarEditarHistCCP()" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border2);background:var(--s3);color:var(--text);font-family:var(--ff);font-size:13px;font-weight:700;cursor:pointer">Cancelar</button>
+          <button onclick="_ccpEditGuardar()" style="padding:9px 16px;border-radius:8px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.12);color:var(--green);font-family:var(--ff);font-size:13px;font-weight:700;cursor:pointer">💾 Guardar cambios</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══ SETTINGS MODAL ══ -->
 <div class="cc-ov" id="settings-ov" onclick="if(event.target===this)cerrarSettings()">
   <div class="settings-box">
@@ -8903,6 +9113,15 @@ window.addEventListener('orientationchange', () => {
         </div>
         <button id="btn-editar-sc-toggle" onclick="toggleEditarSCMode()" style="padding:7px 16px;border-radius:7px;border:1.5px solid rgba(232,93,37,.4);background:rgba(232,93,37,.1);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .2s">
           Activar
+        </button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">✏️ Editar Historial de CCP</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Edita todos los campos de una comparativa (requiere PIN). Impacta también en Comparativo.</div>
+        </div>
+        <button onclick="cerrarSettings();abrirEditarHistCCP()" style="padding:7px 16px;border-radius:7px;border:1.5px solid rgba(232,93,37,.4);background:rgba(232,93,37,.1);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+          Editar
         </button>
       </div>
       <!-- LINKS -->
