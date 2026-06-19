@@ -2911,6 +2911,7 @@ var _AA_SECS = [
   {key:'memo',       id:'aaMemo',        label:'Memo ejecutivo para Dirección'}
 ];
 function _escH(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function _jsArg(v){ return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
 function abrirImprimirSecciones(){
   if (!analysisResult){ showToast('Generá el análisis primero','err'); return; }
@@ -2986,8 +2987,8 @@ async function renderHistCCP(){
       +'<td style="padding:7px 10px;color:#bbb">'+_escH(c.area||'—')+'</td>'
       +'<td style="padding:7px 10px;color:#ddd">'+_escH(c.proveedor_elegido||'—')+'</td>'
       +'<td style="padding:7px 10px;text-align:right;color:#4ade80;font-weight:700">'+(Number(c.ahorro)>0?fmt(c.ahorro):'—')+'</td>'
-      +'<td style="padding:7px 10px;text-align:center"><button class="btn btn-orange btn-sm" style="font-size:10px;padding:4px 10px" onclick="cargarComparativaPorId('+JSON.stringify(String(c.id))+')">🔍 Consultar</button></td>'
-      +'<td style="padding:7px 10px;text-align:center">'+(_compEsEditor()?'<button class="btn btn-outline btn-sm" style="font-size:10px;padding:4px 10px;color:#f87171;border-color:#f8717155" onclick="eliminarCCP('+JSON.stringify(String(c.id))+','+JSON.stringify(String(c.num_comp||''))+')">🗑 Eliminar</button>':'<span style="color:#666;font-size:11px">—</span>')+'</td></tr>';
+      +'<td style="padding:7px 10px;text-align:center"><button class="btn btn-orange btn-sm" style="font-size:10px;padding:4px 10px" onclick="cargarComparativaPorId(\''+_jsArg(c.id)+'\')">🔍 Consultar</button></td>'
+      +'<td style="padding:7px 10px;text-align:center">'+(_compEsEditor()?'<button class="btn btn-outline btn-sm" style="font-size:10px;padding:4px 10px;color:#f87171;border-color:#f8717155" onclick="eliminarCCP(\''+_jsArg(c.id)+'\',\''+_jsArg(c.num_comp||'')+'\')">🗑 Eliminar</button>':'<span style="color:#666;font-size:11px">—</span>')+'</td></tr>';
   });
   html+='</tbody></table></div><div style="font-size:11px;color:#888;margin-top:10px">'+rows.length+' comparativa(s)</div>';
   cont.innerHTML=html;
