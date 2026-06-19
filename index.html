@@ -3265,6 +3265,16 @@ async function autorizarCCP(compId, numComp, asunto, montoStr, nivel) {
   renderComparativas();
 }
 
+async function eliminarCCP(id, numComp){
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!confirm('¿Eliminar la comparativa '+(numComp||'')+'?\nEsta acción no se puede deshacer.')) return;
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/comparativas?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}});
+    if(r.ok){ showToast('🗑 '+(numComp||'CCP')+' eliminada','ok'); renderComparativas(); }
+    else showToast('No se pudo eliminar (HTTP '+r.status+')','error');
+  }catch(e){ showToast('Error: '+e.message,'error'); }
+}
+
 async function renderComparativas(){
   const list=document.getElementById('comp-list'); if(!list) return;
   list.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted)"><div style="font-size:20px">⏳</div><div style="font-size:12px;margin-top:8px">Cargando comparativas...</div></div>';
@@ -3290,7 +3300,7 @@ async function renderComparativas(){
   const usdRate = _ccp_getUSDRate();
   list.innerHTML='<div class="card"><div class="tbl-wrap"><table><thead><tr>'
     +'<th>N° CCP</th><th>N° SC</th><th>Asunto</th><th>Monto Prom.</th><th>Nivel</th>'
-    +'<th>Prov.</th><th>Elegido</th><th>Ahorro</th><th>Fecha</th><th>Autorización</th><th>Acciones</th>'
+    +'<th>Prov.</th><th>Elegido</th><th>Ahorro</th><th>Consultar</th><th>Fecha</th><th>Autorización</th><th>Acciones</th>'
     +'</tr></thead><tbody>'
     +rows.map(c=>{
       const prom   = _ccp_montoProm(c);
@@ -3331,9 +3341,10 @@ async function renderComparativas(){
         +`<td style="text-align:center;font-size:12px">${nProv||'—'}</td>`
         +`<td style="font-size:12px">${pMin}</td>`
         +`<td style="font-size:12px">${aho}</td>`
+        +`<td><button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--or)" onclick="window.open('${link}?comp_id=${c.id}','_blank')">🔍 Consultar</button></td>`
         +`<td style="font-size:12px">${c.fecha?formatFecha(c.fecha):'—'}</td>`
         +`<td style="min-width:120px">${authCell}</td>`
-        +`<td><button class="btn btn-ghost btn-sm" style="font-size:10px" onclick="window.open('${link}?comp_id=${c.id}','_blank')">📊 Abrir</button></td>`
+        +`<td>${esModoEditor()?`<button class="btn btn-ghost btn-sm" style="font-size:10px;color:#f87171" onclick="eliminarCCP('${c.id}','${(c.num_comp||'').replace(/'/g,'&#39;')}')">🗑 Eliminar</button>`:'<span style="font-size:10px;color:var(--muted)">—</span>'}</td>`
         +'</tr>';
     }).join('')
     +'</tbody></table></div></div>'

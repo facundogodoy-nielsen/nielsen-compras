@@ -51,6 +51,9 @@ body{background:var(--bg);font-family:'Barlow',sans-serif;color:var(--cream);min
   border-bottom:3px solid transparent;transition:all .2s}
 .tab-btn:hover{color:var(--orange)}
 .tab-btn.active{color:var(--orange);border-bottom-color:var(--orange)}
+.tab-badge{margin-left:auto;align-self:center;border:1px solid var(--orange-border);background:rgba(232,97,26,.12);color:var(--orange);border-radius:999px;padding:7px 16px !important;font-weight:700;margin-top:6px;margin-bottom:6px}
+.tab-badge.active{background:rgba(232,97,26,.28);border-color:var(--orange);border-bottom-color:var(--orange)}
+.tab-badge:hover{background:rgba(232,97,26,.22)}
 
 /* MAIN */
 .main{padding:24px 32px;max-width:1600px;margin:0 auto}
@@ -534,7 +537,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
   <button class="tab-btn active" data-tab="solicitud">📋 1. Solicitud</button>
   <button class="tab-btn" data-tab="proveedores">🏢 2. Proveedores &amp; PDFs</button>
   <button class="tab-btn" data-tab="analisis">📊 3. Análisis</button>
-  <button class="tab-btn" data-tab="exportar">🏢 4. Historial de CCP</button>
+  <button class="tab-btn tab-badge" data-tab="exportar">🏢 Historial de CCP</button>
 </div>
 
 <div class="main">
@@ -1660,6 +1663,8 @@ document.addEventListener('DOMContentLoaded', function() {
   (function() {
     try {
       const p = new URLSearchParams(window.location.search);
+      var _compId = p.get('comp_id');
+      if (_compId) { cargarComparativaPorId(_compId); return; }
       if (p.get('sc_num') || p.get('sc_asunto')) {
         // Pre-fill solicitud fields
         if (p.get('sc_asunto'))     document.getElementById('asunto').value      = p.get('sc_asunto');
@@ -2972,7 +2977,7 @@ async function renderHistCCP(){
   }
   var fmt=function(n){ n=Number(n)||0; return '$'+Math.round(n).toLocaleString('es-AR'); };
   var html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:rgba(255,255,255,.05)">'
-    +'<th style="text-align:left;padding:8px 10px;color:#D96B1A">N° CCP</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Fecha</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Asunto</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Área</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Proveedor elegido</th><th style="text-align:right;padding:8px 10px;color:#D96B1A">Ahorro</th></tr></thead><tbody>';
+    +'<th style="text-align:left;padding:8px 10px;color:#D96B1A">N° CCP</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Fecha</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Asunto</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Área</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Proveedor elegido</th><th style="text-align:right;padding:8px 10px;color:#D96B1A">Ahorro</th><th style="text-align:center;padding:8px 10px;color:#D96B1A">Consultar</th><th style="text-align:center;padding:8px 10px;color:#D96B1A">Acciones</th></tr></thead><tbody>';
   rows.forEach(function(c){
     html+='<tr style="border-bottom:1px solid rgba(255,255,255,.08)">'
       +'<td style="padding:7px 10px;font-weight:700;color:#eee">'+_escH(c.num_comp||'—')+'</td>'
@@ -2980,10 +2985,55 @@ async function renderHistCCP(){
       +'<td style="padding:7px 10px;color:#ddd">'+_escH(c.asunto||'—')+'</td>'
       +'<td style="padding:7px 10px;color:#bbb">'+_escH(c.area||'—')+'</td>'
       +'<td style="padding:7px 10px;color:#ddd">'+_escH(c.proveedor_elegido||'—')+'</td>'
-      +'<td style="padding:7px 10px;text-align:right;color:#4ade80;font-weight:700">'+(Number(c.ahorro)>0?fmt(c.ahorro):'—')+'</td></tr>';
+      +'<td style="padding:7px 10px;text-align:right;color:#4ade80;font-weight:700">'+(Number(c.ahorro)>0?fmt(c.ahorro):'—')+'</td>'
+      +'<td style="padding:7px 10px;text-align:center"><button class="btn btn-orange btn-sm" style="font-size:10px;padding:4px 10px" onclick="cargarComparativaPorId('+JSON.stringify(String(c.id))+')">🔍 Consultar</button></td>'
+      +'<td style="padding:7px 10px;text-align:center">'+(_compEsEditor()?'<button class="btn btn-outline btn-sm" style="font-size:10px;padding:4px 10px;color:#f87171;border-color:#f8717155" onclick="eliminarCCP('+JSON.stringify(String(c.id))+','+JSON.stringify(String(c.num_comp||''))+')">🗑 Eliminar</button>':'<span style="color:#666;font-size:11px">—</span>')+'</td></tr>';
   });
   html+='</tbody></table></div><div style="font-size:11px;color:#888;margin-top:10px">'+rows.length+' comparativa(s)</div>';
   cont.innerHTML=html;
+}
+
+
+// ── Cargar una comparativa guardada (Consultar) ──
+function _compEsEditor(){ return document.body.classList.contains('comp-mode-editor'); }
+
+async function cargarComparativaDesdeRow(c){
+  try { items = c.items ? (typeof c.items==='string'?JSON.parse(c.items):c.items) : []; } catch(e){ items=[]; }
+  try { providers = c.proveedores ? (typeof c.proveedores==='string'?JSON.parse(c.proveedores):c.proveedores) : []; } catch(e){ providers=[]; }
+  try { analysisResult = c.analisis ? (typeof c.analisis==='string'?JSON.parse(c.analisis):c.analisis) : null; } catch(e){ analysisResult=null; }
+  _currentCompNum = c.num_comp || null;
+  var set=function(id,v){ var el=document.getElementById(id); if(el) el.value=(v==null?'':v); };
+  set('asunto', c.asunto); set('fechaDoc', c.fecha); set('solicitante', c.solicitante);
+  set('divisa', (c.divisa||'ARS')); set('observaciones', c.observaciones);
+  set('nroExp', c.num_sc || c.num_comp || '');
+  try { renderItems(); } catch(e){}
+  try { renderProviders(); } catch(e){}
+  switchTab('analisis');
+  if (items.length && providers.length) { try { await generarAnalisisAuto(); } catch(e){} }
+  showToast('✓ CCP ' + (c.num_comp||'') + ' cargado', 'ok');
+}
+
+async function cargarComparativaPorId(id){
+  showToast('Cargando CCP...', 'ok');
+  try {
+    var r = await fetch(_SB_URL+'/rest/v1/comparativas?id=eq.'+encodeURIComponent(id)+'&select=*', {
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}, cache:'no-store'
+    });
+    if (r.ok) { var arr=await r.json(); if (arr && arr.length) { await cargarComparativaDesdeRow(arr[0]); return; } }
+    showToast('No se encontró el CCP', 'err');
+  } catch(e){ showToast('Error al cargar: '+e.message, 'err'); }
+}
+
+async function eliminarCCP(id, numComp){
+  if (!_compEsEditor()) { showToast('⛔ Solo en Modo Editor', 'err'); return; }
+  if (!confirm('¿Eliminar la comparativa ' + (numComp||'') + '?\nEsta acción no se puede deshacer.')) return;
+  try {
+    var r = await fetch(_SB_URL+'/rest/v1/comparativas?id=eq.'+encodeURIComponent(id), {
+      method:'DELETE', headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
+    });
+    if (r.ok) { showToast('🗑 ' + (numComp||'CCP') + ' eliminada', 'ok'); renderHistCCP(); }
+    else showToast('No se pudo eliminar (HTTP '+r.status+')', 'err');
+  } catch(e){ showToast('Error: '+e.message, 'err'); }
 }
 
 
