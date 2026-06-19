@@ -1043,6 +1043,9 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
   <div style="font-size:11px;color:var(--muted);margin-bottom:2px;letter-spacing:1px;text-transform:uppercase">N° de Pedido de Compra</div>
   <div style="font-family:var(--fm);font-size:24px;font-weight:800;color:var(--text);letter-spacing:2px;margin-bottom:16px;background:rgba(255,255,255,.05);padding:8px 20px;border-radius:8px;display:inline-block" id="suc-op"></div>
   <div class="success-sub">Tu solicitud fue registrada. Recibirás una confirmación en tu correo.<br>El área de Compras te notificará ante cualquier novedad.</div>
+  <div id="suc-warning" style="display:none;margin-top:16px;padding:12px 16px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.45);border-radius:10px;color:#f87171;font-size:13px;max-width:420px;margin-left:auto;margin-right:auto">
+    ⚠️ <strong>Atención:</strong> la solicitud quedó guardada en este dispositivo pero <strong>no se pudo confirmar en el servidor</strong>. Avisá a Compras o reintentá con conexión estable para que aparezca en el Centro de Control.
+  </div>
   <button class="btn btn-primary" onclick="nuevaSC()" style="margin-top:24px;max-width:300px;margin-left:auto;margin-right:auto">+ Nueva Solicitud</button>
 </div>
 
@@ -1784,22 +1787,27 @@ async function enviar() {
     );
 
     hideLoader();
-    showSuccess(numSC, numOP);
+    await showSuccess(numSC, numOP);
   } catch(err) {
     hideLoader();
     toast('Error al registrar: ' + err.message, true);
   }
 }
 
-function showSuccess(numSC, numOP) {
-  // ── Llamar ANTES de ocultar paneles (los campos siguen accesibles) ──
-  _guardarSCenCC(numSC, numOP);   // guarda en Supabase + localStorage
-  _enviarEmailSC(numSC, numOP);   // envía mail al solicitante
+async function showSuccess(numSC, numOP) {
+  // ── Guardar PRIMERO en Supabase (con reintentos) y verificar ANTES de confirmar ──
+  const guardadoOk = await _guardarSCenCC(numSC, numOP);   // Supabase + localStorage
+  _enviarEmailSC(numSC, numOP);                             // confirmación al solicitante
 
   document.querySelectorAll('.panel').forEach(p => p.style.display = 'none');
   document.getElementById('success').style.display = 'block';
   document.getElementById('suc-num').textContent = numSC;
   document.getElementById('suc-op').textContent = numOP;
+  const w = document.getElementById('suc-warning');
+  if (w) w.style.display = guardadoOk ? 'none' : 'block';
+  if (!guardadoOk) {
+    toast('⚠️ Guardada en este dispositivo pero el servidor no confirmó. Avisá a Compras.', true);
+  }
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -2552,8 +2560,12 @@ async function _guardarSCenCC(numSC, numOP) {
       origen:       'FORMULARIO_SC'
     };
 
-    // 1. Guardar en Supabase (fuente principal)
-    const ok = await sbInsert('solicitudes_compra', sc);
+    // 1. Guardar en Supabase (fuente principal) — con reintentos ante fallos transitorios
+    let ok = false;
+    for (let intento = 1; intento <= 3 && !ok; intento++) {
+      ok = await sbInsert('solicitudes_compra', sc);
+      if (!ok && intento < 3) await new Promise(res => setTimeout(res, 700));
+    }
 
     // 2. Guardar también en localStorage (cache local / fallback)
     const KEY = 'nielsen_scs_2026';
@@ -2574,9 +2586,11 @@ async function _guardarSCenCC(numSC, numOP) {
     localStorage.setItem(KEY, JSON.stringify(scs));
 
     if (ok) console.log('✅ SC guardada en Supabase:', numSC);
-    else    console.warn('⚠️ SC guardada solo en localStorage (Supabase offline)');
+    else    console.warn('⚠️ SC guardada solo en localStorage (Supabase no confirmó tras 3 intentos)');
+    return ok;
   } catch(err) {
     console.warn('_guardarSCenCC error:', err);
+    return false;
   }
 }
 

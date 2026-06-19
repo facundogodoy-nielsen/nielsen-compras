@@ -439,6 +439,19 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
 .aa-memo .ft{margin-top:28px;padding-top:16px;border-top:1px solid #e0e0e0;font-size:12px;color:#666;line-height:1.6}
 .aa-memo .ft strong{color:#1a1a1a;display:block}
 
+/* ── Impresión / PDF del Análisis: aísla #aaRendered y fuerza colores legibles en papel ── */
+@media print {
+  body * { visibility: hidden !important; }
+  #aaRendered, #aaRendered * { visibility: visible !important; }
+  #aaRendered { position: absolute; left: 0; top: 0; width: 100%; display: block !important; }
+  #aaRendered .card { background:#fff !important; color:#1a1a1a !important; border:1px solid #ccc !important; box-shadow:none !important; margin-bottom:14px !important; page-break-inside: avoid; }
+  #aaRendered .card * { color:#1a1a1a !important; }
+  #aaRendered .card-header h3 { color:#D96B1A !important; }
+  #aaRendered table { border-collapse: collapse !important; width:100% !important; }
+  #aaRendered th, #aaRendered td { border:1px solid #ccc !important; padding:6px 8px !important; }
+  #aaRendered button { display:none !important; }
+  .aa-hide-print { display:none !important; }
+}
 </style>
 </head>
 <body>
@@ -521,7 +534,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
   <button class="tab-btn active" data-tab="solicitud">📋 1. Solicitud</button>
   <button class="tab-btn" data-tab="proveedores">🏢 2. Proveedores &amp; PDFs</button>
   <button class="tab-btn" data-tab="analisis">📊 3. Análisis</button>
-  <button class="tab-btn" data-tab="exportar">📄 4. Exportar</button>
+  <button class="tab-btn" data-tab="exportar">🏢 4. Historial de CCP</button>
 </div>
 
 <div class="main">
@@ -678,6 +691,10 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-orange btn-sm" id="btnGenAnalisis" onclick="generarAnalisisAuto()">⚙️ Generar análisis</button>
         <button class="btn btn-outline btn-sm comp-editor-only" id="btnGuardarCC" onclick="guardarAnalisisEnCC(false)" style="display:none">🏢 Guardar en Centro de Control</button>
+        <button class="btn btn-outline btn-sm" id="btnExportJSON">💾 Guardar sesión</button>
+        <button class="btn btn-outline btn-sm" id="btnImportJSON">📂 Cargar sesión</button>
+        <button class="btn btn-outline btn-sm" onclick="abrirImprimirSecciones()">🖨 Imprimir / Guardar PDF</button>
+        <input type="file" id="importJSONInput" accept=".json" style="display:none"/>
       </div>
     </div>
     <div class="card-body">
@@ -736,19 +753,20 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
 
 <div class="tab-panel" id="tab-exportar">
   <div class="card">
-    <div class="card-header"><h3>📄 Exportar Informe</h3></div>
-    <div class="card-body">
-      <p style="font-size:13px;color:var(--orange-dim);margin-bottom:18px">
-        Generá el cuadro comparativo completo listo para imprimir o compartir.
-      </p>
-      <div class="btn-row">
-        <button class="btn btn-orange" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
-        <button class="btn btn-outline" id="btnCopyText">📋 Copiar conclusión</button>
-        <button class="btn btn-outline" id="btnExportJSON">💾 Guardar sesión</button>
-        <button class="btn btn-outline" id="btnImportJSON">📂 Cargar sesión</button>
-        <button class="btn btn-outline" id="btnVolverCC" style="display:none">🔙 Volver al Centro de Control</button>
-        <input type="file" id="importJSONInput" accept=".json" style="display:none"/>
+    <div class="card-header">
+      <h3>🏢 Historial de CCP</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="renderHistCCP()">🔄 Actualizar</button>
+        <button class="btn btn-outline btn-sm" id="btnVolverCC" style="display:none">🔙 Volver al Centro de Control</button>
       </div>
+    </div>
+    <div class="card-body">
+      <p style="font-size:12px;color:var(--orange-dim);margin-bottom:12px;line-height:1.6">
+        Todas las comparativas guardadas en Supabase — las mismas que se ven en <strong style="color:var(--orange)">Centro de Control → Presupuestos → Historial de CCP</strong>.
+      </p>
+      <input type="text" id="histCcpSearch" placeholder="Buscar por N° CCP, asunto, área, proveedor..." oninput="renderHistCCP()"
+        style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border-soft,#3a3a3a);background:rgba(255,255,255,.04);color:var(--cream,#eee);font-size:13px;margin-bottom:14px"/>
+      <div id="histCcpList"><div style="text-align:center;padding:30px;color:var(--orange-dim)">Tocá 🔄 Actualizar para cargar.</div></div>
     </div>
   </div>
 </div>
@@ -915,22 +933,31 @@ async function sbComparativaPatch(numComp, data) {
 }
 
 async function sbGetNextCompNum() {
+  var anio = new Date().getFullYear();
+  var prefix = 'CC-' + anio + '-';
+  // Tomar como referencia el ÚLTIMO CCP real de la tabla comparativas (idempotente: no sube por entrar)
   try {
-    var r = await fetch(_SB_URL+'/rest/v1/rpc/increment_counter', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
-      body:JSON.stringify({counter_name:'cc_'+new Date().getFullYear()})
+    var r = await fetch(_SB_URL + '/rest/v1/comparativas?select=num_comp&_ts=' + Date.now(), {
+      headers: { 'apikey': _SB_KEY, 'Authorization': 'Bearer ' + _SB_KEY }, cache: 'no-store'
     });
-    if(r.ok) {
-      var n = await r.json();
-      return 'CC-'+new Date().getFullYear()+'-'+String(n).padStart(4,'0');
+    if (r.ok) {
+      var rows = await r.json();
+      var max = 0;
+      (rows || []).forEach(function(row) {
+        var m = String(row.num_comp || '').match(/^CC-(\d{4})-(\d+)/);
+        if (m && m[1] === String(anio)) { var n = parseInt(m[2], 10) || 0; if (n > max) max = n; }
+      });
+      return prefix + String(max + 1).padStart(4, '0');
     }
   } catch(e) {}
-  // Fallback local
-  var k='cc_cnt_'+new Date().getFullYear();
-  var n=(parseInt(localStorage.getItem(k)||'0'))+1;
-  localStorage.setItem(k,n);
-  return 'CC-'+new Date().getFullYear()+'-'+String(n).padStart(4,'0');
+  // Fallback de SOLO LECTURA (no incrementa contador por entrar)
+  try {
+    var cache = JSON.parse(localStorage.getItem('nielsen_comparativas') || '[]');
+    var mx = 0;
+    cache.forEach(function(c){ var m=String(c.num_comp||c.numComp||'').match(/^CC-(\d{4})-(\d+)/); if(m&&m[1]===String(anio)){var n=parseInt(m[2],10)||0; if(n>mx)mx=n;} });
+    return prefix + String(mx + 1).padStart(4, '0');
+  } catch(e) {}
+  return prefix + '0001';
 }
 
 async function sbLoadProvDB() {
@@ -1603,11 +1630,11 @@ document.addEventListener('DOMContentLoaded', function() {
   // ANALYZE — auto-generación
   _safeOn('btnGoAnalisis', 'click', function(){ switchTab('analisis'); });
 
-  // EXPORT
-  document.getElementById('btnCopyText').addEventListener('click', copyConclusion);
-  document.getElementById('btnExportJSON').addEventListener('click', function(){
-    exportSession();           // keep local JSON save
-    guardarEnSupabase(true).catch(function(){});   // también guarda en Supabase → Historial de CCP
+  // EXPORT / SESIÓN (los botones viven en la pestaña Análisis)
+  _safeOn('btnCopyText', 'click', copyConclusion);
+  _safeOn('btnExportJSON', 'click', function(){
+    exportSession();           // guarda JSON local
+    guardarEnSupabase(true).catch(function(){});   // y también en Supabase → Historial de CCP
   });
   // Volver CC button
   (function(){
@@ -1623,10 +1650,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   })();
 
-  document.getElementById('btnImportJSON').addEventListener('click', function() {
-    document.getElementById('importJSONInput').click();
+  _safeOn('btnImportJSON', 'click', function() {
+    var inp = document.getElementById('importJSONInput'); if (inp) inp.click();
   });
-  document.getElementById('importJSONInput').addEventListener('change', importSession);
+  _safeOn('importJSONInput', 'change', importSession);
 
 
   // ── READ PARAMS FROM CENTRO DE CONTROL ──────────────────────────────────
@@ -1742,6 +1769,7 @@ function switchTab(name) {
   var btn = document.querySelector('[data-tab="' + name + '"]');
   if (btn) btn.classList.add('active');
   if (name === 'proveedores') { try { renderPriceMatrix(); } catch(e){} }
+  if (name === 'exportar') { try { renderHistCCP(); } catch(e){} }
 }
 
 // ═══════════════════════════════════════════════════
@@ -2867,6 +2895,97 @@ function copiarMemoEjecutivo(){
   L.push('Nielsen Logística y Expediciones S.A.');
   navigator.clipboard.writeText(L.join('\n')).then(function(){ showToast('✓ Memo copiado al portapapeles','ok'); });
 }
+
+// ── Secciones del análisis para impresión selectiva ──
+var _AA_SECS = [
+  {key:'resumen',    id:'aaMetrics',     label:'Resumen ejecutivo'},
+  {key:'items',      id:'aaItemTables',  label:'Comparativa ítem por ítem'},
+  {key:'totales',    id:'aaTotalsTable', label:'Totales por proveedor'},
+  {key:'variables',  id:'aaCondTable',   label:'Variables críticas y condiciones comerciales'},
+  {key:'conclusion', id:'aaConclusion',  label:'Conclusión y recomendación'},
+  {key:'memo',       id:'aaMemo',        label:'Memo ejecutivo para Dirección'}
+];
+function _escH(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function abrirImprimirSecciones(){
+  if (!analysisResult){ showToast('Generá el análisis primero','err'); return; }
+  var ov = document.getElementById('printSecOverlay');
+  if (!ov){ ov = document.createElement('div'); ov.id='printSecOverlay'; document.body.appendChild(ov); }
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
+  var rows='';
+  _AA_SECS.forEach(function(s){
+    var present = !!document.getElementById(s.id);
+    rows += '<label style="display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid #3a3a3a;border-radius:8px;margin-bottom:7px;cursor:pointer;font-size:13px;color:#eee'+(present?'':';opacity:.4')+'">'
+      + '<input type="checkbox" class="psec-chk" data-id="'+s.id+'" '+(present?'checked':'disabled')+'> '+s.label+'</label>';
+  });
+  ov.innerHTML='<div style="background:#1c1c20;border:1px solid #3a3a3a;border-radius:14px;max-width:480px;width:100%;max-height:85vh;display:flex;flex-direction:column">'
+    +'<div style="padding:16px 18px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center">'
+    +'<div style="font-weight:800;color:#D96B1A;font-size:15px">🖨 Imprimir / Guardar PDF</div>'
+    +'<button onclick="var o=document.getElementById(\'printSecOverlay\');if(o)o.remove();" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer">✕</button></div>'
+    +'<div style="padding:14px 18px;overflow:auto">'
+    +'<div style="font-size:12px;color:#aaa;margin-bottom:10px">Elegí qué secciones incluir en el PDF:</div>'+rows+'</div>'
+    +'<div style="padding:14px 18px;border-top:1px solid #333;display:flex;gap:8px;justify-content:flex-end">'
+    +'<button class="btn btn-outline btn-sm" onclick="var o=document.getElementById(\'printSecOverlay\');if(o)o.remove();">Cancelar</button>'
+    +'<button class="btn btn-orange btn-sm" onclick="_imprimirSeccionesSel()">🖨 Imprimir / Guardar PDF</button>'
+    +'</div></div>';
+}
+
+function _imprimirSeccionesSel(){
+  var checked = {};
+  document.querySelectorAll('#printSecOverlay .psec-chk:checked').forEach(function(c){ checked[c.dataset.id]=true; });
+  var any=false;
+  _AA_SECS.forEach(function(s){
+    var el=document.getElementById(s.id); if(!el)return;
+    var card=el.closest('.card'); if(!card)return;
+    if(checked[s.id]){ card.classList.remove('aa-hide-print'); any=true; }
+    else card.classList.add('aa-hide-print');
+  });
+  if(!any){ showToast('Seleccioná al menos una sección','err'); return; }
+  var o=document.getElementById('printSecOverlay'); if(o)o.remove();
+  var aa=document.getElementById('aaRendered'); if(aa) aa.style.display='block';
+  setTimeout(function(){
+    window.print();
+    setTimeout(function(){
+      _AA_SECS.forEach(function(s){ var el=document.getElementById(s.id); if(el){var card=el.closest('.card'); if(card)card.classList.remove('aa-hide-print');} });
+    }, 400);
+  }, 150);
+}
+
+// ── Historial de CCP dentro de Comparativo (lee la misma tabla que el Centro de Control) ──
+async function renderHistCCP(){
+  var cont=document.getElementById('histCcpList'); if(!cont)return;
+  cont.innerHTML='<div style="text-align:center;padding:24px;color:var(--orange-dim)">Cargando comparativas...</div>';
+  var si=document.getElementById('histCcpSearch');
+  var q=(si?si.value:'').toLowerCase();
+  var rows=[]; var err=null;
+  try{
+    var r=await fetch(_SB_URL+'/rest/v1/comparativas?select=*&_ts='+Date.now(),{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},cache:'no-store'});
+    if(r.ok){ rows=await r.json(); }
+    else { err='HTTP '+r.status+' '+(await r.text()).slice(0,120); }
+  }catch(e){ err=e.message; }
+  try{ localStorage.setItem('nielsen_comparativas', JSON.stringify(rows||[])); }catch(e){}
+  rows.sort(function(a,b){ return String(b.creado_at||b.id||'').localeCompare(String(a.creado_at||a.id||'')); });
+  if(q) rows=rows.filter(function(c){ return ((c.num_comp||'')+(c.asunto||'')+(c.area||'')+(c.proveedor_elegido||'')+(c.num_sc||'')).toLowerCase().indexOf(q)>=0; });
+  if(!rows.length){
+    cont.innerHTML='<div style="text-align:center;padding:30px;color:var(--orange-dim)"><div style="font-size:30px;margin-bottom:8px">📊</div><div style="font-size:13px">Sin comparativas guardadas todavía.</div>'+(err?'<div style="color:#f87171;font-size:11px;margin-top:12px">⚠ Error al leer Supabase: '+_escH(err)+'<br>Verificá la tabla <b>comparativas</b> (RLS / columnas).</div>':'')+'</div>';
+    return;
+  }
+  var fmt=function(n){ n=Number(n)||0; return '$'+Math.round(n).toLocaleString('es-AR'); };
+  var html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:rgba(255,255,255,.05)">'
+    +'<th style="text-align:left;padding:8px 10px;color:#D96B1A">N° CCP</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Fecha</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Asunto</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Área</th><th style="text-align:left;padding:8px 10px;color:#D96B1A">Proveedor elegido</th><th style="text-align:right;padding:8px 10px;color:#D96B1A">Ahorro</th></tr></thead><tbody>';
+  rows.forEach(function(c){
+    html+='<tr style="border-bottom:1px solid rgba(255,255,255,.08)">'
+      +'<td style="padding:7px 10px;font-weight:700;color:#eee">'+_escH(c.num_comp||'—')+'</td>'
+      +'<td style="padding:7px 10px;color:#bbb">'+_escH(c.fecha||String(c.creado_at||'').slice(0,10))+'</td>'
+      +'<td style="padding:7px 10px;color:#ddd">'+_escH(c.asunto||'—')+'</td>'
+      +'<td style="padding:7px 10px;color:#bbb">'+_escH(c.area||'—')+'</td>'
+      +'<td style="padding:7px 10px;color:#ddd">'+_escH(c.proveedor_elegido||'—')+'</td>'
+      +'<td style="padding:7px 10px;text-align:right;color:#4ade80;font-weight:700">'+(Number(c.ahorro)>0?fmt(c.ahorro):'—')+'</td></tr>';
+  });
+  html+='</tbody></table></div><div style="font-size:11px;color:#888;margin-top:10px">'+rows.length+' comparativa(s)</div>';
+  cont.innerHTML=html;
+}
+
 
 function imprimirMemoEjecutivo(){
   if (!analysisResult){ showToast('Generá el análisis primero','err'); return; }
