@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "acorn": "^8.16.0",
+    "acorn": "^8.17.0",
     "jsdom": "^29.1.1"
   }
 }

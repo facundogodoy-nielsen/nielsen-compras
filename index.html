@@ -3004,11 +3004,22 @@ function renderPanel() {
   setEl('st-total',total); setEl('st-pend',pend);
   setEl('st-urg',urg);     setEl('st-comp',comp);
 
-  // Criticidad bars
-  const crits = {CRITICA:0,URGENTE:0,ALTA:0,MEDIA:0,BAJA:0};
-  scs.filter(s=>s.estado==='PENDIENTE'||s.estado==='EN PROCESO')
-     .forEach(s=>{ if(crits[s.criticidad]!==undefined) crits[s.criticidad]++; });
-  const critColors = {CRITICA:'var(--red)',URGENTE:'#E85D26',ALTA:'var(--yellow)',MEDIA:'#22c55e',BAJA:'var(--muted)'};
+  // Criticidad bars — cuenta TODAS las SC abiertas (no completadas ni canceladas)
+  // y normaliza el valor para no descartar acentos, minúsculas o variantes.
+  const _normCrit = v => {
+    let s = String(v||'').toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if (s.startsWith('CRIT')) return 'CRITICA';
+    if (s.startsWith('URG'))  return 'URGENTE';
+    if (s.startsWith('ALT'))  return 'ALTA';
+    if (s.startsWith('MED'))  return 'MEDIA';
+    if (s.startsWith('BAJ'))  return 'BAJA';
+    return 'SIN CLASIF.';
+  };
+  const crits = {CRITICA:0,URGENTE:0,ALTA:0,MEDIA:0,BAJA:0,'SIN CLASIF.':0};
+  scs.filter(s => s.estado!=='COMPLETADA' && s.estado!=='CANCELADA')
+     .forEach(s => { crits[_normCrit(s.criticidad)]++; });
+  if (!crits['SIN CLASIF.']) delete crits['SIN CLASIF.'];   // no mostrar el bucket si está vacío
+  const critColors = {CRITICA:'var(--red)',URGENTE:'#E85D26',ALTA:'var(--yellow)',MEDIA:'#22c55e',BAJA:'var(--muted)','SIN CLASIF.':'#6b7280'};
   const critMax = Math.max(...Object.values(crits),1);
   const critEl = document.getElementById('panel-crit-bars');
   if(critEl) critEl.innerHTML = Object.entries(crits).map(([c,n])=>`
@@ -3024,7 +3035,7 @@ function renderPanel() {
 
   // Área bars — pendientes por área
   const areas = {};
-  scs.filter(s=>s.estado==='PENDIENTE').forEach(s=>{
+  scs.filter(s=>s.estado!=='COMPLETADA' && s.estado!=='CANCELADA').forEach(s=>{
     const a=s.area||'Sin área'; areas[a]=(areas[a]||0)+1;
   });
   const sortedAreas = Object.entries(areas).sort((a,b)=>b[1]-a[1]).slice(0,6);

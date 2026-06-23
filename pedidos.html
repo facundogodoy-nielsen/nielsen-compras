@@ -1275,23 +1275,21 @@ async function getNextOC(){
     });
     return maxN;
   };
-  // 1. Fuente principal: el Historial de PA del Centro de Control (tabla pedidos_abastecimiento)
+  // El próximo N° = (último que aparece en el Historial de PA del CC) + 1.
+  // El CC muestra Supabase + PAs locales; tomamos el máximo de AMBAS fuentes para no quedar atrás ni repetir.
+  let maxN = 0;
   try {
     const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa', {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
       cache:'no-store'
     });
-    if (r.ok) {
-      const rows = await r.json();
-      return prefix + String(maxDe(rows,'num_pa') + 1).padStart(4,'0');
-    }
+    if (r.ok) { const rows = await r.json(); maxN = Math.max(maxN, maxDe(rows,'num_pa')); }
   } catch(e) {}
-  // 2. Fallback de SOLO LECTURA: cache local de PAs (NO incrementa nada por entrar)
   try {
     const cache = JSON.parse(localStorage.getItem('nielsen_pa_2026') || '[]');
-    return prefix + String(maxDe(cache,'numPA') + 1).padStart(4,'0');
+    maxN = Math.max(maxN, maxDe(cache,'numPA'));
   } catch(e) {}
-  return prefix + '0001';
+  return prefix + String(maxN + 1).padStart(4,'0');
 }
 
 // Devuelve un N° PA único. Si 'base' ya existe en CC, agrega " (1)", " (2)"… para no pisar el existente.
@@ -2387,10 +2385,16 @@ async function guardarPedidoActual(){
   historial.unshift(pedido);
   localStorage.setItem(HIST_KEY, JSON.stringify(historial));
   // ── INTEGRACIÓN: registrar en CC (await → el próximo Nº lo toma actualizado) + email ──
-  await _guardarPAenCC(pedido);
+  const guardadoOk = await _guardarPAenCC(pedido);
   _enviarEmailPA(pedido);
-  toast(`✅ Pedido ${ocFinal} confirmado y enviado.`,'ok');
+  if (guardadoOk) {
+    toast(`✅ Pedido ${ocFinal} confirmado y enviado.`,'ok');
+  } else {
+    toast(`⚠️ Pedido ${ocFinal} enviado, pero NO se confirmó en el servidor. Avisá a Compras o reintentá con conexión estable.`,'err');
+  }
   renderHistorial();
+  // Refrescar el próximo N° PA para el siguiente pedido
+  try { const _np=document.getElementById('nroPedido'); if(_np){ getNextOC().then(function(n){ _np.value=n; }); } } catch(e){}
   return true;
 }
 
@@ -3134,8 +3138,12 @@ async function _guardarPAenCC(pedido) {
       origen:        'PEDIDOS_V3'
     };
 
-    // 1. Guardar en Supabase (fuente principal)
-    const ok = await sbInsert('pedidos_abastecimiento', pa);
+    // 1. Guardar en Supabase (fuente principal) — con reintentos ante fallos transitorios
+    let ok = false;
+    for (let intento = 1; intento <= 3 && !ok; intento++) {
+      ok = await sbInsert('pedidos_abastecimiento', pa);
+      if (!ok && intento < 3) await new Promise(res => setTimeout(res, 700));
+    }
 
     // 2. Cache en localStorage
     const PA_KEY = 'nielsen_pa_2026';
@@ -3153,9 +3161,11 @@ async function _guardarPAenCC(pedido) {
     localStorage.setItem(PA_KEY, JSON.stringify(paList));
 
     if (ok) console.log('✅ PA guardado en Supabase:', pedido.oc);
-    else    console.warn('⚠️ PA guardado solo en localStorage (Supabase offline)');
+    else    console.warn('⚠️ PA guardado solo en localStorage (Supabase no confirmó tras 3 intentos)');
+    return ok;
   } catch(err) {
     console.warn('_guardarPAenCC error:', err);
+    return false;
   }
 }
 
