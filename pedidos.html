@@ -546,7 +546,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
     <div class="ph"><div class="pt">Datos del Pedido</div></div>
     <div class="pb">
       <div class="fgrid">
-        <div class="fg"><label class="lbl">N° Pedido Abastecimiento</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="nroPedido" readonly style="background:#FFF8F5;border-color:rgba(232,93,38,.35);color:var(--N);font-weight:700;font-size:.9rem;cursor:default;flex:1"/></div></div>
+        <div class="fg"><label class="lbl">N° Pedido Abastecimiento</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="nroPedido" readonly style="background:#FFF8F5;border-color:rgba(232,93,38,.35);color:var(--N);font-weight:700;font-size:.9rem;cursor:default;flex:1"/><button type="button" onclick="actualizarNumPA()" title="Actualizar el N° tomando el último PA del Historial" style="padding:8px 12px;border-radius:8px;border:1.5px solid rgba(232,93,38,.35);background:#FFF8F5;color:var(--N);font-weight:700;cursor:pointer;white-space:nowrap">🔄</button></div></div>
         <div class="fg"><label class="lbl">Fecha de Pedido</label><input type="date" id="fechaPedido" required/></div>
         <div class="fg"><label class="lbl">Entrega Requerida</label><input type="date" id="fechaEntrega" required/></div>
         <div class="fg"><label class="lbl">Solicitado por</label><input type="text" id="solicitante" placeholder="Nombre" required oninput="this.value=toTitleCase(this.value)"/></div>
@@ -1263,6 +1263,27 @@ const CAT_LABELS = {M:'Mercadería',L:'Limpieza y Descartables',H:'Hotelería',A
 const OC_KEY = 'nielsen_oc_counter';
 const OC_PREFIX = 'PA-' + new Date().getFullYear() + '-';
 
+// Actualiza el N° PA y muestra un diagnóstico de qué encuentra (nube vs local).
+async function actualizarNumPA(){
+  const np = document.getElementById('nroPedido');
+  if(np) np.value = '⏳ ...';
+  const anio = new Date().getFullYear();
+  const prefix = 'PA-' + anio + '-';
+  const parse = s => { const m=String(s||'').replace(/^OCC-/,'PA-').match(/^PA-(\d{4})-(\d+)/); return (m && m[1]===String(anio)) ? (parseInt(m[2],10)||0) : 0; };
+  let sbCount=0, sbMax=0, sbErr='';
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&limit=2000',{headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},cache:'no-store'});
+    if(r.ok){ const rows=await r.json(); sbCount=rows.length; rows.forEach(x=>{ const n=parse(x.num_pa); if(n>sbMax)sbMax=n; }); }
+    else sbErr='HTTP '+r.status;
+  }catch(e){ sbErr=(e&&e.message)||'sin conexión'; }
+  let locCount=0, locMax=0;
+  try{ const c=JSON.parse(localStorage.getItem('nielsen_pa_2026')||'[]'); locCount=(c||[]).length; (c||[]).forEach(x=>{ const n=parse(x.numPA||x.num_pa||x.oc); if(n>locMax)locMax=n; }); }catch(e){}
+  const maxN=Math.max(sbMax,locMax);
+  const next=prefix+String(maxN+1).padStart(4,'0');
+  if(np) np.value=next;
+  toast('Próximo '+next+' — Nube: '+sbCount+' PA (máx '+(sbMax||0)+(sbErr?', ⚠'+sbErr:'')+') · Local: '+locCount+' (máx '+(locMax||0)+')', sbErr?'err':'ok');
+}
+
 async function getNextOC(){
   const anio = new Date().getFullYear();
   const prefix = 'PA-' + anio + '-';
@@ -1279,7 +1300,7 @@ async function getNextOC(){
   // El CC muestra Supabase + PAs locales; tomamos el máximo de AMBAS fuentes para no quedar atrás ni repetir.
   let maxN = 0;
   try {
-    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa', {
+    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&limit=2000', {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
       cache:'no-store'
     });
@@ -1295,7 +1316,7 @@ async function getNextOC(){
 // Devuelve un N° PA único. Si 'base' ya existe en CC, agrega " (1)", " (2)"… para no pisar el existente.
 async function _numPAUnico(base){
   try {
-    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa', {
+    const r = await fetch(_SB_URL+'/rest/v1/pedidos_abastecimiento?select=num_pa&limit=2000', {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
       cache:'no-store'
     });
