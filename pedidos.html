@@ -549,7 +549,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
         <div class="fg"><label class="lbl">N° Pedido Abastecimiento</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="nroPedido" readonly style="background:#FFF8F5;border-color:rgba(232,93,38,.35);color:var(--N);font-weight:700;font-size:.9rem;cursor:default;flex:1"/><button type="button" onclick="actualizarNumPA()" title="Actualizar el N° tomando el último PA del Historial" style="padding:8px 12px;border-radius:8px;border:1.5px solid rgba(232,93,38,.35);background:#FFF8F5;color:var(--N);font-weight:700;cursor:pointer;white-space:nowrap">🔄</button></div></div>
         <div class="fg"><label class="lbl">Fecha de Pedido</label><input type="date" id="fechaPedido" required/></div>
         <div class="fg"><label class="lbl">Entrega Requerida</label><input type="date" id="fechaEntrega" required/></div>
-        <div class="fg"><label class="lbl">Solicitado por</label><input type="text" id="solicitante" placeholder="Nombre" required oninput="this.value=toTitleCase(this.value)"/></div>
+        <div class="fg"><label class="lbl">Solicitado por</label><input type="text" id="solicitante" placeholder="Nombre y Apellido" required oninput="this.value=toTitleCase(this.value)"/></div>
         <div class="fg"><label class="lbl">Email del solicitante</label><input type="email" id="emailSolicitante" placeholder="nombre@empresa.com.ar" required list="emailSugeridos"/>
         <datalist id="emailSugeridos">
           <option value="elio@nielsenexpediciones.com.ar">
@@ -575,6 +575,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
             <option value="SUPERVISIÓN LA BREA">SUPERVISIÓN LA BREA</option>
             <option value="COCINA LA BREA">COCINA LA BREA</option>
             <option value="HOTELERÍA LA BREA">HOTELERÍA LA BREA</option>
+            <option value="COCINA BASE SJ">COCINA BASE SJ</option>
           </select>
         </div>
       </div>
@@ -1264,7 +1265,7 @@ const OC_KEY = 'nielsen_oc_counter';
 const OC_PREFIX = 'PA-' + new Date().getFullYear() + '-';
 
 // Actualiza el N° PA y muestra un diagnóstico de qué encuentra (nube vs local).
-async function actualizarNumPA(){
+async function actualizarNumPA(silent){
   const np = document.getElementById('nroPedido');
   if(np) np.value = '⏳ ...';
   const anio = new Date().getFullYear();
@@ -1281,7 +1282,7 @@ async function actualizarNumPA(){
   const maxN=Math.max(sbMax,locMax);
   const next=prefix+String(maxN+1).padStart(4,'0');
   if(np) np.value=next;
-  toast('Próximo '+next+' — Nube: '+sbCount+' PA (máx '+(sbMax||0)+(sbErr?', ⚠'+sbErr:'')+') · Local: '+locCount+' (máx '+(locMax||0)+')', sbErr?'err':'ok');
+  if(!silent) toast('Próximo '+next+' — Nube: '+sbCount+' PA (máx '+(sbMax||0)+(sbErr?', ⚠'+sbErr:'')+') · Local: '+locCount+' (máx '+(locMax||0)+')', sbErr?'err':'ok');
 }
 
 async function getNextOC(){
@@ -1349,7 +1350,7 @@ async function resetearNumero(){
   const hoy = new Date();
   document.getElementById('fechaBadge').textContent = hoy.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'long',year:'numeric'});
   document.getElementById('fechaPedido').value = hoy.toISOString().split('T')[0];
-  getNextOC().then(function(num){ document.getElementById('nroPedido').value = num; });
+  actualizarNumPA(true);
   renderProductos();
 })();
 
@@ -2371,10 +2372,39 @@ let histDetActual = null; // índice del pedido en detalle
 
 function validarDatos(){
   const d = getDatos();
-  if(!d.solicitante || d.solicitante==='—'){ toast('⚠️ Completá el campo Solicitado por.','err'); document.getElementById('solicitante').focus(); return false; }
-  if(!d.fechaEntrega){ toast('⚠️ Indicá la fecha de Entrega Requerida.','err'); document.getElementById('fechaEntrega').focus(); return false; }
+  // Solicitado por: Nombre y Apellido (al menos 2 palabras de 2+ letras)
+  const sol = (d.solicitante||'').trim();
+  const palabras = sol.split(/\s+/).filter(w => w.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g,'').length >= 2);
+  if(!sol || sol==='—' || palabras.length < 2){
+    toast('⚠️ Ingresá Nombre y Apellido en "Solicitado por".','err');
+    document.getElementById('solicitante').focus(); return false;
+  }
+  // Email válido
+  const email = (document.getElementById('emailSolicitante').value||'').trim();
+  if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    toast('⚠️ Ingresá un email válido del solicitante.','err');
+    document.getElementById('emailSolicitante').focus(); return false;
+  }
+  // Fecha de pedido
+  if(!document.getElementById('fechaPedido').value){
+    toast('⚠️ Indicá la Fecha de Pedido.','err');
+    document.getElementById('fechaPedido').focus(); return false;
+  }
+  // Entrega requerida
+  if(!d.fechaEntrega){
+    toast('⚠️ Indicá la fecha de Entrega Requerida.','err');
+    document.getElementById('fechaEntrega').focus(); return false;
+  }
+  // Campamento (+ especificar si es OTRO)
   const cc = document.getElementById('centroCostoSel');
-  if(!cc || !cc.value){ toast('⚠️ Seleccioná el Campamento / Área.','err'); cc.focus(); return false; }
+  if(!cc || !cc.value){ toast('⚠️ Seleccioná el Campamento.','err'); cc.focus(); return false; }
+  if(cc.value==='OTRO'){
+    const otro = (document.getElementById('centroCosto').value||'').trim();
+    if(!otro){ toast('⚠️ Especificá el Campamento.','err'); document.getElementById('centroCosto').focus(); return false; }
+  }
+  // Área
+  const area = document.getElementById('areaSolicitante');
+  if(!area || !area.value){ toast('⚠️ Seleccioná el Área.','err'); area.focus(); return false; }
   return true;
 }
 
