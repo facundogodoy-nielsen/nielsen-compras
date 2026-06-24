@@ -1200,10 +1200,15 @@ async function guardarEnSupabase(showMsg) {
     // Usar los valores del ANÁLISIS (con IVA) para que el Ahorro Generado en CC coincida
     var _tot = analysisResult.totals || [];
     var _maxIVA = _tot.reduce(function(m,t){ return (t.totalConIVA||0) > m ? (t.totalConIVA||0) : m; }, 0);
+    var _full = !!analysisResult.allFull;
+    var _precioMin = _full ? (analysisResult.ganador.totalConIVA || 0)
+                           : (analysisResult.optimoConIVA || analysisResult.ganador.totalConIVA || 0);
+    var _precioMax = _full ? (_maxIVA || (analysisResult.segundo ? (analysisResult.segundo.totalConIVA||0) : _precioMin))
+                           : (_precioMin + (analysisResult.ahorro||0));
     savings = {
-      elegido:   analysisResult.ganador.name,
-      precioMin: analysisResult.ganador.totalConIVA || 0,
-      precioMax: _maxIVA || (analysisResult.segundo ? (analysisResult.segundo.totalConIVA||0) : (analysisResult.ganador.totalConIVA||0)),
+      elegido:   analysisResult.elegidoLabel || analysisResult.ganador.name,
+      precioMin: _precioMin,
+      precioMax: _precioMax,
       ahorro:    analysisResult.ahorro || 0
     };
   } else {
@@ -1558,6 +1563,7 @@ var items = [];
 var providers = [];
 var pdfData = [];
 var analysisResult = null;
+var _skipAutoSave = false;
 var itemCounter = 0;
 var provCounter = 0;
 var charts = {};
@@ -2624,41 +2630,74 @@ function generarAnalisisAuto(){
   var ganador = totals[0];
   var segundo = totals.length>1 ? totals[1] : null;
   var ahorroTotalDiff = segundo ? (segundo.totalConIVA - ganador.totalConIVA) : 0;
+  var totalItems = items.length;
+  var allFull = totals.length>0 && totals.every(function(t){ return t.cobertura === totalItems; });
 
-  // ── Comparación JUSTA: solo ítems cotizados por ≥2 proveedores (mismos artículos) ──
-  var comparables = 0, ahorroSin = 0, spreadSin = 0;
+  // ── Comparación por ítem: ganador de cada artículo entre quienes lo cotizaron ──
+  var comparables = 0, ahorroSin = 0, spreadSin = 0, optimoSin = 0;
+  var itemWinners = [];
   items.forEach(function(item, i){
     var qty = parseFloat(item.qty)||1;
-    var quotes = providers.map(function(p){ return (p.prices && p.prices[i]) ? parseFloat(p.prices[i])||0 : 0; })
-                          .filter(function(x){ return x>0; });
-    if (quotes.length >= 2){
-      quotes.sort(function(a,b){ return a-b; });
+    var cands = totals.map(function(t){
+      var pr = (t.prov.prices && t.prov.prices[i]) ? parseFloat(t.prov.prices[i])||0 : 0;
+      return pr>0 ? { idx:t.idx, name:t.name, price:pr } : null;
+    }).filter(Boolean);
+    if (!cands.length){ itemWinners.push({ i:i, desc:item.desc||('Ítem '+(i+1)), qty:qty, best:null, nCand:0 }); return; }
+    cands.sort(function(a,b){ return a.price - b.price; });
+    optimoSin += cands[0].price * qty;
+    if (cands.length >= 2){
       comparables++;
-      ahorroSin += (quotes[1] - quotes[0]) * qty;                 // vs 2° mejor precio (por ítem)
-      spreadSin += (quotes[quotes.length-1] - quotes[0]) * qty;   // peor vs mejor (por ítem)
+      ahorroSin += (cands[1].price - cands[0].price) * qty;               // vs 2° mejor (por ítem)
+      spreadSin += (cands[cands.length-1].price - cands[0].price) * qty;  // peor vs mejor (por ítem)
     }
+    itemWinners.push({ i:i, desc:item.desc||('Ítem '+(i+1)), qty:qty, best:cands[0], nCand:cands.length });
   });
   var ahorroComparable = ahorroSin * (1 + IVA_RATE);
   var spreadComparable = spreadSin * (1 + IVA_RATE);
-  // El ahorro OFICIAL (el que se guarda en el Centro de Control) es el de ítems iguales:
-  var ahorro = ahorroComparable;
+  var optimoConIVA     = optimoSin * (1 + IVA_RATE);
+
+  // Grupos de adjudicación recomendada (cada ítem a su proveedor más económico)
+  var _grp = {};
+  itemWinners.forEach(function(w){
+    if (!w.best) return;
+    if (!_grp[w.best.idx]) _grp[w.best.idx] = { idx:w.best.idx, name:w.best.name, items:[], subtotalSin:0 };
+    _grp[w.best.idx].items.push({ i:w.i, desc:w.desc, qty:w.qty, price:w.best.price });
+    _grp[w.best.idx].subtotalSin += w.best.price * w.qty;
+  });
+  var gruposReco = Object.keys(_grp).map(function(k){ var g=_grp[k]; g.subtotalConIVA = g.subtotalSin*(1+IVA_RATE); return g; })
+                    .sort(function(a,b){ return b.items.length - a.items.length; });
+
+  // Estado de recomendación por proveedor
+  var recoStatus = {};
+  totals.forEach(function(t){ recoStatus[t.idx] = ''; });
+  if (allFull){ recoStatus[ganador.idx] = 'full'; }
+  else { gruposReco.forEach(function(g){ recoStatus[g.idx] = 'partial'; }); }
+
+  // Modo COMPLETO (todos cotizaron todo): ahorro = diferencia total 1° vs 2°.
+  // Modo PARCIAL: ahorro = suma de ahorros sobre ítems comparables.
+  var ahorro   = (allFull && segundo) ? ahorroTotalDiff : ahorroComparable;
   var ahorroPct = segundo && segundo.totalConIVA>0 ? (ahorroTotalDiff/segundo.totalConIVA*100) : 0;
+  var elegidoLabel = allFull ? ganador.name
+      : ('Parcial: ' + gruposReco.map(function(g){ return g.name+' ('+g.items.length+' ít.)'; }).join(', '));
 
   analysisResult = { totals:totals, ganador:ganador, segundo:segundo, ahorro:ahorro, ahorroPct:ahorroPct,
     ahorroTotalDiff:ahorroTotalDiff, ahorroComparable:ahorroComparable, spreadComparable:spreadComparable,
-    comparables:comparables, totalItems:items.length };
+    comparables:comparables, totalItems:totalItems, allFull:allFull, mode:(allFull?'full':'partial'),
+    itemWinners:itemWinners, gruposReco:gruposReco, recoStatus:recoStatus, elegidoLabel:elegidoLabel,
+    optimoConIVA:optimoConIVA };
 
   document.getElementById('aaRendered').style.display = 'block';
-  _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct);
-  _renderAACobertura(totals, comparables, ahorroComparable, spreadComparable, items.length, ahorroTotalDiff);
+  _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct, allFull);
+  _renderAACobertura(totals, comparables, ahorroComparable, spreadComparable, totalItems, ahorroTotalDiff, allFull);
   _renderAAItemTables(totals);
-  _renderAATotals(totals, ganador);
+  _renderAATotals(totals, ganador, recoStatus, allFull, gruposReco);
   _renderAACond(totals);
-  _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct);
-  _renderAAMemo(totals, ganador, segundo, ahorro, ahorroPct);
+  _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct, allFull, gruposReco, optimoConIVA);
+  _renderAAMemo(totals, ganador, segundo, ahorro, ahorroPct, allFull, gruposReco, optimoConIVA);
   showToast('✓ Análisis generado','ok');
   // Guardado SISTEMÁTICO en Supabase → aparece en Centro de Control (Historial de CCP + Ahorro Generado)
-  guardarAnalisisEnCC(true);
+  // ...salvo cuando se está CONSULTANDO un CCP (no se vuelve a guardar para no pisar nada).
+  if (!_skipAutoSave) { guardarAnalisisEnCC(true); } else { _skipAutoSave = false; }
   var _aaEl=document.getElementById('aaRendered'); if(_aaEl&&_aaEl.scrollIntoView)_aaEl.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
@@ -2677,7 +2716,7 @@ async function guardarAnalisisEnCC(silent) {
   }
 }
 
-function _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct){
+function _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct, allFull){
   var html = '';
   totals.slice(0,3).forEach(function(t){
     html += '<div class="aa-metric"><div class="lbl">'+escHtml(t.name)
@@ -2685,17 +2724,16 @@ function _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct){
       + '<div class="val">'+_fmtMoney(t.totalConIVA)+'</div></div>';
   });
   if (segundo){
-    html += '<div class="aa-metric"><div class="lbl">Ahorro sobre ítems iguales</div>'
+    var lbl = allFull ? 'Ahorro (diferencia 1° vs 2°)' : 'Ahorro sobre ítems iguales';
+    html += '<div class="aa-metric"><div class="lbl">'+lbl+'</div>'
       + '<div class="val green">'+_fmtMoney(ahorro)+'</div></div>';
   }
   document.getElementById('aaMetrics').innerHTML = html;
 }
 
 // Cuadro de cobertura: artículos cotizados sobre solicitados + ahorro real sobre ítems iguales.
-function _renderAACobertura(totals, comparables, ahorroComparable, spreadComparable, totalItems, ahorroTotalDiff){
+function _renderAACobertura(totals, comparables, ahorroComparable, spreadComparable, totalItems, ahorroTotalDiff, allFull){
   var el = document.getElementById('aaCobertura'); if(!el) return;
-  var covs = totals.map(function(t){ return t.cobertura; });
-  var distintas = covs.some(function(c){ return c !== covs[0]; });
   var rows = totals.map(function(t){
     var pct = totalItems ? Math.round(t.cobertura/totalItems*100) : 0;
     return '<tr>'
@@ -2708,15 +2746,21 @@ function _renderAACobertura(totals, comparables, ahorroComparable, spreadCompara
   var html = '<div style="border:1px solid rgba(232,97,26,.35);border-radius:12px;padding:14px 16px;background:rgba(232,97,26,.06)">'
     + '<div style="font-weight:800;color:#E8611A;font-size:13px;margin-bottom:8px">📋 Cobertura de cotización — artículos cotizados sobre solicitados</div>'
     + '<table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>'+rows+'</tbody></table>';
-  if (distintas){
+  if (!allFull){
     html += '<div style="margin-top:10px;padding:8px 10px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:8px;color:#f87171;font-size:12px;line-height:1.5">'
-      + '⚠️ Los proveedores cotizaron <b>distinta cantidad de artículos</b>. Comparar los totales puede ser engañoso: un total más bajo puede deberse a que se cotizaron menos ítems. Por eso el ahorro se calcula <b>solo sobre los artículos iguales</b> (cotizados por 2 o más proveedores).</div>';
+      + '⚠️ Los proveedores cotizaron <b>distinta cantidad de artículos</b>. Comparar los totales sería engañoso, así que el ahorro se calcula <b>solo sobre los artículos iguales</b> (mismo ítem y cantidad, cotizados por 2+ proveedores) y la recomendación es <b>por parcial</b>.</div>';
+  } else {
+    html += '<div style="margin-top:10px;padding:8px 10px;background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.35);border-radius:8px;color:#4ade80;font-size:12px;line-height:1.5">'
+      + '✓ Todos los proveedores cotizaron los mismos artículos y cantidades. La comparación de totales es válida; el ahorro surge de la diferencia total 1° vs 2°.</div>';
   }
+  var ahMain = allFull ? ahorroTotalDiff : ahorroComparable;
+  var ahLbl  = allFull ? 'Ahorro (diferencia total 1° vs 2°)' : 'Ahorro generado (ítems iguales)';
+  var ahSub  = allFull ? 'todos cotizaron lo mismo' : 'suma de ahorros por artículo (vs 2° mejor)';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px">'
     + '<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:10px"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Ítems comparables</div><div style="font-size:18px;font-weight:800;color:#eee;margin-top:3px">'+comparables+' / '+totalItems+'</div></div>'
-    + '<div style="background:rgba(34,197,94,.10);border-radius:8px;padding:10px"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Ahorro generado (ítems iguales)</div><div style="font-size:18px;font-weight:800;color:#4ade80;margin-top:3px">'+_fmtMoney(ahorroComparable)+'</div><div style="font-size:10px;color:#888;margin-top:2px">suma de ahorros por artículo (vs 2° mejor)</div></div>'
+    + '<div style="background:rgba(34,197,94,.10);border-radius:8px;padding:10px"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">'+ahLbl+'</div><div style="font-size:18px;font-weight:800;color:#4ade80;margin-top:3px">'+_fmtMoney(ahMain)+'</div><div style="font-size:10px;color:#888;margin-top:2px">'+ahSub+'</div></div>'
     + '<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:10px"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Diferencia máx. (peor vs mejor)</div><div style="font-size:18px;font-weight:800;color:#eee;margin-top:3px">'+_fmtMoney(spreadComparable)+'</div><div style="font-size:10px;color:#888;margin-top:2px">sobre artículos iguales</div></div>'
-    + '<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:10px"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Dif. total 1° vs 2°*</div><div style="font-size:18px;font-weight:800;color:#bbb;margin-top:3px">'+_fmtMoney(ahorroTotalDiff)+'</div><div style="font-size:10px;color:#888;margin-top:2px">*referencia, no comparable</div></div>'
+    + (allFull ? '' : '<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:10px"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Dif. total 1° vs 2°*</div><div style="font-size:18px;font-weight:800;color:#bbb;margin-top:3px">'+_fmtMoney(ahorroTotalDiff)+'</div><div style="font-size:10px;color:#888;margin-top:2px">*referencia, no comparable</div></div>')
     + '</div></div>';
   el.innerHTML = html;
 }
@@ -2760,20 +2804,42 @@ function _renderAAItemTables(totals){
   document.getElementById('aaItemTables').innerHTML = html || '<p style="color:var(--orange-dim);font-size:13px">Sin precios cargados por ítem.</p>';
 }
 
-function _renderAATotals(totals, ganador){
+function _renderAATotals(totals, ganador, recoStatus, allFull, gruposReco){
+  recoStatus = recoStatus || {};
+  var grpByIdx = {};
+  (gruposReco||[]).forEach(function(g){ grpByIdx[g.idx] = g; });
   var body = totals.map(function(t){
-    var esGanador = t.idx === ganador.idx;
-    return '<tr'+(esGanador?' style="background:rgba(30,132,73,.12)"':'')+'>'
-      + '<td><strong>'+escHtml(t.name)+'</strong>'+(esGanador?' <span class="aa-badge aa-badge-green">Recomendado</span>':'')+'</td>'
+    var st = recoStatus[t.idx] || '';
+    var badge = '', rowStyle = '';
+    if (st === 'full'){
+      badge = ' <span class="aa-badge aa-badge-green">Recomendado</span>';
+      rowStyle = ' style="background:rgba(30,132,73,.12)"';
+    } else if (st === 'partial'){
+      var g = grpByIdx[t.idx];
+      var n = g ? g.items.length : 0;
+      badge = ' <span class="aa-badge aa-badge-amber">Parcial recomendado'+(n?' · '+n+' ít.':'')+'</span>';
+      rowStyle = ' style="background:rgba(232,97,26,.10)"';
+    }
+    var subtxt = '';
+    if (st === 'partial' && grpByIdx[t.idx]){
+      subtxt = '<div style="font-size:11px;color:var(--orange-dim,#c98)">Mejor en: '
+        + grpByIdx[t.idx].items.slice(0,6).map(function(it){ return escHtml(it.desc); }).join(', ')
+        + (grpByIdx[t.idx].items.length>6?'…':'')
+        + ' — subtotal '+_fmtMoney(grpByIdx[t.idx].subtotalConIVA)+' c/IVA</div>';
+    }
+    return '<tr'+rowStyle+'>'
+      + '<td><strong>'+escHtml(t.name)+'</strong>'+badge+subtxt+'</td>'
       + '<td>'+t.cobertura+'/'+t.totalItems+' ítems</td>'
       + '<td>'+(t.flete>0?_fmtMoney(t.flete):'—')+'</td>'
       + '<td>'+_fmtMoney(t.totalSinIVA)+'</td>'
       + '<td><strong>'+_fmtMoney(t.totalConIVA)+'</strong></td></tr>';
   }).join('');
+  var nota = allFull ? ''
+    : '<p style="font-size:12px;color:var(--orange-dim,#c98);margin:8px 2px 0">No se recomienda por total porque los proveedores cotizaron parciales distintos. Cada «Parcial recomendado» es el más económico para los artículos que cotizó, comparado contra ese mismo parcial de los demás.</p>';
   document.getElementById('aaTotalsTable').innerHTML =
     '<div class="aa-table-card"><table class="aa-table"><thead><tr>'
     + '<th>Proveedor</th><th>Cobertura</th><th>Flete</th><th>Total s/IVA</th><th>Total c/IVA</th>'
-    + '</tr></thead><tbody>'+body+'</tbody></table></div>';
+    + '</tr></thead><tbody>'+body+'</tbody></table></div>'+nota;
 }
 
 function _renderAACond(totals){
@@ -2791,8 +2857,31 @@ function _renderAACond(totals){
     + '</tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 
-function _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct){
-  // Coverage alert: did the winner quote all items?
+function _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct, allFull, gruposReco, optimoConIVA){
+  var html;
+  if (!allFull && gruposReco && gruposReco.length){
+    // ── MODO PARCIAL: recomendar proveedor por cada parcial comparado ──
+    var lis = gruposReco.map(function(g){
+      return '<li style="margin-bottom:7px"><strong>'+escHtml(g.name)+'</strong> — '+g.items.length+' artículo(s), subtotal '+_fmtMoney(g.subtotalConIVA)+' c/IVA'
+        + '<br><span style="font-size:12px;color:#666">'+g.items.map(function(it){ return escHtml(it.desc); }).join(', ')+'</span></li>';
+    }).join('');
+    html = '<div class="aa-conclusion">'
+      + '<div class="t">Recomendación: adjudicación por parciales</div>'
+      + '<p>Los proveedores cotizaron distintas partes del pedido, por lo que no corresponde adjudicar por el total. Se recomienda adjudicar cada artículo al proveedor más económico entre quienes lo cotizaron:</p>'
+      + '<ul style="margin:8px 0 0 18px">'+lis+'</ul>'
+      + '<p style="margin-top:10px">Adjudicando cada parcial al proveedor recomendado, el costo óptimo del conjunto es <strong>'+_fmtMoney(optimoConIVA)+'</strong> c/IVA, con un ahorro sobre los artículos comparables de <strong>'+_fmtMoney(ahorro)+'</strong>.</p>'
+      + '</div>';
+    var falta = [];
+    gruposReco.forEach(function(g){ var p=(totals.filter(function(t){return t.idx===g.idx;})[0]||{}).prov||{}; if(!p.paymentTerms) falta.push(g.name); });
+    if (falta.length){
+      html += '<div class="aa-alert"><div class="t">⚠ Alertas a revisar antes de adjudicar</div><p>'
+        + 'Confirmar condición de pago con: '+escHtml(falta.join(', '))+'.</p></div>';
+    }
+    document.getElementById('aaConclusion').innerHTML = html;
+    return;
+  }
+
+  // ── MODO COMPLETO: recomendación por total (1° vs 2°) ──
   var alertas = [];
   if (ganador.cobertura < ganador.totalItems){
     alertas.push('El proveedor recomendado ('+ganador.name+') cotizó '+ganador.cobertura+' de '+ganador.totalItems+' ítems solicitados. Verificar la provisión de los ítems faltantes antes de adjudicar.');
@@ -2800,7 +2889,6 @@ function _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct){
   if (!ganador.prov.paymentTerms){
     alertas.push(ganador.name+' no especificó condición de pago. Se recomienda confirmar plazos antes de emitir la orden de compra.');
   }
-  // Items where winner is NOT cheapest
   var itemsCaros = [];
   items.forEach(function(item,i){
     var gPrice = (ganador.prov.prices && ganador.prov.prices[i]) ? parseFloat(ganador.prov.prices[i])||0 : 0;
@@ -2815,24 +2903,19 @@ function _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct){
       itemsCaros.push((item.desc||('Ítem '+(i+1)))+': '+menorProv+' es '+pct.toFixed(1)+'% más económico');
     }
   });
-
   var razones = '';
   if (segundo){
     razones = ganador.name+' presenta el presupuesto total más bajo ('+_fmtMoney(ganador.totalConIVA)+' c/IVA frente a '+_fmtMoney(segundo.totalConIVA)+' de '+segundo.name+'), representando un ahorro de '+_fmtMoney(ahorro)+' ('+ahorroPct.toFixed(1)+'%).';
   } else {
     razones = ganador.name+' es el único proveedor con cotización completa, por un total de '+_fmtMoney(ganador.totalConIVA)+' c/IVA.';
   }
-  if (ganador.prov.paymentTerms){
-    razones += ' Ofrece condición de pago '+ganador.prov.paymentTerms+'.';
-  }
+  if (ganador.prov.paymentTerms){ razones += ' Ofrece condición de pago '+ganador.prov.paymentTerms+'.'; }
   if (itemsCaros.length){
     razones += ' No obstante, en algunos ítems hay alternativas más económicas: '+itemsCaros.join('; ')+'. Esta diferencia queda compensada por el menor costo total del conjunto.';
   }
-
-  var html = '<div class="aa-conclusion">'
+  html = '<div class="aa-conclusion">'
     + '<div class="t">Recomendación: adjudicar a '+escHtml(ganador.name)+'</div>'
     + '<p>'+escHtml(razones)+'</p></div>';
-
   if (alertas.length){
     html += '<div class="aa-alert"><div class="t">⚠ Alertas a revisar antes de adjudicar</div><p>'
       + alertas.map(escHtml).join('<br>') + '</p></div>';
@@ -2848,33 +2931,52 @@ function _getSolicitudData(){
   };
 }
 
-function _renderAAMemo(totals, ganador, segundo, ahorro, ahorroPct){
+function _renderAAMemo(totals, ganador, segundo, ahorro, ahorroPct, allFull, gruposReco, optimoConIVA){
   var sol = _getSolicitudData();
   var hoy = new Date();
   var meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   var fechaTxt = (hoy.getDate())+' de '+meses[hoy.getMonth()]+' de '+hoy.getFullYear();
+  gruposReco = gruposReco || [];
+  var recoIdx = {}; gruposReco.forEach(function(g){ recoIdx[g.idx]=g; });
 
-  // Solicitud table rows
   var solRows = items.map(function(item,i){
     return '<tr><td>'+(i+1)+'</td><td>'+escHtml(item.desc||'—')+(item.spec?' — '+escHtml(item.spec):'')+'</td><td>'+(item.qty||'')+' '+(item.unit||'')+'</td></tr>';
   }).join('');
 
-  // Comparative table rows
   var compRows = totals.map(function(t){
-    var esG = t.idx===ganador.idx;
-    return '<tr'+(esG?' class="hl"':'')+'><td>'+escHtml(t.name)+(esG?' <span class="badge badge-green" style="background:#EAF3DE;color:#3B6D11;font-size:11px;padding:2px 7px;border-radius:6px;font-weight:600">Recomendado</span>':'')+'</td>'
+    var badge = '';
+    if (allFull && t.idx===ganador.idx){
+      badge = ' <span class="badge badge-green" style="background:#EAF3DE;color:#3B6D11;font-size:11px;padding:2px 7px;border-radius:6px;font-weight:600">Recomendado</span>';
+    } else if (!allFull && recoIdx[t.idx]){
+      badge = ' <span class="badge" style="background:#FCEBDD;color:#B4500F;font-size:11px;padding:2px 7px;border-radius:6px;font-weight:600">Parcial recomendado · '+recoIdx[t.idx].items.length+' ít.</span>';
+    }
+    var esG = allFull && t.idx===ganador.idx;
+    return '<tr'+(esG?' class="hl"':'')+'><td>'+escHtml(t.name)+badge+'</td>'
       + '<td>'+t.cobertura+'/'+t.totalItems+'</td>'
       + '<td>'+(t.prov.paymentTerms?escHtml(t.prov.paymentTerms):'No esp.')+'</td>'
       + '<td><strong>'+_fmtMoney(t.totalConIVA)+'</strong></td></tr>';
   }).join('');
 
-  var ahorroTxt = segundo
-    ? ganador.name+' presenta la oferta más competitiva en precio total, con un ahorro de '+_fmtMoney(ahorro)+' ('+ahorroPct.toFixed(1)+'%) respecto a '+segundo.name+'.'
-    : ganador.name+' es el único proveedor con cotización completa para los ítems solicitados.';
-  if (ganador.prov.paymentTerms) ahorroTxt += ' Cuenta con condición de pago '+ganador.prov.paymentTerms+', lo que favorece el control administrativo de la operación.';
+  var ahorroTxt, recHtml, solicitudTxt;
+  if (!allFull && gruposReco.length){
+    ahorroTxt = 'Los proveedores cotizaron parciales distintos del pedido, por lo que la comparación de totales no es representativa. El análisis se realiza por artículo, adjudicando cada uno al proveedor más económico entre quienes lo cotizaron. El costo óptimo del conjunto resulta de '+_fmtMoney(optimoConIVA)+' c/IVA, con un ahorro de '+_fmtMoney(ahorro)+' sobre los artículos comparables.';
+    var liReco = gruposReco.map(function(g){
+      return '<li><strong>'+escHtml(g.name)+'</strong> — '+g.items.length+' artículo(s) · subtotal '+_fmtMoney(g.subtotalConIVA)+' c/IVA<br><span style="font-size:11px;color:#666">'+g.items.map(function(it){return escHtml(it.desc);}).join(', ')+'</span></li>';
+    }).join('');
+    recHtml = '<p><strong>Recomendación de Compras:</strong> Adjudicar por parciales, cada artículo al proveedor más económico:</p><ul style="margin:6px 0 0 18px">'+liReco+'</ul>'
+      + '<p style="margin-top:6px">Costo óptimo total: <strong>'+_fmtMoney(optimoConIVA)+'</strong> (IVA incluido).</p>';
+    solicitudTxt = 'Se solicita a la Dirección la aprobación de la presente compra y la autorización para emitir las órdenes de compra correspondientes a favor de los proveedores recomendados para cada parcial.';
+  } else {
+    ahorroTxt = segundo
+      ? ganador.name+' presenta la oferta más competitiva en precio total, con un ahorro de '+_fmtMoney(ahorro)+' ('+ahorroPct.toFixed(1)+'%) respecto a '+segundo.name+'.'
+      : ganador.name+' es el único proveedor con cotización completa para los ítems solicitados.';
+    if (ganador.prov.paymentTerms) ahorroTxt += ' Cuenta con condición de pago '+ganador.prov.paymentTerms+', lo que favorece el control administrativo de la operación.';
+    recHtml = '<p><strong>Recomendación de Compras:</strong> Adjudicar la compra a '+escHtml(ganador.name)+' por un total de '+_fmtMoney(ganador.totalConIVA)+' (IVA incluido)'+(ganador.prov.paymentTerms?', condición de pago '+escHtml(ganador.prov.paymentTerms):'')+'.'+(segundo?' Ahorro estimado respecto a la alternativa: '+_fmtMoney(ahorro)+'.':'')+'</p>';
+    solicitudTxt = 'Se solicita a la Dirección la aprobación de la presente compra y la autorización para emitir la orden de compra correspondiente a favor de '+escHtml(ganador.name)+'.';
+  }
 
   var alertaMemo = '';
-  if (ganador.cobertura < ganador.totalItems){
+  if (allFull && ganador.cobertura < ganador.totalItems){
     alertaMemo = '<div class="alert"><p><strong>Alerta:</strong> '+escHtml(ganador.name)+' cotizó '+ganador.cobertura+' de '+ganador.totalItems+' ítems. Verificar la provisión de los ítems faltantes antes de cerrar la operación.</p></div>';
   }
 
@@ -2896,8 +2998,8 @@ function _renderAAMemo(totals, ganador, segundo, ahorro, ahorroPct){
     + '<p class="bt" style="font-size:11px;color:#666;margin-top:6px">IVA calculado al 21% por Compras. Montos sujetos a confirmación con presupuesto formal.</p></div>'
     + '<div class="sec"><div class="sec-t">Análisis y consideraciones</div><p class="bt">'+escHtml(ahorroTxt)+'</p></div>'
     + alertaMemo
-    + '<div class="rec"><p><strong>Recomendación de Compras:</strong> Adjudicar la compra a '+escHtml(ganador.name)+' por un total de '+_fmtMoney(ganador.totalConIVA)+' (IVA incluido)'+(ganador.prov.paymentTerms?', condición de pago '+escHtml(ganador.prov.paymentTerms):'')+'.'+(segundo?' Ahorro estimado respecto a la alternativa: '+_fmtMoney(ahorro)+'.':'')+'</p></div>'
-    + '<div class="sec"><div class="sec-t">Solicitud</div><p class="bt">Se solicita a la Dirección la aprobación de la presente compra y la autorización para emitir la orden de compra correspondiente a favor de '+escHtml(ganador.name)+'.</p></div>'
+    + '<div class="rec">'+recHtml+'</div>'
+    + '<div class="sec"><div class="sec-t">Solicitud</div><p class="bt">'+escHtml(solicitudTxt)+'</p></div>'
     + '<div class="ft"><strong>'+escHtml(sol.solicitante||'Responsable de Compras y Abastecimiento')+'</strong>Responsable de Compras y Abastecimiento<br>Nielsen Logística y Expediciones S.A.</div>'
     + '</div>';
   document.getElementById('aaMemo').innerHTML = memo;
@@ -3055,13 +3157,14 @@ async function cargarComparativaDesdeRow(c){
   _currentCompNum = c.num_comp || null;
   var set=function(id,v){ var el=document.getElementById(id); if(el) el.value=(v==null?'':v); };
   set('asunto', c.asunto); set('fechaDoc', c.fecha); set('solicitante', c.solicitante);
+  set('area', c.area); set('scAsociada', c.num_sc);
   set('divisa', (c.divisa||'ARS')); set('observaciones', c.observaciones);
   set('nroExp', c.num_sc || c.num_comp || '');
   try { renderItems(); } catch(e){}
   try { renderProviders(); } catch(e){}
   switchTab('analisis');
-  if (items.length && providers.length) { try { await generarAnalisisAuto(); } catch(e){} }
-  showToast('✓ CCP ' + (c.num_comp||'') + ' cargado', 'ok');
+  if (items.length && providers.length) { _skipAutoSave = true; try { await generarAnalisisAuto(); } catch(e){} }
+  showToast('✓ CCP ' + (c.num_comp||'') + ' cargado (consulta, sin modificar)', 'ok');
 }
 
 async function cargarComparativaPorId(id){
