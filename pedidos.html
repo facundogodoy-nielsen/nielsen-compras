@@ -546,7 +546,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--N);box-shadow:0 0 0 3
     <div class="ph"><div class="pt">Datos del Pedido</div></div>
     <div class="pb">
       <div class="fgrid">
-        <div class="fg"><label class="lbl">N° Pedido Abastecimiento</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="nroPedido" readonly style="background:#FFF8F5;border-color:rgba(232,93,38,.35);color:var(--N);font-weight:700;font-size:.9rem;cursor:default;flex:1"/><button type="button" onclick="actualizarNumPA()" title="Actualizar el N° tomando el último PA del Historial" style="padding:8px 12px;border-radius:8px;border:1.5px solid rgba(232,93,38,.35);background:#FFF8F5;color:var(--N);font-weight:700;cursor:pointer;white-space:nowrap">🔄</button></div></div>
+        <div class="fg"><label class="lbl">N° Pedido Abastecimiento</label><input type="text" id="nroPedido" readonly style="background:#FFF8F5;border-color:rgba(232,93,38,.35);color:var(--N);font-weight:700;font-size:.9rem;cursor:default;width:100%"/></div>
         <div class="fg"><label class="lbl">Fecha de Pedido</label><input type="date" id="fechaPedido" required/></div>
         <div class="fg"><label class="lbl">Entrega Requerida</label><input type="date" id="fechaEntrega" required/></div>
         <div class="fg"><label class="lbl">Solicitado por</label><input type="text" id="solicitante" placeholder="Nombre y Apellido" required oninput="this.value=toTitleCase(this.value)"/></div>
@@ -1353,6 +1353,11 @@ async function resetearNumero(){
   actualizarNumPA(true);
   renderProductos();
 })();
+
+// Mantener el N° PA siempre actualizado: al cargar, al volver de bfcache y al re-enfocar la pestaña.
+window.addEventListener('pageshow', function(){ try{ actualizarNumPA(true); }catch(e){} });
+document.addEventListener('visibilitychange', function(){ if(!document.hidden){ try{ actualizarNumPA(true); }catch(e){} } });
+window.addEventListener('focus', function(){ try{ actualizarNumPA(true); }catch(e){} });
 
 // ═══════════════════════════════════════
 // SWITCH CATEGORÍA

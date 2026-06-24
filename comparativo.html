@@ -712,7 +712,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
     <!-- Resumen ejecutivo (métricas) -->
     <div class="card" style="margin-bottom:14px">
       <div class="card-header"><h3>📊 Resumen ejecutivo</h3></div>
-      <div class="card-body"><div id="aaMetrics" class="aa-metric-grid"></div></div>
+      <div class="card-body"><div id="aaMetrics" class="aa-metric-grid"></div><div id="aaCobertura" style="margin-top:16px"></div></div>
     </div>
 
     <!-- Comparativa ítem por ítem -->
@@ -2623,13 +2623,34 @@ function generarAnalisisAuto(){
   totals.sort(function(a,b){ return a.totalConIVA - b.totalConIVA; });
   var ganador = totals[0];
   var segundo = totals.length>1 ? totals[1] : null;
-  var ahorro = segundo ? (segundo.totalConIVA - ganador.totalConIVA) : 0;
-  var ahorroPct = segundo && segundo.totalConIVA>0 ? (ahorro/segundo.totalConIVA*100) : 0;
+  var ahorroTotalDiff = segundo ? (segundo.totalConIVA - ganador.totalConIVA) : 0;
 
-  analysisResult = { totals:totals, ganador:ganador, segundo:segundo, ahorro:ahorro, ahorroPct:ahorroPct };
+  // ── Comparación JUSTA: solo ítems cotizados por ≥2 proveedores (mismos artículos) ──
+  var comparables = 0, ahorroSin = 0, spreadSin = 0;
+  items.forEach(function(item, i){
+    var qty = parseFloat(item.qty)||1;
+    var quotes = providers.map(function(p){ return (p.prices && p.prices[i]) ? parseFloat(p.prices[i])||0 : 0; })
+                          .filter(function(x){ return x>0; });
+    if (quotes.length >= 2){
+      quotes.sort(function(a,b){ return a-b; });
+      comparables++;
+      ahorroSin += (quotes[1] - quotes[0]) * qty;                 // vs 2° mejor precio (por ítem)
+      spreadSin += (quotes[quotes.length-1] - quotes[0]) * qty;   // peor vs mejor (por ítem)
+    }
+  });
+  var ahorroComparable = ahorroSin * (1 + IVA_RATE);
+  var spreadComparable = spreadSin * (1 + IVA_RATE);
+  // El ahorro OFICIAL (el que se guarda en el Centro de Control) es el de ítems iguales:
+  var ahorro = ahorroComparable;
+  var ahorroPct = segundo && segundo.totalConIVA>0 ? (ahorroTotalDiff/segundo.totalConIVA*100) : 0;
+
+  analysisResult = { totals:totals, ganador:ganador, segundo:segundo, ahorro:ahorro, ahorroPct:ahorroPct,
+    ahorroTotalDiff:ahorroTotalDiff, ahorroComparable:ahorroComparable, spreadComparable:spreadComparable,
+    comparables:comparables, totalItems:items.length };
 
   document.getElementById('aaRendered').style.display = 'block';
   _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct);
+  _renderAACobertura(totals, comparables, ahorroComparable, spreadComparable, items.length, ahorroTotalDiff);
   _renderAAItemTables(totals);
   _renderAATotals(totals, ganador);
   _renderAACond(totals);
@@ -2659,16 +2680,45 @@ async function guardarAnalisisEnCC(silent) {
 function _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct){
   var html = '';
   totals.slice(0,3).forEach(function(t){
-    html += '<div class="aa-metric"><div class="lbl">'+escHtml(t.name)+'</div>'
+    html += '<div class="aa-metric"><div class="lbl">'+escHtml(t.name)
+      + ' <span style="opacity:.65;font-weight:600;font-size:10px">('+t.cobertura+'/'+t.totalItems+' ítems)</span></div>'
       + '<div class="val">'+_fmtMoney(t.totalConIVA)+'</div></div>';
   });
   if (segundo){
-    html += '<div class="aa-metric"><div class="lbl">Diferencia (1° vs 2°)</div>'
-      + '<div class="val red">-'+_fmtMoney(ahorro)+'</div></div>';
-    html += '<div class="aa-metric"><div class="lbl">Ahorro c/ '+escHtml(ganador.name)+'</div>'
-      + '<div class="val green">'+ahorroPct.toFixed(1)+'%</div></div>';
+    html += '<div class="aa-metric"><div class="lbl">Ahorro sobre ítems iguales</div>'
+      + '<div class="val green">'+_fmtMoney(ahorro)+'</div></div>';
   }
   document.getElementById('aaMetrics').innerHTML = html;
+}
+
+// Cuadro de cobertura: artículos cotizados sobre solicitados + ahorro real sobre ítems iguales.
+function _renderAACobertura(totals, comparables, ahorroComparable, spreadComparable, totalItems, ahorroTotalDiff){
+  var el = document.getElementById('aaCobertura'); if(!el) return;
+  var covs = totals.map(function(t){ return t.cobertura; });
+  var distintas = covs.some(function(c){ return c !== covs[0]; });
+  var rows = totals.map(function(t){
+    var pct = totalItems ? Math.round(t.cobertura/totalItems*100) : 0;
+    return '<tr>'
+      + '<td style="padding:6px 10px;color:#ddd">'+escHtml(t.name)+'</td>'
+      + '<td style="padding:6px 10px;text-align:center;font-weight:700;color:#E8611A">'+t.cobertura+' / '+totalItems+'</td>'
+      + '<td style="padding:6px 10px"><div style="background:rgba(255,255,255,.08);border-radius:6px;height:8px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#E8611A"></div></div></td>'
+      + '<td style="padding:6px 10px;text-align:right;color:#bbb;width:46px">'+pct+'%</td>'
+      + '</tr>';
+  }).join('');
+  var html = '<div style="border:1px solid rgba(232,97,26,.35);border-radius:12px;padding:14px 16px;background:rgba(232,97,26,.06)">'
+    + '<div style="font-weight:800;color:#E8611A;font-size:13px;margin-bottom:8px">📋 Cobertura de cotización — artículos cotizados sobre solicitados</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>'+rows+'</tbody></table>';
+  if (distintas){
+    html += '<div style="margin-top:10px;padding:8px 10px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:8px;color:#f87171;font-size:12px;line-height:1.5">'
+      + '⚠️ Los proveedores cotizaron <b>distinta cantidad de artículos</b>. Comparar los totales puede ser engañoso: un total más bajo puede deberse a que se cotizaron menos ítems. Por eso el ahorro se calcula <b>solo sobre los artículos iguales</b> (cotizados por 2 o más proveedores).</div>';
+  }
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px">'
+    + '<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:10px"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Ítems comparables</div><div style="font-size:18px;font-weight:800;color:#eee;margin-top:3px">'+comparables+' / '+totalItems+'</div></div>'
+    + '<div style="background:rgba(34,197,94,.10);border-radius:8px;padding:10px"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Ahorro generado (ítems iguales)</div><div style="font-size:18px;font-weight:800;color:#4ade80;margin-top:3px">'+_fmtMoney(ahorroComparable)+'</div><div style="font-size:10px;color:#888;margin-top:2px">suma de ahorros por artículo (vs 2° mejor)</div></div>'
+    + '<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:10px"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Diferencia máx. (peor vs mejor)</div><div style="font-size:18px;font-weight:800;color:#eee;margin-top:3px">'+_fmtMoney(spreadComparable)+'</div><div style="font-size:10px;color:#888;margin-top:2px">sobre artículos iguales</div></div>'
+    + '<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:10px"><div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.5px">Dif. total 1° vs 2°*</div><div style="font-size:18px;font-weight:800;color:#bbb;margin-top:3px">'+_fmtMoney(ahorroTotalDiff)+'</div><div style="font-size:10px;color:#888;margin-top:2px">*referencia, no comparable</div></div>'
+    + '</div></div>';
+  el.innerHTML = html;
 }
 
 function _renderAAItemTables(totals){
