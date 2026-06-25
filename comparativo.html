@@ -492,8 +492,17 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
 <div class="modal-overlay" id="pasteModal">
   <div class="modal-box">
     <h3>📋 PEGAR LISTA DE ARTÍCULOS</h3>
-    <p>Una línea por artículo. Se detecta automáticamente cantidad y unidad.<br>
-    Ej: <em>Resma A4 x 10</em> · <em>Tornillo 6mm 50 unidades</em> · <em>3 cajas papel</em></p>
+    <p>Una línea por artículo. El sistema detecta automáticamente la <strong>cantidad</strong> y la <strong>unidad</strong>.</p>
+    <div style="border:1px solid rgba(232,97,26,.35);border-radius:10px;background:rgba(232,97,26,.06);padding:12px 14px;margin:10px 0">
+      <div style="font-weight:800;color:var(--orange);font-size:12px;margin-bottom:8px">✅ FORMATOS ACEPTADOS — el sistema detecta artículo y cantidad automáticamente</div>
+      <div style="display:grid;gap:6px;font-size:12px;font-family:'Barlow',sans-serif">
+        <div style="display:flex;gap:8px"><span style="color:var(--orange)">→</span><code style="color:var(--cream)">TORNILLOS M8 x 50MM - 300 UNIDADES</code></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--orange)">→</span><code style="color:var(--cream)">LANA DE VIDRIO - 25 MT2</code></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--orange)">→</span><code style="color:var(--cream)">5 u — RODAMIENTO SKF 6205-2RS</code></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--orange)">→</span><code style="color:var(--cream)">CABLE UNIPOLAR 2.5MM x 10 METROS</code></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--orange)">→</span><code style="color:var(--cream)">GUANTES NITRILO TALLE L</code> <span style="color:var(--orange-dim)">(sin cantidad = queda en blanco)</span></div>
+      </div>
+    </div>
     <textarea id="pasteArea" placeholder="Pegá tu lista aquí..."></textarea>
     <div class="btn-row" style="margin-top:12px">
       <button class="btn btn-orange" id="btnPasteOk">✓ Importar</button>
@@ -1900,9 +1909,9 @@ function processPaste() {
     'unidad':'UN','unidades':'UN','un':'UN','u':'UN',
     'kg':'KG','kilo':'KG','kilos':'KG','kilogramo':'KG','kilogramos':'KG',
     'lt':'LT','litro':'LT','litros':'LT','l':'LT',
-    'mt':'MT','metro':'MT','metros':'MT','m':'MT',
-    'm2':'M2','metro cuadrado':'M2','metros cuadrados':'M2',
-    'm3':'M3','metro cubico':'M3','metros cubicos':'M3',
+    'mt':'MT','metro':'MT','metros':'MT','m':'MT','mts':'MT',
+    'm2':'M2','metro cuadrado':'M2','metros cuadrados':'M2','mt2':'M2',
+    'm3':'M3','metro cubico':'M3','metros cubicos':'M3','mt3':'M3',
     'hs':'HS','hora':'HS','horas':'HS','h':'HS',
     'dia':'DÍA','días':'DÍA','dia':'DÍA','dias':'DÍA',
     'mes':'MES','meses':'MES',
@@ -1912,55 +1921,54 @@ function processPaste() {
     'serv':'SERV','servicio':'SERV','servicios':'SERV'
   };
 
+  function _normUnit(s){
+    if (!s) return null;
+    var u = s.toLowerCase()
+      .replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i')
+      .replace(/[óòö]/g,'o').replace(/[úùü]/g,'u');
+    return UNIT_MAP[u] || null;
+  }
+  function _stripSep(s){ return (s||'').replace(/[\s—–\-]+$/,'').replace(/^[\s—–\-]+/,'').trim(); }
+
   lines.forEach(function(line) {
     line = line.trim();
     if (!line) return;
-    var desc = line, qty = '', unit = 'UN';
+    var desc = line, qty = '', unit = 'UN', m, u;
 
-    // Pattern: "3x Producto" or "3 x Producto"
-    var m = line.match(/^(\d+[.,]?\d*)\s*[xX]\s+(.+)$/);
-    if (m) { qty = m[1].replace(',','.'); desc = m[2].trim(); }
-    else {
-      // Pattern: "Producto x 3" or "Producto x3"
-      m = line.match(/^(.+?)\s+[xX]\s*(\d+[.,]?\d*)\s*$/);
-      if (m) { desc = m[1].trim(); qty = m[2].replace(',','.'); }
-      else {
-        // Pattern: "Producto, 3" or "Producto\t3"
-        m = line.match(/^(.+?)[,\t]\s*(\d+[.,]?\d*)\s*$/);
-        if (m) { desc = m[1].trim(); qty = m[2].replace(',','.'); }
-        else {
-          // Pattern: "Producto 3 unidades" - qty + unit at end
-          m = line.match(/^(.+?)\s+(\d+[.,]?\d*)\s+([a-zA-ZáéíóúÁÉÍÓÚñÑ]+)\s*$/);
-          if (m) {
-            var possUnit = m[3].toLowerCase().replace('á','a').replace('é','e')
-              .replace('í','i').replace('ó','o').replace('ú','u');
-            if (UNIT_MAP[possUnit]) {
-              desc = m[1].trim(); qty = m[2].replace(',','.'); unit = UNIT_MAP[possUnit];
-            }
-          }
-          if (!qty) {
-            // Pattern: "Producto 3" (just trailing number)
-            m = line.match(/^(.+?)\s+(\d+[.,]?\d*)\s*$/);
-            if (m) { desc = m[1].trim(); qty = m[2].replace(',','.'); }
-          }
-        }
-      }
-    }
+    // 1) Cantidad + unidad al INICIO, separador y descripción:  "5 u — RODAMIENTO SKF 6205-2RS"
+    m = line.match(/^(\d+[.,]?\d*)\s+([a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]+)\s*[—–-]+\s*(.+)$/);
+    if (m && (u = _normUnit(m[2]))) { qty = m[1].replace(',','.'); unit = u; desc = m[3].trim(); }
 
-    // Detect unit in description after qty is found
+    // 2) "3x Producto" / "3 x Producto"
+    if (!qty) { m = line.match(/^(\d+[.,]?\d*)\s*[xX]\s+(.+)$/);
+      if (m) { qty = m[1].replace(',','.'); desc = m[2].trim(); } }
+
+    // 3) "...descripción... x CANTIDAD UNIDAD"  (la x NO es el separador final): "CABLE UNIPOLAR 2.5MM x 10 METROS"
+    if (!qty) { m = line.match(/^(.+?)\s+[xX]\s*(\d+[.,]?\d*)\s+([a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]+)\s*$/);
+      if (m && (u = _normUnit(m[3]))) { desc = m[1].trim(); qty = m[2].replace(',','.'); unit = u; } }
+
+    // 4) "Producto x 10" / "Producto x10"  (número al final, sin unidad)
+    if (!qty) { m = line.match(/^(.+?)\s+[xX]\s*(\d+[.,]?\d*)\s*$/);
+      if (m) { desc = m[1].trim(); qty = m[2].replace(',','.'); } }
+
+    // 5) "...descripción [- / —] CANTIDAD UNIDAD":  "TORNILLOS M8 x 50MM - 300 UNIDADES" · "LANA DE VIDRIO - 25 MT2"
+    if (!qty) { m = line.match(/^(.+?)[\s—–-]+(\d+[.,]?\d*)\s+([a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]+)\s*$/);
+      if (m && (u = _normUnit(m[3]))) { desc = _stripSep(m[1]); qty = m[2].replace(',','.'); unit = u; } }
+
+    // 6) "Producto, 10" / "Producto<TAB>10"
+    if (!qty) { m = line.match(/^(.+?)[,\t]\s*(\d+[.,]?\d*)\s*$/);
+      if (m) { desc = _stripSep(m[1]); qty = m[2].replace(',','.'); } }
+
+    // 7) "Producto 10" (número suelto al final, sin unidad reconocible)
+    if (!qty) { m = line.match(/^(.+?)\s+(\d+[.,]?\d*)\s*$/);
+      if (m) { desc = m[1].trim(); qty = m[2].replace(',','.'); } }
+
+    // Si quedó cantidad pero unidad por defecto, intentar detectar unidad al final de la descripción
     if (qty && unit === 'UN') {
-      var remaining = desc;
-      var unitMatch = remaining.match(/\s+([a-zA-ZáéíóúÁÉÍÓÚñÑ2-3]+)\s*$/);
-      if (unitMatch) {
-        var possUnit = unitMatch[1].toLowerCase().replace(/[áàä]/g,'a').replace(/[éèë]/g,'e')
-          .replace(/[íìï]/g,'i').replace(/[óòö]/g,'o').replace(/[úùü]/g,'u');
-        if (UNIT_MAP[possUnit]) {
-          unit = UNIT_MAP[possUnit];
-          desc = remaining.slice(0, remaining.lastIndexOf(unitMatch[0])).trim();
-        }
-      }
+      var um = desc.match(/[\s—–-]+([a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]+)\s*$/);
+      if (um && (u = _normUnit(um[1]))) { unit = u; desc = _stripSep(desc.slice(0, desc.length - um[0].length)); }
     }
-
+    desc = _stripSep(desc);
     addItem(desc, qty, unit, '');
   });
 

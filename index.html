@@ -1822,12 +1822,15 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button data-editor-only onclick="toggleProvFormCC(true)" style="padding:9px 14px;border-radius:8px;border:1.5px solid rgba(232,93,37,.6);background:var(--or);color:#fff;font-family:var(--ff);font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">
       ➕ Agregar proveedor
     </button>
+    <button data-editor-only onclick="sincronizarProvNube()" style="padding:9px 14px;border-radius:8px;border:1.5px solid rgba(96,165,250,.5);background:rgba(96,165,250,.12);color:#60a5fa;font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+      ☁️ Sincronizar a la nube
+    </button>
   </div>
 
   <!-- FORMULARIO ALTA PROVEEDOR (sincroniza con Comparativo vía tabla proveedores) -->
   <div id="prov-form-cc" data-editor-only style="display:none;border:1px solid var(--border2);border-radius:12px;background:var(--s1);padding:16px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--or);font-size:14px">➕ Nuevo proveedor</div>
+      <div id="prov-form-cc-title" style="font-family:'Barlow Condensed',sans-serif;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--or);font-size:14px">➕ Nuevo proveedor</div>
       <button onclick="toggleProvFormCC(false)" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
@@ -1875,6 +1878,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
           <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Rubro</th>
           <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Email</th>
           <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Tipo</th>
+          <th data-editor-only style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Acciones</th>
         </tr>
       </thead>
       <tbody id="prov-db-body"></tbody>
@@ -3512,7 +3516,7 @@ async function renderComparativas(){
   const usdRate = _ccp_getUSDRate();
   list.innerHTML='<div class="card"><div class="tbl-wrap"><table><thead><tr>'
     +'<th>N° CCP</th><th>N° SC</th><th>Asunto</th><th>Monto Prom.</th><th>Nivel</th>'
-    +'<th>Prov.</th><th>Elegido</th><th>Ahorro</th><th>Consultar</th><th>Fecha</th><th>Autorización</th><th>Acciones</th>'
+    +'<th>Prov.</th><th>Elegido</th><th>Ahorro</th><th>Consultar</th><th>Fecha</th><th>TC USD (BNA)</th><th>Autorización</th><th>Acciones</th>'
     +'</tr></thead><tbody>'
     +rows.map(c=>{
       const prom   = _ccp_montoProm(c);
@@ -3555,12 +3559,70 @@ async function renderComparativas(){
         +`<td style="font-size:12px">${aho}</td>`
         +`<td><button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--or)" onclick="window.open('${link}?comp_id=${c.id}','_blank')">🔍 Consultar</button></td>`
         +`<td style="font-size:12px">${c.fecha?formatFecha(c.fecha):'—'}</td>`
+        +`<td id="tc-${c.id}" style="font-size:11px;color:var(--muted);white-space:nowrap">⏳</td>`
         +`<td style="min-width:120px">${authCell}</td>`
         +`<td>${esModoEditor()?`<button class="btn btn-ghost btn-sm" style="font-size:10px;color:#f87171" onclick="eliminarCCP('${c.id}','${(c.num_comp||'').replace(/'/g,'&#39;')}')">🗑 Eliminar</button>`:'<span style="font-size:10px;color:var(--muted)">—</span>'}</td>`
         +'</tr>';
     }).join('')
     +'</tbody></table></div></div>'
-    +'<div style="font-size:10px;color:var(--muted);margin-top:8px;padding:0 4px">Tipo de cambio USD: $'+(usdRate.toLocaleString('es-AR'))+ ' — Actualizar en ⚙️ Ajustes</div>';
+    +'<div style="font-size:10px;color:var(--muted);margin-top:8px;padding:0 4px">TC USD (BNA): Cotización Divisas Venta del Banco Nación del día anterior a la fecha de cada CCP (se actualiza automáticamente). El TC de referencia para los niveles de autorización se ajusta en ⚙️ Ajustes.</div>';
+  _actualizarTCHistorial(rows);
+}
+
+// Devuelve la Cotización Divisas VENTA (BNA, dólar oficial) del día anterior a la fecha del CCP.
+// Si ese día no tuvo cotización (fin de semana/feriado), retrocede hasta el último día hábil con dato.
+async function _tcVentaBNA(fechaCCP){
+  if (!fechaCCP) return null;
+  var base = new Date(fechaCCP + 'T00:00:00');
+  if (isNaN(base.getTime())) return null;
+  var cache = {};
+  try { cache = JSON.parse(localStorage.getItem('nielsen_tc_bna') || '{}'); } catch(e){ cache = {}; }
+  for (var k = 1; k <= 7; k++){
+    var d = new Date(base.getTime() - k * 86400000);
+    var ds = d.toISOString().slice(0, 10);            // YYYY-MM-DD (día anterior, retrocediendo)
+    if (cache[ds] && cache[ds] > 0) return { venta: cache[ds], fecha: ds };
+    var p = ds.split('-');
+    try {
+      var r = await fetch('https://api.argentinadatos.com/v1/cotizaciones/dolares/oficial/' + p[0] + '/' + p[1] + '/' + p[2], { cache:'no-store' });
+      if (r.ok){
+        var j = await r.json();
+        var venta = j && (j.venta || j.value_sell);
+        if (venta && venta > 0){
+          cache[ds] = venta;
+          try { localStorage.setItem('nielsen_tc_bna', JSON.stringify(cache)); } catch(e){}
+          return { venta: venta, fecha: ds };
+        }
+      } else if (r.status === 404){
+        continue; // ese día no tuvo cotización → probar el anterior
+      }
+    } catch(e){ /* CORS/offline → cortar e informar s/d */ break; }
+  }
+  return null;
+}
+
+// Llena la columna TC USD del Historial de CCP (una consulta por fecha distinta).
+async function _actualizarTCHistorial(rows){
+  var byDate = {};
+  (rows||[]).forEach(function(c){
+    var cell = document.getElementById('tc-' + c.id);
+    if (!cell) return;
+    var f = String(c.fecha || '').slice(0, 10);
+    if (!f){ cell.textContent = '—'; return; }
+    (byDate[f] = byDate[f] || []).push(c.id);
+  });
+  for (var f in byDate){
+    var res = null;
+    try { res = await _tcVentaBNA(f); } catch(e){}
+    byDate[f].forEach(function(id){
+      var cell = document.getElementById('tc-' + id); if (!cell) return;
+      if (res && res.venta){
+        cell.innerHTML = '$ ' + Number(res.venta).toLocaleString('es-AR', {minimumFractionDigits:2})
+          + '<div style="font-size:9px;color:var(--muted)">BNA ' + res.fecha + '</div>';
+      } else {
+        cell.innerHTML = '<span style="color:#f87171;font-size:10px" title="No se pudo obtener la cotización (sin conexión o fecha sin dato)">s/d</span>';
+      }
+    });
+  }
 }
 
 var _ahoCharts = {};
@@ -8086,7 +8148,7 @@ async function cargarComprasSB() {
 async function cargarProveedoresSB() {
   try {
     const r = await fetch(_SB_URL + '/rest/v1/proveedores?select=*&order=nombre.asc&limit=2000', {
-      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}, cache:'no-store'
     });
     if (r.ok) {
       const rows = await r.json();
@@ -8095,10 +8157,14 @@ async function cargarProveedoresSB() {
           nombre:r.nombre||'', cuit:r.cuit||'', rubro:r.rubro||'', email:r.email||'',
           tel:r.tel||'', dir:r.direccion||'', contacto:r.contacto||'', pago:r.condicion_pago||'', tipo:r.tipo||''
         }));
-        _lsSet('nielsen_proveedores', JSON.stringify(provData));
+      } else if (provData && provData.length) {
+        // La nube está vacía pero hay base local → sembrarla para que Comparativo la vea
+        await subirProveedoresNube(true);
       }
     }
   } catch(e) { console.warn('cargarProveedoresSB:', e.message); }
+  // Persistir SIEMPRE en localStorage (mismo origen) para que el Comparativo lo lea como respaldo
+  try { _lsSet('nielsen_proveedores', JSON.stringify(provData)); } catch(e){}
 }
 
 // ── BASE DE DATOS ──
@@ -8112,35 +8178,59 @@ function renderProvDB() {
   const tb = document.getElementById('prov-db-body');
   if (!tb) return;
   if (!data.length) {
-    tb.innerHTML = '<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--muted)">Sin proveedores que coincidan.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--muted)">Sin proveedores que coincidan.</td></tr>';
     return;
   }
   tb.innerHTML = data.map(p => {
     const tipoColor = /critico/i.test(p.tipo) ? 'var(--red)' : /habitual/i.test(p.tipo) ? 'var(--green)' : 'var(--muted)';
+    const nombreAttr = (p.nombre||'').replace(/"/g,'&quot;');
     return '<tr style="border-bottom:1px solid var(--border)">'
       + '<td style="padding:8px 12px;font-weight:600">' + (p.nombre||'—') + '</td>'
       + '<td style="padding:8px 12px;font-family:var(--fm);font-size:11px;color:var(--muted)">' + (p.cuit||'—') + '</td>'
       + '<td style="padding:8px 12px;color:var(--muted)">' + (p.rubro||'—') + '</td>'
       + '<td style="padding:8px 12px;font-size:11px;color:var(--muted)">' + (p.email||'—') + '</td>'
       + '<td style="padding:8px 12px"><span style="font-size:10px;font-weight:700;color:' + tipoColor + '">' + (p.tipo||'—') + '</span></td>'
+      + '<td data-editor-only style="padding:8px 12px"><button data-nombre="' + nombreAttr + '" onclick="editarProvCC(this)" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--s2);color:var(--or);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✏️ Editar</button></td>'
       + '</tr>';
   }).join('');
 }
+
+var _provEditNombre = null;
 
 function toggleProvFormCC(show){
   var f = document.getElementById('prov-form-cc');
   if (!f) return;
   if (show && !esModoEditor()){ showToast('Activá el modo Editor para agregar proveedores', 'error'); return; }
   f.style.display = show ? 'block' : 'none';
+  if (!show){
+    _provEditNombre = null;
+    var t = document.getElementById('prov-form-cc-title'); if (t) t.textContent = '➕ Nuevo proveedor';
+    ['nombre','cuit','rubro','contacto','tel','email','tipo'].forEach(function(f){ var e=document.getElementById('ccp-'+f); if(e) e.value=''; });
+  }
   if (show){ var n=document.getElementById('ccp-nombre'); if(n){ n.focus(); } }
 }
 
-// Inserta o actualiza un proveedor en la tabla compartida 'proveedores' (clave: nombre).
-async function _sbUpsertProvCC(p){
+function editarProvCC(btn){
+  if (!esModoEditor()){ showToast('Activá el modo Editor para modificar proveedores', 'error'); return; }
+  var nombre = btn.getAttribute('data-nombre') || '';
+  var p = provData.find(function(x){ return (x.nombre||'') === nombre; });
+  if (!p){ showToast('No se encontró el proveedor', 'error'); return; }
+  var set = function(id,v){ var e=document.getElementById(id); if(e) e.value = v||''; };
+  set('ccp-nombre', p.nombre); set('ccp-cuit', p.cuit); set('ccp-rubro', p.rubro);
+  set('ccp-contacto', p.contacto); set('ccp-tel', p.tel); set('ccp-email', p.email); set('ccp-tipo', p.tipo);
+  _provEditNombre = p.nombre;
+  var t = document.getElementById('prov-form-cc-title'); if (t) t.textContent = '✏️ Editar proveedor';
+  var f = document.getElementById('prov-form-cc'); if (f){ f.style.display='block'; f.scrollIntoView({behavior:'smooth',block:'center'}); }
+}
+
+// Inserta o actualiza un proveedor en la tabla compartida 'proveedores'.
+// matchNombre permite ubicar la fila original cuando se renombra.
+async function _sbUpsertProvCC(p, matchNombre){
+  var key = (matchNombre || p.nombre || '');
   var sb = { nombre:p.nombre, cuit:p.cuit, rubro:p.rubro, email:p.email, tel:p.tel,
              direccion:p.dir||'', contacto:p.contacto, condicion_pago:p.pago||'', tipo:p.tipo };
   try {
-    var q = await fetch(_SB_URL+'/rest/v1/proveedores?select=id&nombre=eq.'+encodeURIComponent(p.nombre), {
+    var q = await fetch(_SB_URL+'/rest/v1/proveedores?select=id&nombre=eq.'+encodeURIComponent(key), {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}, cache:'no-store'
     });
     var ex = q.ok ? await q.json() : [];
@@ -8168,20 +8258,60 @@ async function agregarProvCC(){
   if (!nombre){ showToast('La razón social / nombre es obligatorio', 'error'); var n=document.getElementById('ccp-nombre'); if(n) n.focus(); return; }
   var p = { nombre:nombre, cuit:g('ccp-cuit'), rubro:g('ccp-rubro'), email:g('ccp-email'),
             tel:g('ccp-tel'), dir:'', contacto:g('ccp-contacto'), pago:'', tipo:g('ccp-tipo') };
-  // Merge local por nombre (reemplaza si existe)
+  var orig = _provEditNombre;
+  // Si se renombró, quitar la entrada vieja del listado local
+  if (orig && orig.toUpperCase() !== nombre.toUpperCase()){
+    provData = provData.filter(function(x){ return (x.nombre||'').toUpperCase() !== orig.toUpperCase(); });
+  }
   var i = provData.findIndex(function(x){ return (x.nombre||'').toUpperCase() === nombre.toUpperCase(); });
   if (i >= 0) provData[i] = Object.assign({}, provData[i], p); else provData.push(p);
   provData.sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||'', 'es'); });
   _lsSet('nielsen_proveedores', JSON.stringify(provData));
   renderProvDB();
-  showToast('🔄 Guardando y sincronizando...', 'ok');
-  await _sbUpsertProvCC(p);
+  showToast(orig ? '🔄 Guardando cambios...' : '🔄 Guardando y sincronizando...', 'ok');
+  await _sbUpsertProvCC(p, orig);
+  _provEditNombre = null;
+  var t = document.getElementById('prov-form-cc-title'); if (t) t.textContent = '➕ Nuevo proveedor';
   ['nombre','cuit','rubro','contacto','tel','email','tipo'].forEach(function(f){ var e=document.getElementById('ccp-'+f); if(e) e.value=''; });
   toggleProvFormCC(false);
-  // Recargar fresco desde la tabla compartida para reflejar el id real
   await cargarProveedoresSB();
   renderProvDB();
-  showToast('✓ Proveedor agregado y sincronizado con Comparativo', 'ok');
+  showToast(orig ? '✓ Proveedor modificado y sincronizado' : '✓ Proveedor agregado y sincronizado con Comparativo', 'ok');
+}
+
+// Sube a Supabase los proveedores locales que aún no estén en la nube (siembra/actualiza la tabla compartida).
+async function subirProveedoresNube(silent){
+  try {
+    var q = await fetch(_SB_URL+'/rest/v1/proveedores?select=nombre&limit=10000', {
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}, cache:'no-store'
+    });
+    var ex = q.ok ? await q.json() : [];
+    var have = {}; ex.forEach(function(r){ if(r.nombre) have[r.nombre.toUpperCase()] = 1; });
+    var faltan = (provData||[]).filter(function(p){ return p.nombre && !have[p.nombre.toUpperCase()]; }).map(function(p){
+      return { nombre:p.nombre, cuit:p.cuit||'', rubro:p.rubro||'', email:p.email||'', tel:p.tel||'',
+               direccion:p.dir||'', contacto:p.contacto||'', condicion_pago:p.pago||'', tipo:p.tipo||'' };
+    });
+    if (!faltan.length){ if(!silent) showToast('✓ La nube ya está actualizada', 'ok'); return 0; }
+    var r = await fetch(_SB_URL+'/rest/v1/proveedores', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
+      body:JSON.stringify(faltan)
+    });
+    if (r.ok){ if(!silent) showToast('☁️ '+faltan.length+' proveedores subidos a la nube', 'ok'); return faltan.length; }
+    var t = await r.text(); console.error('subirProveedoresNube:', t);
+    if(!silent) showToast('Error al subir: '+t.slice(0,90), 'error');
+    return 0;
+  } catch(e){ if(!silent) showToast('Error: '+e.message, 'error'); return 0; }
+}
+
+// Botón manual: empuja lo local que falte y vuelve a leer la nube (fuente de verdad).
+async function sincronizarProvNube(){
+  if (!esModoEditor()){ showToast('Activá el modo Editor para sincronizar', 'error'); return; }
+  showToast('🔄 Sincronizando con la nube...', 'ok');
+  await subirProveedoresNube(true);
+  await cargarProveedoresSB();
+  renderProvDB();
+  showToast('✓ Sincronizado — '+provData.length+' proveedores en la base compartida', 'ok');
 }
 
 function descargarPlantillaProv() {
