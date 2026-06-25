@@ -520,7 +520,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
     </div>
     <div class="meta-field">
       <label>N° CCP</label>
-      <input type="text" id="nroExp" placeholder="CC-2026-0001"/>
+      <input type="text" id="nroExp" placeholder="CCP-2026-0001"/>
     </div>
     <span style="font-size:9px;color:rgba(255,255,255,.35);font-family:monospace;margin-right:4px" title="versión">v2026.05.28-fix</span>
     <div id="comp-mode-badge" class="comp-mode-badge lector" onclick="abrirPinComp()" style="cursor:pointer;flex-shrink:0">🔒 Modo Lector</div>
@@ -937,7 +937,7 @@ async function sbComparativaPatch(numComp, data) {
 
 async function sbGetNextCompNum() {
   var anio = new Date().getFullYear();
-  var prefix = 'CC-' + anio + '-';
+  var prefix = 'CCP-' + anio + '-';
   // Tomar como referencia el ÚLTIMO CCP real de la tabla comparativas (idempotente: no sube por entrar)
   try {
     var r = await fetch(_SB_URL + '/rest/v1/comparativas?select=num_comp', {
