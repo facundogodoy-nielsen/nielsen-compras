@@ -947,7 +947,7 @@ async function sbGetNextCompNum() {
       var rows = await r.json();
       var max = 0;
       (rows || []).forEach(function(row) {
-        var m = String(row.num_comp || '').match(/^CC-(\d{4})-(\d+)/);
+        var m = String(row.num_comp || '').match(/^CCP?-(\d{4})-(\d+)/);
         if (m && m[1] === String(anio)) { var n = parseInt(m[2], 10) || 0; if (n > max) max = n; }
       });
       return prefix + String(max + 1).padStart(4, '0');
@@ -957,10 +957,24 @@ async function sbGetNextCompNum() {
   try {
     var cache = JSON.parse(localStorage.getItem('nielsen_comparativas') || '[]');
     var mx = 0;
-    cache.forEach(function(c){ var m=String(c.num_comp||c.numComp||'').match(/^CC-(\d{4})-(\d+)/); if(m&&m[1]===String(anio)){var n=parseInt(m[2],10)||0; if(n>mx)mx=n;} });
+    cache.forEach(function(c){ var m=String(c.num_comp||c.numComp||'').match(/^CCP?-(\d{4})-(\d+)/); if(m&&m[1]===String(anio)){var n=parseInt(m[2],10)||0; if(n>mx)mx=n;} });
     return prefix + String(mx + 1).padStart(4, '0');
   } catch(e) {}
   return prefix + '0001';
+}
+
+// Autocompleta el campo "N° CCP" con el siguiente correlativo (MAX de la tabla comparativas,
+// la misma que ve el Centro de Control). No pisa si se está consultando un CCP ya guardado
+// ni si el usuario ya escribió un valor.
+async function autoNumCCP(){
+  var el = document.getElementById('nroExp');
+  if (!el) return;
+  if (_currentCompNum) return;                 // consulta de un CCP existente → no tocar
+  if (el.value && el.value.trim()) return;     // ya tiene número
+  try {
+    var n = await sbGetNextCompNum();
+    if (n && (!el.value || !el.value.trim())) el.value = n;
+  } catch(e){}
 }
 
 async function sbLoadProvDB() {
@@ -1184,16 +1198,20 @@ async function guardarEnSupabase(showMsg) {
   var divisa       = document.getElementById('divisa').value;
   var fecha        = document.getElementById('fechaDoc').value;
   var obs          = document.getElementById('observaciones').value.trim();
-  var numSC        = document.getElementById('nroExp').value.trim();
+  var scEl         = document.getElementById('scAsociada');
+  var numSC        = scEl ? scEl.value.trim() : '';
+  var ccpField     = document.getElementById('nroExp').value.trim();
 
   if (!asunto) { showToast('⚠️ Completá el asunto antes de guardar','err'); return; }
 
+  // El campo "N° CCP" (nroExp) es el número de comparativa. Si el usuario/auto-num lo cargó, se respeta;
+  // si no, se genera el siguiente correlativo. La SC asociada va por separado (campo scAsociada).
+  if (ccpField) { _currentCompNum = ccpField; }
   if (!_currentCompNum) {
     _currentCompNum = await sbGetNextCompNum();
-    // Show in header
-    var el=document.getElementById('nroExp');
-    if(el && !el.value) el.value=_currentCompNum;
   }
+  var _elc = document.getElementById('nroExp');
+  if (_elc) _elc.value = _currentCompNum;
 
   var savings;
   if (analysisResult && analysisResult.ganador) {
@@ -1587,6 +1605,10 @@ document.addEventListener('DOMContentLoaded', function() {
   setCompMode(false);
   // Load provider DB from Supabase
   sbLoadProvDB();
+  // Autocompletar N° CCP con el siguiente correlativo (MAX de comparativas = lo que ve el CC)
+  autoNumCCP();
+  ['pageshow','focus'].forEach(function(ev){ window.addEventListener(ev, function(){ autoNumCCP(); }); });
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) autoNumCCP(); });
 
   // TABS
   document.querySelectorAll('.tab-btn').forEach(function(btn) {
@@ -3159,7 +3181,7 @@ async function cargarComparativaDesdeRow(c){
   set('asunto', c.asunto); set('fechaDoc', c.fecha); set('solicitante', c.solicitante);
   set('area', c.area); set('scAsociada', c.num_sc);
   set('divisa', (c.divisa||'ARS')); set('observaciones', c.observaciones);
-  set('nroExp', c.num_sc || c.num_comp || '');
+  set('nroExp', c.num_comp || '');
   try { renderItems(); } catch(e){}
   try { renderProviders(); } catch(e){}
   switchTab('analisis');

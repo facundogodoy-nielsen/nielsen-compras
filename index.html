@@ -1819,6 +1819,52 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button onclick="descargarPlantillaProv()" style="padding:9px 14px;border-radius:8px;border:1.5px solid var(--or);background:rgba(232,93,37,.1);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
       ⬇️ Descargar Plantilla XLS
     </button>
+    <button data-editor-only onclick="toggleProvFormCC(true)" style="padding:9px 14px;border-radius:8px;border:1.5px solid rgba(232,93,37,.6);background:var(--or);color:#fff;font-family:var(--ff);font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">
+      ➕ Agregar proveedor
+    </button>
+  </div>
+
+  <!-- FORMULARIO ALTA PROVEEDOR (sincroniza con Comparativo vía tabla proveedores) -->
+  <div id="prov-form-cc" data-editor-only style="display:none;border:1px solid var(--border2);border-radius:12px;background:var(--s1);padding:16px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--or);font-size:14px">➕ Nuevo proveedor</div>
+      <button onclick="toggleProvFormCC(false)" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+      <div style="grid-column:1/-1">
+        <label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">Razón Social / Nombre *</label>
+        <input type="text" id="ccp-nombre" placeholder="Nombre del proveedor" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:13px;outline:none">
+      </div>
+      <div>
+        <label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">Contacto</label>
+        <input type="text" id="ccp-contacto" placeholder="Nombre del contacto" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:13px;outline:none">
+      </div>
+      <div>
+        <label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">Teléfono</label>
+        <input type="text" id="ccp-tel" placeholder="+54 11 ..." style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:13px;outline:none">
+      </div>
+      <div>
+        <label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">Email</label>
+        <input type="text" id="ccp-email" placeholder="email@empresa.com" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:13px;outline:none">
+      </div>
+      <div>
+        <label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">CUIT</label>
+        <input type="text" id="ccp-cuit" placeholder="20-XXXXXXXX-X" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:13px;outline:none">
+      </div>
+      <div>
+        <label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">Rubro</label>
+        <input type="text" id="ccp-rubro" placeholder="Ej: Materiales, Servicios..." style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:13px;outline:none">
+      </div>
+      <div>
+        <label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">Tipo</label>
+        <input type="text" id="ccp-tipo" placeholder="Crítico / Habitual / Ocasional" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:13px;outline:none">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button onclick="agregarProvCC()" style="background:var(--or);border:none;border-radius:8px;padding:9px 18px;color:#fff;font-weight:800;font-size:13px;cursor:pointer">💾 Guardar y sincronizar</button>
+      <button onclick="toggleProvFormCC(false)" style="background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:9px 18px;color:var(--muted);font-size:13px;cursor:pointer">Cancelar</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">Se guarda en la base compartida y aparece también en <strong style="color:var(--or)">Comparativo → Proveedores &amp; PDFs → Base de Datos</strong>.</div>
   </div>
   <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--s1)">
     <table style="width:100%;border-collapse:collapse;font-size:12px" id="prov-db-table">
@@ -8079,6 +8125,63 @@ function renderProvDB() {
       + '<td style="padding:8px 12px"><span style="font-size:10px;font-weight:700;color:' + tipoColor + '">' + (p.tipo||'—') + '</span></td>'
       + '</tr>';
   }).join('');
+}
+
+function toggleProvFormCC(show){
+  var f = document.getElementById('prov-form-cc');
+  if (!f) return;
+  if (show && !esModoEditor()){ showToast('Activá el modo Editor para agregar proveedores', 'error'); return; }
+  f.style.display = show ? 'block' : 'none';
+  if (show){ var n=document.getElementById('ccp-nombre'); if(n){ n.focus(); } }
+}
+
+// Inserta o actualiza un proveedor en la tabla compartida 'proveedores' (clave: nombre).
+async function _sbUpsertProvCC(p){
+  var sb = { nombre:p.nombre, cuit:p.cuit, rubro:p.rubro, email:p.email, tel:p.tel,
+             direccion:p.dir||'', contacto:p.contacto, condicion_pago:p.pago||'', tipo:p.tipo };
+  try {
+    var q = await fetch(_SB_URL+'/rest/v1/proveedores?select=id&nombre=eq.'+encodeURIComponent(p.nombre), {
+      headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}, cache:'no-store'
+    });
+    var ex = q.ok ? await q.json() : [];
+    if (ex && ex.length){
+      await fetch(_SB_URL+'/rest/v1/proveedores?id=eq.'+encodeURIComponent(ex[0].id), {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
+        body:JSON.stringify(sb)
+      });
+    } else {
+      await fetch(_SB_URL+'/rest/v1/proveedores', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
+        body:JSON.stringify(sb)
+      });
+    }
+    return true;
+  } catch(e){ console.warn('_sbUpsertProvCC:', e.message); return false; }
+}
+
+async function agregarProvCC(){
+  if (!esModoEditor()){ showToast('Activá el modo Editor para agregar proveedores', 'error'); return; }
+  var g = function(id){ var e=document.getElementById(id); return e?(e.value||'').trim():''; };
+  var nombre = g('ccp-nombre');
+  if (!nombre){ showToast('La razón social / nombre es obligatorio', 'error'); var n=document.getElementById('ccp-nombre'); if(n) n.focus(); return; }
+  var p = { nombre:nombre, cuit:g('ccp-cuit'), rubro:g('ccp-rubro'), email:g('ccp-email'),
+            tel:g('ccp-tel'), dir:'', contacto:g('ccp-contacto'), pago:'', tipo:g('ccp-tipo') };
+  // Merge local por nombre (reemplaza si existe)
+  var i = provData.findIndex(function(x){ return (x.nombre||'').toUpperCase() === nombre.toUpperCase(); });
+  if (i >= 0) provData[i] = Object.assign({}, provData[i], p); else provData.push(p);
+  provData.sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||'', 'es'); });
+  _lsSet('nielsen_proveedores', JSON.stringify(provData));
+  renderProvDB();
+  showToast('🔄 Guardando y sincronizando...', 'ok');
+  await _sbUpsertProvCC(p);
+  ['nombre','cuit','rubro','contacto','tel','email','tipo'].forEach(function(f){ var e=document.getElementById('ccp-'+f); if(e) e.value=''; });
+  toggleProvFormCC(false);
+  // Recargar fresco desde la tabla compartida para reflejar el id real
+  await cargarProveedoresSB();
+  renderProvDB();
+  showToast('✓ Proveedor agregado y sincronizado con Comparativo', 'ok');
 }
 
 function descargarPlantillaProv() {
