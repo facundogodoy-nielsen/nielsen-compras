@@ -1810,7 +1810,13 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
     <input type="text" id="prov-buscar" placeholder="🔎 Buscar proveedor, CUIT, rubro..." oninput="renderProvDB()"
-      style="flex:1;min-width:220px;padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px;outline:none">
+      style="flex:1;min-width:200px;padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px;outline:none">
+    <select id="prov-filtro-rubro" onchange="renderProvDB()" title="Filtrar por rubro" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
+      <option value="__all">Todos los rubros</option>
+    </select>
+    <select id="prov-filtro-tipo" onchange="renderProvDB()" title="Filtrar por tipo" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
+      <option value="__all">Todos los tipos</option>
+    </select>
     <span id="prov-count" style="font-size:11px;color:var(--muted);font-family:var(--fm)"></span>
     <label class="sidebar-btn" data-editor-only style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:var(--green);font-size:12px;font-weight:700;width:auto;margin:0">
       ⬆️ Importar Planilla XLS
@@ -1892,9 +1898,54 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="pg-title">HISTORIAL DE <span>CCP</span></div>
     <div class="pg-sub">Todas las comparativas de precios guardadas desde el Cuadro Comparativo</div>
   </div>
+  <!-- Parámetros de autorización -->
+  <div style="border:1px solid rgba(232,93,37,.3);border-radius:12px;background:rgba(232,93,37,.05);padding:12px 16px;margin-bottom:14px">
+    <div style="font-family:'Barlow Condensed',sans-serif;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--or);font-size:13px;margin-bottom:8px">🔐 Parámetros de autorización <span style="font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0">(según monto promedio convertido a USD con el TC del BNA)</span></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:150px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:8px 12px">
+        <div style="font-size:11px;font-weight:800;color:var(--green)">Resp. de Compras</div>
+        <div style="font-size:12px;color:var(--text);margin-top:2px">&lt; USD 100</div>
+      </div>
+      <div style="flex:1;min-width:150px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.3);border-radius:8px;padding:8px 12px">
+        <div style="font-size:11px;font-weight:800;color:var(--yellow)">Jefatura</div>
+        <div style="font-size:12px;color:var(--text);margin-top:2px">USD 100 – 400</div>
+      </div>
+      <div style="flex:1;min-width:150px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:8px;padding:8px 12px">
+        <div style="font-size:11px;font-weight:800;color:#f87171">Alta Gerencia</div>
+        <div style="font-size:12px;color:var(--text);margin-top:2px">&gt; USD 400</div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">Todas las compras requieren un mínimo de <strong>2 presupuestos</strong> para poder autorizarse.</div>
+  </div>
+
+  <!-- Filtro por área -->
+  <div style="margin-bottom:10px">
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Filtrar por área</div>
+    <div id="hist-area-btns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+  </div>
+
+  <!-- Filtro por fecha / período + buscador -->
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+    <select id="hist-filtro-tipo" onchange="onHistFiltroChange()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
+      <option value="todo">Todo el histórico</option>
+      <option value="anio">Por año</option>
+      <option value="mes">Por mes</option>
+      <option value="periodo">Período (rango)</option>
+    </select>
+    <select id="hist-filtro-anio" onchange="renderComparativas()" style="display:none;padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px"></select>
+    <select id="hist-filtro-mes" onchange="renderComparativas()" style="display:none;padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
+      <option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option>
+      <option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option>
+      <option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option>
+      <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+    </select>
+    <span id="hist-filtro-rango" style="display:none;gap:6px;align-items:center">
+      <input type="date" id="hist-filtro-desde" onchange="renderComparativas()" title="Desde" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:12px">
+      <span style="color:var(--muted);font-size:12px">a</span>
+      <input type="date" id="hist-filtro-hasta" onchange="renderComparativas()" title="Hasta" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:12px">
+    </span>
     <input type="text" id="fcomp-buscar" oninput="renderComparativas()" placeholder="Buscar por N° CCP, N° SC, área, asunto, solicitante..."
-      style="flex:1;min-width:240px;padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
+      style="flex:1;min-width:220px;padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
     <button class="btn btn-ghost btn-sm" onclick="renderComparativas()">🔄 Actualizar</button>
   </div>
   <div id="comp-list"></div>
@@ -1925,6 +1976,10 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <input type="date" id="aho-filtro-hasta" onchange="renderAhorro()" title="Hasta" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:12px">
     </span>
     <button class="btn btn-ghost btn-sm" onclick="renderAhorro()">🔄 Actualizar</button>
+  </div>
+  <div style="margin-bottom:16px">
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Filtrar por área</div>
+    <div id="aho-area-btns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px">
     <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:16px">
@@ -3491,6 +3546,79 @@ async function eliminarCCP(id, numComp){
   }catch(e){ showToast('Error: '+e.message,'error'); }
 }
 
+var _histArea = '__all';
+var _ahoArea = '__all';
+
+// Botones de filtro por área (píldoras). pickFn = nombre de función global que recibe el valor.
+function _mkAreaBtns(containerId, areas, current, pickFn){
+  var el = document.getElementById(containerId); if (!el) return;
+  var btn = function(val, label){
+    var a = (val === current);
+    return '<button data-v="' + String(val).replace(/"/g,'&quot;') + '" onclick="' + pickFn + '(this.getAttribute(\'data-v\'))" '
+      + 'style="padding:6px 12px;border-radius:999px;border:1px solid ' + (a?'var(--or)':'var(--border2)') + ';'
+      + 'background:' + (a?'var(--or)':'var(--s2)') + ';color:' + (a?'#fff':'var(--muted)') + ';'
+      + 'font-family:var(--ff);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">' + (label||'—') + '</button>';
+  };
+  var html = btn('__all', 'Todas');
+  areas.forEach(function(a){ html += btn(a, a); });
+  el.innerHTML = html;
+}
+
+function onHistFiltroChange(){
+  var tipo = document.getElementById('hist-filtro-tipo').value;
+  var anio = document.getElementById('hist-filtro-anio');
+  var mes  = document.getElementById('hist-filtro-mes');
+  var rango= document.getElementById('hist-filtro-rango');
+  if (anio)  anio.style.display = (tipo==='anio'||tipo==='mes') ? '' : 'none';
+  if (mes)   mes.style.display  = (tipo==='mes') ? '' : 'none';
+  if (rango) rango.style.display= (tipo==='periodo') ? 'inline-flex' : 'none';
+  renderComparativas();
+}
+function _histFechaStr(c){ return String(c.fecha||c.creado_at||'').slice(0,10); }
+function _histEnPeriodo(c){
+  var tEl=document.getElementById('hist-filtro-tipo'); var tipo=tEl?tEl.value:'todo';
+  if (tipo==='todo') return true;
+  var f=_histFechaStr(c); if(!f) return false;
+  if (tipo==='anio'){ var a=document.getElementById('hist-filtro-anio').value; return !a||f.slice(0,4)===a; }
+  if (tipo==='mes'){ var a=document.getElementById('hist-filtro-anio').value; var m=document.getElementById('hist-filtro-mes').value; var ym=(a||f.slice(0,4))+'-'+m; return f.slice(0,7)===ym; }
+  if (tipo==='periodo'){ var d=document.getElementById('hist-filtro-desde').value, hh=document.getElementById('hist-filtro-hasta').value; if(d&&f<d)return false; if(hh&&f>hh)return false; return true; }
+  return true;
+}
+function _histFillYears(rows){
+  var sel=document.getElementById('hist-filtro-anio'); if(!sel) return;
+  var cur=sel.value, years={};
+  rows.forEach(function(c){ var y=_histFechaStr(c).slice(0,4); if(y) years[y]=1; });
+  var list=Object.keys(years).sort().reverse();
+  if(!list.length) list=[String(new Date().getFullYear())];
+  sel.innerHTML=list.map(function(y){ return '<option value="'+y+'">'+y+'</option>'; }).join('');
+  if(cur && list.indexOf(cur)>=0) sel.value=cur;
+}
+function pickHistArea(a){ _histArea = a || '__all'; renderComparativas(); }
+function pickAhoArea(a){ _ahoArea = a || '__all'; renderAhorro(); }
+
+var _histRowById = {};
+// Nivel de autorización usando un TC USD concreto (el del BNA por fecha del CCP).
+function _ccp_authLevelRate(c, rate){
+  var prom = _ccp_montoProm(c);
+  var divisa = (c.divisa||'ARS').toUpperCase();
+  var promUSD = divisa==='USD' ? prom : (rate>0 ? prom/rate : 0);
+  if (promUSD > 400) return {level:'GERENCIAL', label:'Alta Gerencia', color:'#f87171', usd:promUSD, needs2:true};
+  if (promUSD >= 100) return {level:'JEFATURA', label:'Jefatura', color:'var(--yellow)', usd:promUSD, needs2:true};
+  return {level:'COMPRAS', label:'Resp. Compras', color:'var(--green)', usd:promUSD, needs2:true};
+}
+function _nivelBadgeHTML(auth, ok2){
+  var promUSDStr = auth.usd>0 ? 'USD '+auth.usd.toFixed(0) : '';
+  return '<div style="font-size:10px;font-weight:700;color:'+auth.color+'">'+auth.label+'</div>'
+    + (promUSDStr?'<div style="font-size:9px;color:var(--muted)">≈ '+promUSDStr+'</div>':'')
+    + (!ok2?'<div style="font-size:9px;color:#f87171">⚠ Falta 2° presupuesto</div>':'');
+}
+function _authCellHTML(c, auth, ok2, promStr){
+  if (c.autorizado_en) return '<div style="font-size:11px;font-weight:700;color:var(--green)">✅ Autorizado</div><div style="font-size:9px;color:var(--muted)">'+c.autorizado_en+'</div>';
+  if (ok2 && esModoEditor()) return '<button onclick="autorizarCCP(\''+c.id+'\',\''+(c.num_comp||'')+'\',\''+(c.asunto||'').replace(/'/g,'&#39;')+'\',\''+promStr+'\',\''+auth.level+'\')" style="padding:5px 10px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);border-radius:6px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--ff);white-space:nowrap">✅ Autorizar</button>';
+  if (!ok2) return '<span style="font-size:10px;color:var(--muted)">Sin 2° ppto</span>';
+  return '<span style="font-size:10px;color:var(--muted)">—</span>';
+}
+
 async function renderComparativas(){
   const list=document.getElementById('comp-list'); if(!list) return;
   list.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted)"><div style="font-size:20px">⏳</div><div style="font-size:12px;margin-top:8px">Cargando comparativas...</div></div>';
@@ -3503,6 +3631,13 @@ async function renderComparativas(){
     if(r.ok){ rows=await r.json(); }
     else { _err='HTTP '+r.status+' — '+(await r.text()).slice(0,140); }
     rows.sort((a,b)=>String(b.creado_at||b.id||'').localeCompare(String(a.creado_at||a.id||'')));
+    // Botones de área (desde el set completo) + años disponibles
+    var _areas={}; rows.forEach(function(c){ var a=(c.area||'').trim(); if(a) _areas[a]=1; });
+    _mkAreaBtns('hist-area-btns', Object.keys(_areas).sort(), _histArea, 'pickHistArea');
+    _histFillYears(rows);
+    // Filtros: área + fecha/período + búsqueda
+    if(_histArea && _histArea!=='__all') rows=rows.filter(c=>(c.area||'').trim()===_histArea);
+    rows=rows.filter(_histEnPeriodo);
     if(q) rows=rows.filter(c=>((c.num_comp||'')+(c.num_sc||'')+(c.area||'')+(c.asunto||'')+(c.solicitante||'')).toLowerCase().includes(q));
   }catch(e){ _err=e.message; }
   if(!rows.length){
@@ -3520,52 +3655,36 @@ async function renderComparativas(){
     +'</tr></thead><tbody>'
     +rows.map(c=>{
       const prom   = _ccp_montoProm(c);
-      const auth   = _ccp_authLevel(c);
+      const auth   = _ccp_authLevelRate(c, _ccp_getUSDRate()); _histRowById[c.id] = c;
       const nProv  = _ccp_provCount(c);
       const divisa = (c.divisa||'ARS').toUpperCase();
       const fmt = v => divisa+' '+Number(v).toLocaleString('es-AR',{minimumFractionDigits:2});
       const promStr= prom>0 ? fmt(prom) : '—';
-      const promUSDStr = auth.usd>0 ? 'USD '+auth.usd.toFixed(0) : '';
       const pMin   = c.precio_elegido ? fmt(c.precio_elegido) : '—';
       const aho    = c.ahorro>0 ? '<span style="color:var(--green);font-weight:700">'+fmt(c.ahorro)+'</span>' : '—';
       const link   = localStorage.getItem('nielsen_comparacion_url')||'https://nielsen-compras.vercel.app/comparativo';
       const scLink = c.num_sc ? `<span class="mono" style="color:var(--or)">${c.num_sc}</span>` : '—';
       const ok2    = nProv>=2;
-      const nivelBadge = `<div style="font-size:10px;font-weight:700;color:${auth.color}">${auth.label}</div>`
-        +(promUSDStr?`<div style="font-size:9px;color:var(--muted)">≈ ${promUSDStr}</div>`:'')
-        +(!ok2?'<div style="font-size:9px;color:#f87171">⚠ Falta 2° presupuesto</div>':'');
-      // Autorización status
-      let authCell = '';
-      if (c.autorizado_en) {
-        authCell = `<div style="font-size:11px;font-weight:700;color:var(--green)">✅ Autorizado</div>`
-          +`<div style="font-size:9px;color:var(--muted)">${c.autorizado_en}</div>`;
-      } else if (ok2 && esModoEditor()) {
-        authCell = `<button onclick="autorizarCCP('${c.id}','${c.num_comp||''}','${(c.asunto||'').replace(/'/g,'&#39;')}','${promStr}','${auth.level}')"
-          style="padding:5px 10px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);border-radius:6px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--ff);white-space:nowrap">
-          ✅ Autorizar</button>`;
-      } else if (!ok2) {
-        authCell = `<span style="font-size:10px;color:var(--muted)">Sin 2° ppto</span>`;
-      } else {
-        authCell = `<span style="font-size:10px;color:var(--muted)">—</span>`;
-      }
+      const nivelBadge = _nivelBadgeHTML(auth, ok2);
+      let authCell = _authCellHTML(c, auth, ok2, promStr);
       return '<tr>'
         +`<td class="mono" style="color:var(--or);font-weight:700">${c.num_comp||'—'}</td>`
         +`<td>${scLink}</td>`
         +`<td style="max-width:160px;font-size:12px">${c.asunto||'—'}</td>`
         +`<td style="font-size:12px"><div>${promStr}</div></td>`
-        +`<td>${nivelBadge}</td>`
+        +`<td id="niv-${c.id}">${nivelBadge}</td>`
         +`<td style="text-align:center;font-size:12px">${nProv||'—'}</td>`
         +`<td style="font-size:12px">${pMin}</td>`
         +`<td style="font-size:12px">${aho}</td>`
         +`<td><button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--or)" onclick="window.open('${link}?comp_id=${c.id}','_blank')">🔍 Consultar</button></td>`
         +`<td style="font-size:12px">${c.fecha?formatFecha(c.fecha):'—'}</td>`
         +`<td id="tc-${c.id}" style="font-size:11px;color:var(--muted);white-space:nowrap">⏳</td>`
-        +`<td style="min-width:120px">${authCell}</td>`
+        +`<td id="auth-${c.id}" style="min-width:120px">${authCell}</td>`
         +`<td>${esModoEditor()?`<button class="btn btn-ghost btn-sm" style="font-size:10px;color:#f87171" onclick="eliminarCCP('${c.id}','${(c.num_comp||'').replace(/'/g,'&#39;')}')">🗑 Eliminar</button>`:'<span style="font-size:10px;color:var(--muted)">—</span>'}</td>`
         +'</tr>';
     }).join('')
     +'</tbody></table></div></div>'
-    +'<div style="font-size:10px;color:var(--muted);margin-top:8px;padding:0 4px">TC USD (BNA): Cotización Divisas Venta del Banco Nación del día anterior a la fecha de cada CCP (se actualiza automáticamente). El TC de referencia para los niveles de autorización se ajusta en ⚙️ Ajustes.</div>';
+    +'<div style="font-size:10px;color:var(--muted);margin-top:8px;padding:0 4px">TC USD (BNA): se toma el valor de <strong>Venta</strong> del Banco Nación del día anterior a la fecha de cada CCP (se actualiza automáticamente). Si necesitás el valor exacto de la columna <strong>Cotización Divisas</strong>, hacé click en el valor para fijarlo manualmente para esa fecha. Ese mismo TC se usa para convertir el monto a USD y determinar el nivel de autorización.</div>';
   _actualizarTCHistorial(rows);
 }
 
@@ -3601,7 +3720,9 @@ async function _tcVentaBNA(fechaCCP){
 }
 
 // Llena la columna TC USD del Historial de CCP (una consulta por fecha distinta).
+// Prioriza un valor manual (override) si fue fijado para esa fecha.
 async function _actualizarTCHistorial(rows){
+  var ov={}; try{ ov=JSON.parse(localStorage.getItem('nielsen_tc_override')||'{}'); }catch(e){ ov={}; }
   var byDate = {};
   (rows||[]).forEach(function(c){
     var cell = document.getElementById('tc-' + c.id);
@@ -3610,19 +3731,57 @@ async function _actualizarTCHistorial(rows){
     if (!f){ cell.textContent = '—'; return; }
     (byDate[f] = byDate[f] || []).push(c.id);
   });
-  for (var f in byDate){
+  var fechas = Object.keys(byDate);
+  for (var i=0;i<fechas.length;i++){
+    var f = fechas[i];
     var res = null;
-    try { res = await _tcVentaBNA(f); } catch(e){}
-    byDate[f].forEach(function(id){
-      var cell = document.getElementById('tc-' + id); if (!cell) return;
-      if (res && res.venta){
-        cell.innerHTML = '$ ' + Number(res.venta).toLocaleString('es-AR', {minimumFractionDigits:2})
-          + '<div style="font-size:9px;color:var(--muted)">BNA ' + res.fecha + '</div>';
-      } else {
-        cell.innerHTML = '<span style="color:#f87171;font-size:10px" title="No se pudo obtener la cotización (sin conexión o fecha sin dato)">s/d</span>';
-      }
-    });
+    if (ov[f] && ov[f] > 0){ res = { venta: ov[f], fecha: f, manual: true }; }
+    else { try { res = await _tcVentaBNA(f); } catch(e){} }
+    (function(f, res){
+      var rate = (res && res.venta) ? res.venta : _ccp_getUSDRate();
+      byDate[f].forEach(function(id){
+        var cell = document.getElementById('tc-' + id); if (!cell) return;
+        cell.style.cursor = 'pointer';
+        cell.title = 'Click para fijar manualmente la Cotización Divisas Venta del BNA';
+        cell.setAttribute('onclick', "_editarTCManual('" + f + "')");
+        if (res && res.venta){
+          cell.innerHTML = '$ ' + Number(res.venta).toLocaleString('es-AR', {minimumFractionDigits:2})
+            + '<div style="font-size:9px;color:' + (res.manual?'var(--or)':'var(--muted)') + '">' + (res.manual?'manual ✏️':('BNA ' + res.fecha + ' ✏️')) + '</div>';
+        } else {
+          cell.innerHTML = '<span style="color:#f87171;font-size:10px">s/d ✏️</span>';
+        }
+        // Recalcular Nivel y Autorización con el TC por fecha
+        var c = _histRowById[id];
+        if (c){
+          var nProv = _ccp_provCount(c), ok2 = nProv>=2;
+          var divisa = (c.divisa||'ARS').toUpperCase();
+          var prom = _ccp_montoProm(c);
+          var promStr = prom>0 ? (divisa+' '+Number(prom).toLocaleString('es-AR',{minimumFractionDigits:2})) : '—';
+          var auth = _ccp_authLevelRate(c, rate);
+          var nivEl = document.getElementById('niv-'+id); if (nivEl) nivEl.innerHTML = _nivelBadgeHTML(auth, ok2);
+          var authEl = document.getElementById('auth-'+id); if (authEl) authEl.innerHTML = _authCellHTML(c, auth, ok2, promStr);
+        }
+      });
+    })(f, res);
   }
+}
+
+function _editarTCManual(fecha){
+  if (!esModoEditor()){ showToast('Activá el modo Editor para fijar el TC', 'error'); return; }
+  var ov={}; try{ ov=JSON.parse(localStorage.getItem('nielsen_tc_override')||'{}'); }catch(e){ ov={}; }
+  var actual = ov[fecha] || '';
+  var v = prompt('Cotización Divisas VENTA (BNA) para los CCP del ' + fecha + ':\n(dejar vacío para volver al valor automático)', actual);
+  if (v === null) return;
+  v = String(v).trim();
+  if (v === ''){ delete ov[fecha]; }
+  else {
+    var n = (v.indexOf(',')>=0) ? parseFloat(v.replace(/\./g,'').replace(',', '.')) : parseFloat(v);
+    if (isNaN(n) || n <= 0){ showToast('Valor inválido', 'error'); return; }
+    ov[fecha] = n;
+  }
+  try{ localStorage.setItem('nielsen_tc_override', JSON.stringify(ov)); }catch(e){}
+  showToast('✓ TC USD actualizado', 'ok');
+  renderComparativas();
 }
 
 var _ahoCharts = {};
@@ -3680,7 +3839,11 @@ async function renderAhorro(){
     let all=await r.json();
     all=all.filter(c=>Number(c.ahorro)>0);
     _ahoFillYears(all);
-    let data=all.filter(_ahoEnPeriodo).sort((a,b)=>(Number(b.ahorro)||0)-(Number(a.ahorro)||0));
+    var _areas={}; all.forEach(function(c){ var a=(c.area||'').trim(); if(a) _areas[a]=1; });
+    _mkAreaBtns('aho-area-btns', Object.keys(_areas).sort(), _ahoArea, 'pickAhoArea');
+    let data=all.filter(_ahoEnPeriodo);
+    if(_ahoArea && _ahoArea!=='__all') data=data.filter(c=>(c.area||'').trim()===_ahoArea);
+    data=data.sort((a,b)=>(Number(b.ahorro)||0)-(Number(a.ahorro)||0));
     const total=data.reduce((s,c)=>s+(Number(c.ahorro)||0),0);
     const prom=data.length?Math.round(total/data.length):0;
     const max=data.length?Math.max(...data.map(c=>Number(c.ahorro)||0)):0;
@@ -8168,11 +8331,28 @@ async function cargarProveedoresSB() {
 }
 
 // ── BASE DE DATOS ──
+function _fillProvFiltro(id, values){
+  var sel=document.getElementById(id); if(!sel) return;
+  var cur=sel.value;
+  var first=sel.options[0] ? sel.options[0].outerHTML : '';
+  sel.innerHTML = first + values.map(function(v){ return '<option value="'+String(v).replace(/"/g,'&quot;')+'">'+v+'</option>'; }).join('');
+  if(cur && values.indexOf(cur)>=0) sel.value=cur; else if(cur && cur==='__all') sel.value='__all';
+}
+
 function renderProvDB() {
   const q = (document.getElementById('prov-buscar')?.value || '').toLowerCase();
+  // Poblar filtros de rubro y tipo con los valores presentes
+  var rubros={}, tipos={};
+  provData.forEach(function(p){ var r=(p.rubro||'').trim(); if(r) rubros[r]=1; var t=(p.tipo||'').trim(); if(t) tipos[t]=1; });
+  _fillProvFiltro('prov-filtro-rubro', Object.keys(rubros).sort());
+  _fillProvFiltro('prov-filtro-tipo', Object.keys(tipos).sort());
+  var fRubro = (document.getElementById('prov-filtro-rubro')?.value)||'__all';
+  var fTipo  = (document.getElementById('prov-filtro-tipo')?.value)||'__all';
   let data = provData;
   if (q) data = data.filter(p =>
     (p.nombre+p.cuit+p.rubro+p.email+p.tipo).toLowerCase().includes(q));
+  if (fRubro && fRubro!=='__all') data = data.filter(p => (p.rubro||'').trim()===fRubro);
+  if (fTipo  && fTipo !=='__all') data = data.filter(p => (p.tipo||'').trim()===fTipo);
   const cnt = document.getElementById('prov-count');
   if (cnt) cnt.textContent = data.length + ' de ' + provData.length + ' proveedores';
   const tb = document.getElementById('prov-db-body');
