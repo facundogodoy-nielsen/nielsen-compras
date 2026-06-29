@@ -1907,11 +1907,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
         <div style="font-size:12px;color:var(--text);margin-top:2px">&lt; USD 100</div>
       </div>
       <div style="flex:1;min-width:150px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.3);border-radius:8px;padding:8px 12px">
-        <div style="font-size:11px;font-weight:800;color:var(--yellow)">Jefatura</div>
+        <div style="font-size:11px;font-weight:800;color:var(--yellow)">Gerencia</div>
         <div style="font-size:12px;color:var(--text);margin-top:2px">USD 100 – 400</div>
       </div>
       <div style="flex:1;min-width:150px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:8px;padding:8px 12px">
-        <div style="font-size:11px;font-weight:800;color:#f87171">Alta Gerencia</div>
+        <div style="font-size:11px;font-weight:800;color:#f87171">Alta Dirección</div>
         <div style="font-size:12px;color:var(--text);margin-top:2px">&gt; USD 400</div>
       </div>
     </div>
@@ -3401,8 +3401,8 @@ function _ccp_authLevel(c) {
   const divisa = (c.divisa||'ARS').toUpperCase();
   const promUSD = divisa === 'USD' ? prom : prom / rate;
   const n = parseInt((c.proveedores_count||c.proveedores?.length||0));
-  if (promUSD > 400) return {level:'GERENCIAL', label:'Alta Gerencia', color:'#f87171', usd:promUSD, needs2:true};
-  if (promUSD >= 100) return {level:'JEFATURA', label:'Jefatura', color:'var(--yellow)', usd:promUSD, needs2:true};
+  if (promUSD > 400) return {level:'DIRECCION', label:'Alta Dirección', color:'#f87171', usd:promUSD, needs2:true};
+  if (promUSD >= 100) return {level:'GERENCIA', label:'Gerencia', color:'var(--yellow)', usd:promUSD, needs2:true};
   return {level:'COMPRAS', label:'Resp. Compras', color:'var(--green)', usd:promUSD, needs2:true};
 }
 function _ccp_provCount(c) {
@@ -3602,8 +3602,8 @@ function _ccp_authLevelRate(c, rate){
   var prom = _ccp_montoProm(c);
   var divisa = (c.divisa||'ARS').toUpperCase();
   var promUSD = divisa==='USD' ? prom : (rate>0 ? prom/rate : 0);
-  if (promUSD > 400) return {level:'GERENCIAL', label:'Alta Gerencia', color:'#f87171', usd:promUSD, needs2:true};
-  if (promUSD >= 100) return {level:'JEFATURA', label:'Jefatura', color:'var(--yellow)', usd:promUSD, needs2:true};
+  if (promUSD > 400) return {level:'DIRECCION', label:'Alta Dirección', color:'#f87171', usd:promUSD, needs2:true};
+  if (promUSD >= 100) return {level:'GERENCIA', label:'Gerencia', color:'var(--yellow)', usd:promUSD, needs2:true};
   return {level:'COMPRAS', label:'Resp. Compras', color:'var(--green)', usd:promUSD, needs2:true};
 }
 function _nivelBadgeHTML(auth, ok2){
@@ -3684,12 +3684,12 @@ async function renderComparativas(){
         +'</tr>';
     }).join('')
     +'</tbody></table></div></div>'
-    +'<div style="font-size:10px;color:var(--muted);margin-top:8px;padding:0 4px">TC USD (BNA): se toma el valor de <strong>Venta</strong> del Banco Nación del día anterior a la fecha de cada CCP (se actualiza automáticamente). Si necesitás el valor exacto de la columna <strong>Cotización Divisas</strong>, hacé click en el valor para fijarlo manualmente para esa fecha. Ese mismo TC se usa para convertir el monto a USD y determinar el nivel de autorización.</div>';
+    +'<div style="font-size:10px;color:var(--muted);margin-top:8px;padding:0 4px">TC USD (BNA): se toma el valor de <strong>Venta</strong> de la sección <strong>Cotización Divisas</strong> del Banco Nación del día anterior a la fecha de cada CCP (vía servidor, se actualiza automáticamente). Cada celda indica su fuente (BNA Divisas / oficial / manual). Si querés fijar un valor exacto, hacé click en la celda. Ese mismo TC convierte el monto a USD y define el nivel de autorización.</div>';
   _actualizarTCHistorial(rows);
 }
 
-// Devuelve la Cotización Divisas VENTA (BNA, dólar oficial) del día anterior a la fecha del CCP.
-// Si ese día no tuvo cotización (fin de semana/feriado), retrocede hasta el último día hábil con dato.
+// Devuelve la Cotización Divisas VENTA (BNA) del día anterior a la fecha del CCP.
+// 1° función serverless /api/tc-bna (BNA, sin CORS); 2° ArgentinaDatos (cliente). Retrocede en findes/feriados.
 async function _tcVentaBNA(fechaCCP){
   if (!fechaCCP) return null;
   var base = new Date(fechaCCP + 'T00:00:00');
@@ -3697,24 +3697,40 @@ async function _tcVentaBNA(fechaCCP){
   var cache = {};
   try { cache = JSON.parse(localStorage.getItem('nielsen_tc_bna') || '{}'); } catch(e){ cache = {}; }
   for (var k = 1; k <= 7; k++){
-    var d = new Date(base.getTime() - k * 86400000);
-    var ds = d.toISOString().slice(0, 10);            // YYYY-MM-DD (día anterior, retrocediendo)
-    if (cache[ds] && cache[ds] > 0) return { venta: cache[ds], fecha: ds };
-    var p = ds.split('-');
+    var dt = new Date(base.getTime() - k * 86400000);
+    var ds = dt.toISOString().slice(0, 10);            // día anterior, retrocediendo
+    var cv = cache[ds];
+    if (cv){
+      if (typeof cv === 'number' && cv > 0) return { venta: cv, fecha: ds, fuente: 'oficial' };
+      if (cv.venta > 0) return { venta: cv.venta, fecha: ds, fuente: cv.fuente || 'BNA' };
+    }
+    // 1) Función serverless (BNA Divisas, server-side, sin CORS)
     try {
-      var r = await fetch('https://api.argentinadatos.com/v1/cotizaciones/dolares/oficial/' + p[0] + '/' + p[1] + '/' + p[2], { cache:'no-store' });
+      var r = await fetch('/api/tc-bna?fecha=' + ds, { cache:'no-store' });
       if (r.ok){
         var j = await r.json();
-        var venta = j && (j.venta || j.value_sell);
-        if (venta && venta > 0){
-          cache[ds] = venta;
+        if (j && j.venta > 0){
+          cache[ds] = { venta: j.venta, fuente: j.fuente || 'BNA' };
           try { localStorage.setItem('nielsen_tc_bna', JSON.stringify(cache)); } catch(e){}
-          return { venta: venta, fecha: ds };
+          return { venta: j.venta, fecha: ds, fuente: j.fuente || 'BNA' };
         }
-      } else if (r.status === 404){
-        continue; // ese día no tuvo cotización → probar el anterior
+        continue; // 404/sin dato → probar día anterior
       }
-    } catch(e){ /* CORS/offline → cortar e informar s/d */ break; }
+    } catch(e){ /* /api no disponible → fallback directo */ }
+    // 2) Fallback directo a ArgentinaDatos (oficial, fuente BNA)
+    var p = ds.split('-');
+    try {
+      var r2 = await fetch('https://api.argentinadatos.com/v1/cotizaciones/dolares/oficial/' + p[0] + '/' + p[1] + '/' + p[2], { cache:'no-store' });
+      if (r2.ok){
+        var j2 = await r2.json();
+        var v = j2 && (j2.venta || j2.value_sell);
+        if (v > 0){
+          cache[ds] = { venta: v, fuente: 'oficial' };
+          try { localStorage.setItem('nielsen_tc_bna', JSON.stringify(cache)); } catch(e){}
+          return { venta: v, fecha: ds, fuente: 'oficial' };
+        }
+      } else if (r2.status === 404){ continue; }
+    } catch(e){ break; }
   }
   return null;
 }
@@ -3746,7 +3762,7 @@ async function _actualizarTCHistorial(rows){
         cell.setAttribute('onclick', "_editarTCManual('" + f + "')");
         if (res && res.venta){
           cell.innerHTML = '$ ' + Number(res.venta).toLocaleString('es-AR', {minimumFractionDigits:2})
-            + '<div style="font-size:9px;color:' + (res.manual?'var(--or)':'var(--muted)') + '">' + (res.manual?'manual ✏️':('BNA ' + res.fecha + ' ✏️')) + '</div>';
+            + '<div style="font-size:9px;color:' + (res.manual?'var(--or)':'var(--muted)') + '">' + (res.manual?'manual ✏️':((res.fuente||'BNA') + ' ' + res.fecha + ' ✏️')) + '</div>';
         } else {
           cell.innerHTML = '<span style="color:#f87171;font-size:10px">s/d ✏️</span>';
         }
