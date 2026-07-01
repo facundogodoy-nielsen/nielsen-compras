@@ -1825,6 +1825,9 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button onclick="descargarPlantillaProv()" style="padding:9px 14px;border-radius:8px;border:1.5px solid var(--or);background:rgba(232,93,37,.1);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
       ⬇️ Descargar Plantilla XLS
     </button>
+    <button onclick="exportarProvDB()" style="padding:9px 14px;border-radius:8px;border:1.5px solid rgba(34,197,94,.5);background:rgba(34,197,94,.12);color:var(--green);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+      📤 Exportar Base de Datos
+    </button>
     <button data-editor-only onclick="toggleProvFormCC(true)" style="padding:9px 14px;border-radius:8px;border:1.5px solid rgba(232,93,37,.6);background:var(--or);color:#fff;font-family:var(--ff);font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">
       ➕ Agregar proveedor
     </button>
@@ -8508,6 +8511,23 @@ async function sincronizarProvNube(){
   await cargarProveedoresSB();
   renderProvDB();
   showToast('✓ Sincronizado — '+provData.length+' proveedores en la base compartida', 'ok');
+}
+
+function exportarProvDB() {
+  if (typeof XLSX === 'undefined') { showToast('Librería Excel no disponible', 'error'); return; }
+  if (!provData || !provData.length) { showToast('No hay proveedores para exportar', 'error'); return; }
+  const headers = ['Nombre / Razón Social','CUIT','Rubro','Email','Teléfono','Dirección','Persona de Contacto','Condición de pago','Tipo'];
+  const aoa = [headers];
+  provData.forEach(p => aoa.push([
+    p.nombre||'', p.cuit||'', p.rubro||'', p.email||'', p.tel||'', p.dir||'', p.contacto||'', p.pago||'', p.tipo||''
+  ]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:34},{wch:16},{wch:20},{wch:28},{wch:16},{wch:30},{wch:24},{wch:20},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'proveedores');
+  const hoy = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, 'base_datos_proveedores_nielsen_' + hoy + '.xlsx');
+  showToast('✅ Base de datos exportada (' + provData.length + ' proveedores)', 'ok');
 }
 
 function descargarPlantillaProv() {
