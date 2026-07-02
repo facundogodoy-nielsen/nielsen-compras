@@ -1547,8 +1547,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
         <option value="num-desc">🔢 N° SC (mayor a menor)</option>
       </select>
       <div style="flex:1"></div>
-      <button onclick="scrollHistTo('top','hist-table')" title="Ir al principio" style="padding:7px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);cursor:pointer;font-size:13px">⬆️ Inicio</button>
-      <button onclick="scrollHistTo('bottom','hist-table')" title="Ir al final" style="padding:7px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);cursor:pointer;font-size:13px">⬇️ Final</button>
+      <span style="font-size:11px;color:var(--muted)">Usá los badges ↑ Inicio / ↓ Fin al desplazarte</span>
     </div>
   </div>
   <div class="card">
@@ -1639,8 +1638,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
         <option value="num-asc">🔢 N° PC (menor a mayor)</option>
       </select>
       <div style="flex:1"></div>
-      <button onclick="scrollHistTo('top','op-table-body')" title="Ir al principio" style="padding:7px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);cursor:pointer;font-size:13px">⬆️ Inicio</button>
-      <button onclick="scrollHistTo('bottom','op-table-body')" title="Ir al final" style="padding:7px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--s2);color:var(--muted);cursor:pointer;font-size:13px">⬇️ Final</button>
+      <span style="font-size:11px;color:var(--muted)">Usá los badges ↑ Inicio / ↓ Fin al desplazarte</span>
     </div>
   </div>
   <!-- Tabla de pedidos originales -->
@@ -2254,6 +2252,14 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 </main>
 </div>
 
+<!-- ══ BADGES DE NAVEGACIÓN DE LISTA (Historial SC / Pedidos) ══ -->
+<div id="scrollNav" style="position:fixed;right:18px;bottom:22px;z-index:900;display:none;flex-direction:column;gap:8px">
+  <button id="scrollTopBtn" onclick="_scrollListaInicio()" title="Ir al principio de la lista"
+    style="display:none;align-items:center;gap:6px;padding:9px 14px;border-radius:999px;border:1px solid var(--or);background:var(--or);color:#fff;font-family:var(--ff);font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.35)">↑ Inicio</button>
+  <button id="scrollBotBtn" onclick="_scrollListaFin()" title="Ir al final de la lista"
+    style="display:none;align-items:center;gap:6px;padding:9px 14px;border-radius:999px;border:1px solid var(--or);background:var(--or);color:#fff;font-family:var(--ff);font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.35)">↓ Fin</button>
+</div>
+
 <!-- ══ MODAL DETALLE SC ══ -->
 <div class="modal-ov" id="modal-sc">
   <div class="modal">
@@ -2655,7 +2661,46 @@ async function showView(id, btn) {
   if (id === 'prov-campamento'){ await _asegurarDatosCompras(); renderComprasCampamento(); }
   if (id === 'prov-eval')    { renderEvalProv(); }
   if (id === 'nueva-sc') resetWizard();
+  _updateScrollNav();
 }
+
+// ══ NAVEGACIÓN DE LISTA (badges Inicio / Fin) ══
+function _histViewActiva(){
+  var v = document.querySelector('.view.active');
+  var id = v ? v.id : '';
+  return id === 'view-historial' || id === 'view-historial-op' || id === 'view-historial-pa';
+}
+function _scrollListaInicio(){ window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function _scrollListaFin(){ window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); }
+function _updateScrollNav(){
+  var nav = document.getElementById('scrollNav'); if (!nav) return;
+  if (!_histViewActiva()){ nav.style.display = 'none'; return; }
+  var st  = window.scrollY || document.documentElement.scrollTop || 0;
+  var max = (document.documentElement.scrollHeight || 0) - window.innerHeight;
+  if (max < 300){ nav.style.display = 'none'; return; }   // lista corta: no hacen falta
+  nav.style.display = 'flex';
+  var topBtn = document.getElementById('scrollTopBtn');
+  var botBtn = document.getElementById('scrollBotBtn');
+  var cercaDelTope = st < 200;
+  var cercaDelFin  = st > (max - 200);
+  // FIN aparece en los primeros renglones; INICIO cuando ya se deslizó al medio/final
+  if (botBtn) botBtn.style.display = cercaDelTope ? 'flex' : 'none';
+  if (topBtn) topBtn.style.display = cercaDelTope ? 'none' : 'flex';
+  // Si llegó al final, el badge FIN no tiene sentido (ya está oculto); INICIO queda visible.
+}
+window.addEventListener('scroll', _updateScrollNav, { passive: true });
+window.addEventListener('resize', _updateScrollNav);
+(function(){
+  function _hookNav(){
+    ['hist-table','op-table-body','pa-table-body'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (el && window.MutationObserver){ new MutationObserver(function(){ _updateScrollNav(); }).observe(el, { childList:true }); }
+    });
+    _updateScrollNav();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _hookNav); else _hookNav();
+})();
+
 
 // ══ WIZARD ══
 function resetWizard() {
@@ -3935,7 +3980,7 @@ function renderKbPctPanel(data){
   const cnts={PENDIENTE:0,'EN PROCESO':0,COMPLETADA:0,CANCELADA:0};
   data.forEach(sc=>{const e=sc.estado||'PENDIENTE';if(cnts[e]!==undefined)cnts[e]++;else cnts['EN PROCESO']++;});
   const cumulPct=Math.round(cnts.COMPLETADA/total*100);
-  const colors={PENDIENTE:'var(--yellow)','EN PROCESO':'var(--accent2)',COMPLETADA:'var(--green)',CANCELADA:'var(--muted)'};
+  const colors={PENDIENTE:'var(--yellow)','EN PROCESO':'var(--blue)',COMPLETADA:'var(--green)',CANCELADA:'var(--red)'};
   panel.innerHTML='<div class="kb-pct-title">📊 Cumplimiento del Período — '+total+' SC en total</div>'
     +'<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">'
     +'<div style="text-align:center"><div style="font-family:var(--fd);font-size:36px;font-weight:800;color:var(--green);line-height:1">'+cumulPct+'%</div>'
@@ -4736,6 +4781,7 @@ function showViewPA(id, btn) {
   if(id==='historial-pa') renderHistorialPA();
   if(id==='panel-pa') renderPanelPA();
   if(id==='kanban-pa') renderKanbanPA();
+  _updateScrollNav();
 }
 
 // ── Sidebar toggle ──
