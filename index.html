@@ -308,6 +308,8 @@ main { padding: 22px 24px; }
 .badge-blue { background: rgba(59,142,243,.15); color: #60a5fa; border: 1px solid rgba(59,142,243,.3); }
 .badge-green { background: rgba(34,197,94,.15); color: #4ade80; border: 1px solid rgba(34,197,94,.3); }
 .badge-gray { background: rgba(120,120,120,.15); color: var(--subtle); border: 1px solid var(--border); }
+.badge-violet { background: rgba(139,92,246,.16); color: #c4b5fd; border: 1px solid rgba(139,92,246,.42); }
+.badge-presup { background: rgba(99,102,241,.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,.38); font-size: 9px; padding: 1px 6px; }
 .badge-purple { background: rgba(168,85,247,.15); color: #c084fc; border: 1px solid rgba(168,85,247,.3); }
 
 /* ── BOTONES ── */
@@ -2302,11 +2304,24 @@ const ESTADO_COLORS = { PENDIENTE:'badge-yellow', 'EN PROCESO':'badge-blue', COM
 function estBadge(sc_or_estado) {
   // Accept either a SC object or a estado string
   const estado  = (typeof sc_or_estado === 'string') ? sc_or_estado : (sc_or_estado?.estado || 'PENDIENTE');
-  const alerta  = (typeof sc_or_estado === 'object') ? sc_or_estado?.tieneAlerta : false;
+  const scObj   = (typeof sc_or_estado === 'object') ? sc_or_estado : null;
+  const alerta  = scObj ? scObj.tieneAlerta : false;
+  let main;
   if(estado==='COMPLETADA' && alerta)
-    return '<span class="badge badge-orange">⚠️ COMPLETADA</span>';
-  const cls = ESTADO_COLORS[estado] || 'badge-gray';
-  return `<span class="badge ${cls}">${estado}</span>`;
+    main = '<span class="badge badge-orange">⚠️ COMPLETADA</span>';
+  else if(estado==='COMPLETADA' && scObj && _scCompletadaSinFactura(scObj))
+    main = '<span class="badge badge-violet" title="Retirado con remito — falta la factura">🟣 COMPLETADA</span>';
+  else {
+    const cls = ESTADO_COLORS[estado] || 'badge-gray';
+    main = `<span class="badge ${cls}">${estado}</span>`;
+  }
+  // Sub-badge PRESUP. debajo, si hay ítems presupuestados
+  let sub = '';
+  if(scObj){
+    const hasPresup = Object.values(scObj.itemsDetalle||{}).some(d=>d.estado==='PRESUPUESTADO');
+    if(hasPresup) sub = '<div style="margin-top:3px"><span class="badge badge-presup" title="Tiene ítems presupuestados">PRESUP.</span></div>';
+  }
+  return sub ? '<div style="display:inline-flex;flex-direction:column;align-items:flex-start">'+main+sub+'</div>' : main;
 }
 
 // ══ STATE ══
@@ -3113,8 +3128,23 @@ function critBadge(c) {
   return `<span class="badge ${colors[c]||'badge-gray'}">${labels[c]||c||'—'}</span>`;
 }
 function estBadge(e) {
+  const estado = (typeof e === 'string') ? e : (e?.estado || 'PENDIENTE');
+  const scObj  = (typeof e === 'object') ? e : null;
+  const alerta = scObj ? scObj.tieneAlerta : false;
   const colors = { PENDIENTE:'badge-yellow','EN PROCESO':'badge-blue',COMPLETADA:'badge-green',CANCELADA:'badge-gray' };
-  return `<span class="badge ${colors[e]||'badge-gray'}">${e||'—'}</span>`;
+  let main;
+  if(estado==='COMPLETADA' && alerta)
+    main = '<span class="badge badge-orange">⚠️ COMPLETADA</span>';
+  else if(estado==='COMPLETADA' && scObj && _scCompletadaSinFactura(scObj))
+    main = '<span class="badge badge-violet" title="Retirado con remito — falta la factura">🟣 COMPLETADA</span>';
+  else
+    main = `<span class="badge ${colors[estado]||'badge-gray'}">${estado||'—'}</span>`;
+  let sub = '';
+  if(scObj){
+    const hasPresup = Object.values(scObj.itemsDetalle||{}).some(d=>d.estado==='PRESUPUESTADO');
+    if(hasPresup) sub = '<div style="margin-top:3px"><span class="badge badge-presup" title="Tiene ítems presupuestados">PRESUP.</span></div>';
+  }
+  return sub ? '<div style="display:inline-flex;flex-direction:column;align-items:flex-start">'+main+sub+'</div>' : main;
 }
 function formatFecha(d) {
   if (!d) return '—';
@@ -3142,7 +3172,7 @@ function renderFilaSC(sc, i, tableId) {
     <td>${formatFecha(sc.fecha)}</td>
     <td>${formatFecha(sc.fechaLimite)} ${diasStr}</td>
     <td>${critBadge(sc.criticidad)}</td>
-    <td>${estBadge(sc.estado)}</td>
+    <td>${estBadge(sc)}</td>
     <td style="white-space:nowrap">
       <button class="btn btn-sm btn-ghost" onclick="verSC(${i})">👁 Ver</button>
     </td>
@@ -5815,38 +5845,48 @@ function renderItemsCompra(lineas, sc) {
 
     const subPanel = est==='PRESUPUESTADO'
       ? '<div class="ci-sub"><div class="ci-sub-lbl">Presupuesto recibido</div><div class="ci-sub-row">'
-        +'<button class="btn btn-ghost btn-sm"'+dis+' onclick="adjuntarPresupuesto('+i+')">📎 Adjuntar Presupuesto</button>'
-        +'<button class="btn btn-ghost btn-sm" onclick="abrirComparacionConSC('+i+')">📊 Comparar Presupuestos ↗</button>'
-        +(d.presupuestoNombre?'<span style="font-size:11px;color:var(--accent2)">'+d.presupuestoNombre+'</span>':'')
-        +'</div></div>'
+        + _presupBtnHTML(i, d, dis)
+        + '</div></div>'
       : est==='COMPRADO'
-        ? '<div class="ci-sub"><div class="ci-sub-lbl">Datos de Factura</div>'
-          +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px">'
-          +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Fecha comprobante</div>'
-          +'<input type="date" class="ci-qty" style="width:100%;padding:5px 8px;" id="fdate-'+i+'"'
-          +' value="'+(d.facturaFecha||'')+'"'+dis+' oninput="setFacturaDato('+i+',\'fecha\',this.value)"></div>'
-          +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">N° Comprobante</div>'
-          +'<input type="text" class="ci-qty" style="width:100%;padding:5px 8px;letter-spacing:normal" id="fnum-'+i+'"'
-          +' value="'+(d.facturaNum||'')+'" placeholder="0001-00000001"'+dis+' oninput="setFacturaDato('+i+',\'num\',this.value)"></div>'
-          +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Proveedor</div>'
-          +'<input type="text" class="ci-qty" style="width:100%;padding:5px 8px;letter-spacing:normal" id="fprov-'+i+'"'
-          +' value="'+(d.facturaProveedor||'')+'" placeholder="Nombre proveedor"'+dis+' oninput="setFacturaDato('+i+',\'proveedor\',this.value)"></div>'
-          +'</div>'
-          // Si el ítem tenía presupuesto, mantenerlo visible debajo
-          +(d.presupuestoNombre||d.presupuestoLink
+        ? '<div class="ci-sub">'
+          // ── REMITO ──
+          + '<div class="ci-sub-lbl">📄 Datos de Remito <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">(retiro de mercadería)</span></div>'
+          + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px">'
+          + '<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Fecha remito</div>'
+          + '<input type="date" class="ci-qty" style="width:100%;padding:5px 8px;" id="rdate-'+i+'"'
+          + ' value="'+(d.remitoFecha||'')+'"'+dis+' oninput="setRemitoDato('+i+',\'fecha\',this.value)"></div>'
+          + '<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">N° Remito</div>'
+          + '<input type="text" class="ci-qty" style="width:100%;padding:5px 8px;letter-spacing:normal" id="rnum-'+i+'"'
+          + ' value="'+(d.remitoNum||'')+'" placeholder="0001-00000001"'+dis+' oninput="setRemitoDato('+i+',\'num\',this.value)"></div>'
+          + '<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Proveedor</div>'
+          + '<input type="text" class="ci-qty" style="width:100%;padding:5px 8px;letter-spacing:normal" id="rprov-'+i+'"'
+          + ' value="'+(d.remitoProveedor||'')+'" placeholder="Nombre proveedor"'+dis+' oninput="setRemitoDato('+i+',\'proveedor\',this.value)"></div>'
+          + '</div>'
+          // ── FACTURA ──
+          + '<div class="ci-sub-lbl" style="margin-top:8px">🧾 Datos de Factura</div>'
+          + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px">'
+          + '<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Fecha comprobante</div>'
+          + '<input type="date" class="ci-qty" style="width:100%;padding:5px 8px;" id="fdate-'+i+'"'
+          + ' value="'+(d.facturaFecha||'')+'"'+dis+' oninput="setFacturaDato('+i+',\'fecha\',this.value)"></div>'
+          + '<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">N° Comprobante</div>'
+          + '<input type="text" class="ci-qty" style="width:100%;padding:5px 8px;letter-spacing:normal" id="fnum-'+i+'"'
+          + ' value="'+(d.facturaNum||'')+'" placeholder="0001-00000001"'+dis+' oninput="setFacturaDato('+i+',\'num\',this.value)"></div>'
+          + '<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Proveedor</div>'
+          + '<input type="text" class="ci-qty" style="width:100%;padding:5px 8px;letter-spacing:normal" id="fprov-'+i+'"'
+          + ' value="'+(d.facturaProveedor||'')+'" placeholder="Nombre proveedor"'+dis+' oninput="setFacturaDato('+i+',\'proveedor\',this.value)"></div>'
+          + '</div>'
+          + _estadoDocItem(d)
+          // Presupuesto conservado (si el ítem venía de PRESUPUESTADO)
+          + ((d.presupuestoLink||d.presupuestoNombre)
             ? '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">'
-              +'<div class="ci-sub-lbl" style="color:var(--accent2)">Presupuesto previo (conservado)</div>'
-              +'<div class="ci-sub-row">'
-              +'<button class="btn btn-ghost btn-sm"'+dis+' onclick="adjuntarPresupuesto('+i+')">📎 Actualizar Presupuesto</button>'
-              +'<button class="btn btn-ghost btn-sm" onclick="abrirComparacionConSC('+i+')">📊 Comparar Presupuestos ↗</button>'
-              +(d.presupuestoNombre?'<span style="font-size:11px;color:var(--accent2)">'+d.presupuestoNombre+'</span>':'')
-              +'</div></div>'
+              + '<div class="ci-sub-lbl" style="color:var(--accent2)">Presupuesto</div>'
+              + '<div class="ci-sub-row">'+_presupBtnHTML(i, d, dis)+'</div></div>'
             : '')
-          +'</div>'
+          + '</div>'
       : est==='NO_COMPRADO'
         ? '<div class="ci-sub"><div class="ci-sub-lbl">Justificación</div>'
-          +'<textarea class="ci-just"'+dis+' id="just-'+i+'" placeholder="Motivo..." oninput="setItemJust('+i+',this.value)">'+just+'</textarea>'
-          +'</div>'
+          + '<textarea class="ci-just"'+dis+' id="just-'+i+'" placeholder="Motivo..." oninput="setItemJust('+i+',this.value)">'+just+'</textarea>'
+          + '</div>'
       : '';
 
     return '<div class="ci-row" id="ci-row-'+i+'">'
@@ -6030,6 +6070,70 @@ function setFacturaDato(idx, campo, val) {
   if(campo==='fecha')      sc.itemsDetalle[idx].facturaFecha     = val;
   if(campo==='num')        sc.itemsDetalle[idx].facturaNum       = val;
   if(campo==='proveedor')  sc.itemsDetalle[idx].facturaProveedor = val;
+  _persistItemDebounced(sc);
+  _refreshEstadoDoc(idx);
+}
+function setRemitoDato(idx, campo, val) {
+  const sc=scs[window._scIdx]; if(!sc) return;
+  if(!sc.itemsDetalle) sc.itemsDetalle={};
+  if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'COMPRADO',cantidad:'',justificacion:''};
+  if(campo==='fecha')      sc.itemsDetalle[idx].remitoFecha     = val;
+  if(campo==='num')        sc.itemsDetalle[idx].remitoNum       = val;
+  if(campo==='proveedor')  sc.itemsDetalle[idx].remitoProveedor = val;
+  _persistItemDebounced(sc);
+  _refreshEstadoDoc(idx);
+}
+let _itemSaveTimer=null;
+function _persistItemDebounced(sc){
+  clearTimeout(_itemSaveTimer);
+  _itemSaveTimer=setTimeout(function(){ _saveItemDetalle(sc); }, 700);
+}
+// ¿La SC está COMPLETADA pero algún ítem comprado tiene remito y todavía no factura?
+function _scCompletadaSinFactura(sc){
+  if(!sc || sc.estado!=='COMPLETADA' || sc.tieneAlerta) return false;
+  const comprados=Object.values(sc.itemsDetalle||{}).filter(d=>d.estado==='COMPRADO');
+  if(!comprados.length) return false;
+  return comprados.some(d=> !(d.facturaNum||d.facturaFecha));
+}
+function _itemTieneFactura(d){ return !!(d && (d.facturaNum||d.facturaFecha)); }
+function _itemTieneRemito(d){ return !!(d && (d.remitoNum||d.remitoFecha)); }
+function _estadoDocItem(d){
+  if(_itemTieneFactura(d)) return '<div class="ci-doc-estado" style="font-size:11px;font-weight:600;color:#4ade80;margin-top:2px">✓ Con factura</div>';
+  if(_itemTieneRemito(d))  return '<div class="ci-doc-estado" style="font-size:11px;font-weight:600;color:#c4b5fd;margin-top:2px">🟣 Retirado con remito — falta factura</div>';
+  return '<div class="ci-doc-estado" style="font-size:11px;color:var(--muted);margin-top:2px">Completá remito y/o factura</div>';
+}
+// Actualiza en vivo el cartelito de estado documental del ítem sin re-renderizar (no pierde foco)
+function _refreshEstadoDoc(idx){
+  const sc=scs[window._scIdx]; if(!sc) return;
+  const d=(sc.itemsDetalle||{})[idx]; if(!d) return;
+  const row=document.getElementById('ci-row-'+idx); if(!row) return;
+  const el=row.querySelector('.ci-doc-estado'); if(!el) return;
+  el.outerHTML=_estadoDocItem(d);
+}
+function _presupBtnHTML(i, d, dis){
+  const editable = esModoEditor();
+  if (d && d.presupuestoLink){
+    const href=(d.presupuestoLink||'').replace(/"/g,'&quot;');
+    return '<a href="'+href+'" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="text-decoration:none;color:var(--accent2)">📄 PRESUPUESTO ↗</a>'
+      + (editable ? '<button class="btn btn-ghost btn-sm" onclick="setPresupuestoLink('+i+')" title="Cambiar link">✏️</button>' : '');
+  }
+  return '<button class="btn btn-ghost btn-sm"'+dis+' onclick="setPresupuestoLink('+i+')">📎 PRESUPUESTO (agregar link de Drive)</button>';
+}
+function setPresupuestoLink(idx){
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  const sc=scs[window._scIdx]; if(!sc) return;
+  if(!sc.itemsDetalle) sc.itemsDetalle={};
+  if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'PRESUPUESTADO',cantidad:'',justificacion:''};
+  const actual=sc.itemsDetalle[idx].presupuestoLink||'';
+  const url=prompt('Pegá el link del presupuesto (archivo subido a una carpeta de Google Drive):\n(dejar vacío para quitarlo)', actual);
+  if(url===null) return;
+  const u=url.trim();
+  if(u && !/^https?:\/\//i.test(u)){ showToast('El link debe empezar con http:// o https://','error'); return; }
+  sc.itemsDetalle[idx].presupuestoLink=u;
+  _saveItemDetalle(sc);
+  const lineas=(sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
+  document.getElementById('compra-items-list').innerHTML = renderItemsCompra(lineas,sc);
+  showToast(u?'✓ Link de presupuesto guardado':'Link quitado','ok');
 }
 
 function setItemJust(idx, val) {
