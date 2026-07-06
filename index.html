@@ -4581,6 +4581,7 @@ function limpiarTodo() { pedirPinLimpiar(); }
 // ══════════════════════════════════════════════════════════════
 const _SB_URL = 'https://qivvewvgqlsptydftlhx.supabase.co';
 const _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+const MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxgLMhi31Xc5YEcHANuq9CiJsjh4Y-wh7SIqaUsUjZ7MnG7gc2pEDU80bAQubSA5RiP/exec';
 
 async function sbInsert(tabla, obj) {
   try {
@@ -5848,7 +5849,7 @@ function _scItemAdjuntos(sc, i){
       h += pill(f.url, 'rgba(34,197,94,.14)','rgba(34,197,94,.4)','#22c55e', '📷 '+(fotos.length>1?('Foto '+(k+1)):'Foto')+' ↗', f.name);
     });
   } else if(fotosPres){
-    h += pill(sc.driveFotosUrl, 'rgba(34,197,94,.14)','rgba(34,197,94,.4)','#22c55e', '📷 Foto'+(sc.driveFotosUrl?' ↗':''), 'Carpeta de fotos en Drive');
+    h += pill(sc.driveFotosUrl || _driveSearchUrl(sc), 'rgba(34,197,94,.14)','rgba(34,197,94,.4)','#22c55e', '📷 Foto ↗', 'Buscar en Drive');
   }
   // PRESUPUESTOS — link directo por archivo (fallback: carpeta)
   if(presup.length){
@@ -5856,9 +5857,13 @@ function _scItemAdjuntos(sc, i){
       h += pill(f.url, 'rgba(232,93,37,.14)','rgba(232,93,37,.4)','var(--or)', '📄 '+(presup.length>1?('Presup. '+(k+1)):'Presup.')+' ↗', f.name);
     });
   } else if(presupPres){
-    h += pill(sc.drivePresupUrl, 'rgba(232,93,37,.14)','rgba(232,93,37,.4)','var(--or)', '📄 Presup.'+(sc.drivePresupUrl?' ↗':''), 'Carpeta de presupuestos en Drive');
+    h += pill(sc.drivePresupUrl || _driveSearchUrl(sc), 'rgba(232,93,37,.14)','rgba(232,93,37,.4)','var(--or)', '📄 Presup. ↗', 'Buscar en Drive');
   }
   return ' <span style="display:inline-flex;flex-wrap:wrap;gap:5px;margin-left:6px;vertical-align:middle">'+h+'</span>';
+}
+function _driveSearchUrl(sc){
+  var q = (sc && (sc.numSC || sc.num || sc.num_sc)) || '';
+  return q ? ('https://drive.google.com/drive/search?q=' + encodeURIComponent(q)) : 'https://drive.google.com/drive/my-drive';
 }
 
 function renderItemsCompra(lineas, sc) {
@@ -8010,7 +8015,37 @@ async function guardarEditPC(scIdx, campo, valor, oldVal) {
   _lsSet('nielsen_scs_2026', JSON.stringify(scs));
   renderHistorialPedidos();
   renderHistorial();
-  showToast('✅ Guardado', 'ok');
+  // Al cambiar el N° PC, avisar por correo al solicitante para que pueda rastrearlo
+  if (campo === 'numOP' && String(valor||'').trim() && String(valor) !== String(oldVal||'')) {
+    _notificarCambioPC(sc, oldVal, valor);
+    showToast('✅ Guardado — se notificó al solicitante', 'ok');
+  } else {
+    showToast('✅ Guardado', 'ok');
+  }
+}
+
+// Notifica al solicitante (y a Compras) que se asignó/cambió el N° PC de su SC
+function _notificarCambioPC(sc, oldPC, newPC) {
+  try {
+    if (!sc || !/\S+@\S+\.\S+/.test(sc.email || '')) return;
+    const payload = {
+      tipo:        'PC_UPDATE',
+      email:       sc.email,
+      solicitante: sc.solicitante || '',
+      num_sc:      sc.numSC || sc.num || '',
+      num_pc_old:  oldPC || '—',
+      num_pc_new:  newPC || '',
+      area:        sc.area || '',
+      asunto:      sc.osAsunto || sc.asunto || '',
+      items:       sc.items || '',
+      link_historial: 'https://nielsen-compras.vercel.app/#historial'
+    };
+    fetch(MAIL_WEBAPP_URL, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).catch(()=>{});
+  } catch (e) { console.warn('_notificarCambioPC', e); }
 }
 
 

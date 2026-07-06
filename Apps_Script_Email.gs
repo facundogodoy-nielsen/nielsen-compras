@@ -51,6 +51,18 @@ function doPost(e) {
     var dest = (p.email || '').trim();
     var tieneDest = /\S+@\S+\.\S+/.test(dest);
 
+    // Aviso de cambio de N° PC (desde el Centro de Control) — sin archivos
+    if (p.tipo === 'PC_UPDATE') {
+      var asuntoPC = 'N° PC asignado a tu SC ' + (p.num_sc || '') + ' — Nielsen';
+      var htmlPC = _tplPCUpdate(p);
+      var toPC = tieneDest ? dest : REMITENTE_CC;
+      var optsPC = { name: NOMBRE_REMITENTE, htmlBody: htmlPC };
+      if (tieneDest && dest.toLowerCase() !== REMITENTE_CC.toLowerCase()) optsPC.cc = REMITENTE_CC;
+      GmailApp.sendEmail(toPC, asuntoPC, _plain(htmlPC), optsPC);
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, to: toPC }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Guardar presupuestos y fotos muestra en Drive (no bloquear el correo si falla)
     try {
       p._archivos = _guardarArchivos(p);
@@ -104,6 +116,33 @@ function _tplSC(p) {
 }
 
 // ── Plantilla PA ──
+function _tplPCUpdate(p) {
+  var OR = '#E8611A', NAVY = '#13161E';
+  var items = _itemsHtml(p.items);
+  var filas =
+    _row('N° Solicitud (SC)', p.num_sc) +
+    _row('N° PC anterior', p.num_pc_old) +
+    _row('N° PC nuevo', p.num_pc_new) +
+    _row('Área', p.area) +
+    (p.asunto ? _row('Asunto', p.asunto) : '');
+  return '' +
+  '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">' +
+    '<div style="background:' + NAVY + ';padding:20px 24px">' +
+      '<div style="color:' + OR + ';font-size:13px;font-weight:800;letter-spacing:2px;text-transform:uppercase">NIELSEN — Compras y Abastecimiento</div>' +
+      '<div style="color:#fff;font-size:20px;font-weight:800;margin-top:4px">Actualización de N° PC</div>' +
+    '</div>' +
+    '<div style="padding:22px 24px;color:#1f2937">' +
+      '<p style="margin:0 0 16px;font-size:14px;color:#374151">Se asignó / actualizó el <b>N° PC</b> de tu Solicitud de Compra. Guardá este número para hacer el seguimiento.</p>' +
+      '<div style="text-align:center;margin:6px 0 18px"><span style="display:inline-block;background:rgba(232,97,26,.1);border:1px solid ' + OR + ';color:' + OR + ';font-size:20px;font-weight:800;padding:10px 22px;border-radius:10px;letter-spacing:1px">' + _esc(p.num_pc_new) + '</span></div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' + filas + '</table>' +
+      (items ? '<div style="margin-top:18px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:' + OR + '">Ítems</div>' +
+               '<div style="margin-top:6px;font-size:13px;color:#374151;white-space:pre-line;background:#f9fafb;border:1px solid #eee;border-radius:8px;padding:12px">' + items + '</div>' : '') +
+      (p.link_historial ? '<div style="margin-top:22px"><a href="' + _esc(p.link_historial) + '" style="display:inline-block;background:' + OR + ';color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 20px;border-radius:8px">Ver en el sistema →</a></div>' : '') +
+    '</div>' +
+    '<div style="background:#f9fafb;padding:14px 24px;border-top:1px solid #eee;color:#9ca3af;font-size:11px">Notificación automática de Compras — Nielsen Logística y Expediciones S.A.</div>' +
+  '</div>';
+}
+
 function _tplPA(p) {
   var items = _itemsHtml(p.items);
   return _wrap(
