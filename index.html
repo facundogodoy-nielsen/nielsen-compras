@@ -5828,6 +5828,22 @@ function renderEstadoConfirmacion(sc) {
   return '<div class="compra-estado-actual">Última confirmación: <strong>' + fecha + '</strong> · Cobertura registrada: <strong style="color:var(--or)">' + pct + '%</strong></div>';
 }
 
+function _scItemAdjuntos(sc, i){
+  if(!sc) return '';
+  var fotos = sc.fotosItems || [], presup = sc.presupItems || [];
+  var has = function(arr){ return arr.indexOf(i) >= 0 || arr.indexOf(String(i)) >= 0; };
+  var hasF = has(fotos), hasP = has(presup);
+  if(!hasF && !hasP) return '';
+  var pill = function(url, bg, bd, col, txt){
+    var inner = '<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:999px;font-size:9px;font-weight:700;background:'+bg+';border:1px solid '+bd+';color:'+col+'">'+txt+'</span>';
+    return url ? '<a href="'+String(url).replace(/"/g,'&quot;')+'" target="_blank" rel="noopener" style="text-decoration:none" title="Ver en Drive">'+inner+'</a>' : inner;
+  };
+  var h = '';
+  if(hasF) h += pill(sc.driveFotosUrl,  'rgba(34,197,94,.14)','rgba(34,197,94,.4)','#22c55e','📷 Foto'   + (sc.driveFotosUrl ?' ↗':''));
+  if(hasP) h += pill(sc.drivePresupUrl, 'rgba(232,93,37,.14)','rgba(232,93,37,.4)','var(--or)','📄 Presup.'+ (sc.drivePresupUrl?' ↗':''));
+  return ' <span style="display:inline-flex;gap:5px;margin-left:6px;vertical-align:middle">'+h+'</span>';
+}
+
 function renderItemsCompra(lineas, sc) {
   if (!lineas.length) return '<div style="color:var(--muted);font-style:italic;font-size:12px">Sin ítems cargados.</div>';
   const det = sc.itemsDetalle || {};
@@ -5893,7 +5909,7 @@ function renderItemsCompra(lineas, sc) {
       +'<div class="ci-main">'
       +'<div style="width:14px;height:14px;border-radius:50%;background:'+indC+';display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;flex-shrink:0">'+indI+'</div>'
       +'<div class="ci-num">'+num+'</div>'
-      +'<div class="ci-txt">'+l+'</div>'
+      +'<div class="ci-txt">'+l+_scItemAdjuntos(sc, i)+'</div>'
       +'<input class="ci-qty" type="number" min="0" step="0.01" id="qty-'+i+'" value="'+qty
       +'" placeholder="Cant." title="Cantidad" oninput="setItemQty('+i+',this.value)"'+dis+'>'
       +'<div class="ci-states">'
@@ -8229,6 +8245,10 @@ async function recargarSCsDesdeLS() {
       pctComprado:    r.pct_comprado    || 0,
       tipoCompra:     r.tipo_compra     || '',
       tieneAlerta:    r.tiene_alerta    || false,
+      fotosItems:     r.fotos_items  ? (typeof r.fotos_items ==='string' ? JSON.parse(r.fotos_items)  : r.fotos_items)  : [],
+      presupItems:    r.presup_items ? (typeof r.presup_items==='string' ? JSON.parse(r.presup_items) : r.presup_items) : [],
+      driveFotosUrl:  r.drive_fotos_url  || '',
+      drivePresupUrl: r.drive_presup_url || '',
       _sbId:      r.id   // UUID de Supabase
     }));
     _sbOnline = true;

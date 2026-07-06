@@ -991,15 +991,13 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <label style="font-size:12px;font-weight:600;color:var(--text)">Presupuestos adjuntos</label>
         <span class="presup-badge" id="presup-badge" style="display:none">0 archivos</span>
-        <span style="font-size:11px;color:var(--muted)">(opcional)</span>
+        <span style="font-size:11px;color:var(--muted)">(opcional — PDF/imagen/Excel; asigná cada uno a uno o más ítems)</span>
       </div>
-      <input type="file" id="presup-input" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.doc,.docx" onchange="onPresupSelect(event)" style="display:none">
-      <button type="button" onclick="document.getElementById('presup-input').click()"
-        style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:999px;border:1.5px solid var(--or);background:rgba(232,93,37,.12);color:var(--or);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">
-        📎 Adjuntar Presupuesto
+      <div id="presup-list"></div>
+      <button type="button" onclick="agregarPresupRow()"
+        style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:999px;border:1.5px solid var(--or);background:rgba(232,93,37,.12);color:var(--or);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;margin-top:4px">
+        📎 Agregar Presupuesto
       </button>
-      <span style="font-size:11px;color:var(--muted);margin-left:8px">PDF · Imagen · Excel — máx. 5 · 5 MB c/u</span>
-      <div class="presup-list" id="presup-list" style="margin-top:10px"></div>
     </div>
 
     <!-- Fotos muestra -->
@@ -1671,9 +1669,15 @@ function buildPreview() {
     '<div class="preview-field"><div class="pf-lbl">'+l+'</div><div class="pf-val">'+v2+'</div></div>'
   ).join('');
   const items = document.getElementById('items-texto').value.split('\n').map(l=>l.trim()).filter(Boolean);
-  document.getElementById('prev-items').innerHTML = items.map((l,i) =>
-    '<div><span style="color:var(--or);margin-right:8px">'+String(i+1).padStart(2,'0')+'.</span>'+l+'</div>'
-  ).join('') || '—';
+  const _hasFoto = i => (fotosMuestra||[]).some(f => f.name && (f.itemIdx==='__all' || String(f.itemIdx)===String(i)));
+  const _hasPresup = i => (presupuestos||[]).some(p => p.name && _resolveItemIdxs(p.items).indexOf(i)>=0);
+  const _pill = (bg,bd,col,txt) => '<span style="display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700;background:'+bg+';border:1px solid '+bd+';color:'+col+'">'+txt+'</span>';
+  document.getElementById('prev-items').innerHTML = items.map((l,i) => {
+    let badges = '';
+    if (_hasFoto(i))   badges += _pill('rgba(34,197,94,.12)','rgba(34,197,94,.35)','#22c55e','📷 Foto');
+    if (_hasPresup(i)) badges += _pill('rgba(232,93,37,.12)','rgba(232,93,37,.4)','var(--or)','📄 Presup.');
+    return '<div><span style="color:var(--or);margin-right:8px">'+String(i+1).padStart(2,'0')+'.</span>'+l+badges+'</div>';
+  }).join('') || '—';
 
   // Mostrar vale de pañol si fue generado
   const prevVale = document.getElementById('prev-vale-info');
@@ -2377,69 +2381,88 @@ function fmtSize(bytes) {
   return (bytes/(1024*1024)).toFixed(1) + ' MB';
 }
 
-function onPresupDrop(event) {
-  event.preventDefault();
-  document.getElementById('presup-zone').classList.remove('over');
-  processPresupFiles(Array.from(event.dataTransfer.files));
+function agregarPresupRow() {
+  if (presupuestos.length >= PRESUP_MAX_FILES) { toast('Máximo ' + PRESUP_MAX_FILES + ' presupuestos', true); return; }
+  presupuestos.push({ items: [], name: '', size: 0, type: '', data: '' });
+  renderPresupList();
 }
-
-function onPresupSelect(event) {
-  processPresupFiles(Array.from(event.target.files));
-  event.target.value = ''; // reset so same file can be re-added
+function onPresupSelect(idx, event) {
+  var file = event.target.files[0];
+  event.target.value = '';
+  if (!file || !presupuestos[idx]) return;
+  if (file.size > PRESUP_MAX_BYTES) { toast('"' + file.name + '" supera los 5 MB', true); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    presupuestos[idx].name = file.name;
+    presupuestos[idx].size = file.size;
+    presupuestos[idx].type = file.type;
+    presupuestos[idx].data = e.target.result;
+    renderPresupList();
+  };
+  reader.readAsDataURL(file);
 }
-
-function processPresupFiles(files) {
-  const remaining = PRESUP_MAX_FILES - presupuestos.length;
-  if (remaining <= 0) { toast(`Máximo ${PRESUP_MAX_FILES} archivos adjuntos`, true); return; }
-  const toProcess = files.slice(0, remaining);
-  if (files.length > remaining) toast(`Solo se agregarán ${remaining} archivo(s) — límite de ${PRESUP_MAX_FILES}`, true);
-
-  toProcess.forEach(file => {
-    if (file.size > PRESUP_MAX_BYTES) {
-      toast(`"${file.name}" supera los 5 MB — no se adjuntó`, true);
-      return;
-    }
-    // Check duplicates
-    if (presupuestos.find(p => p.name === file.name && p.size === file.size)) return;
-
-    const reader = new FileReader();
-    reader.onload = e => {
-      presupuestos.push({ name: file.name, size: file.size, type: file.type, data: e.target.result });
-      renderPresupList();
-    };
-    reader.readAsDataURL(file);
-  });
+function togglePresupItem(idx, val) {
+  if (!presupuestos[idx]) return;
+  var arr = presupuestos[idx].items || (presupuestos[idx].items = []);
+  var pos = arr.indexOf(String(val));
+  if (pos >= 0) arr.splice(pos, 1); else arr.push(String(val));
+  renderPresupList();
 }
-
 function eliminarPresup(idx) {
   presupuestos.splice(idx, 1);
   renderPresupList();
 }
-
+// Chips de ítems (multi-selección) — reutilizable
+function _itemChipsHTML(selArr, fn, rowIdx) {
+  selArr = selArr || [];
+  var isSel = function(v){ return selArr.indexOf(String(v)) >= 0; };
+  var chip = function(v, label){
+    var on = isSel(v);
+    return '<span onclick="' + fn + '(' + rowIdx + ',\'' + v + '\')" style="cursor:pointer;user-select:none;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid ' + (on?'var(--or)':'var(--border2)') + ';background:' + (on?'var(--or)':'transparent') + ';color:' + (on?'#fff':'var(--muted)') + '">' + label + '</span>';
+  };
+  var html = (pedidoItems || []).map(function(it, i){ return chip(i, (i+1) + '. ' + escHtml((it.art || '').slice(0,18))); }).join('');
+  html += chip('__all', 'General');
+  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'
+    + '<span style="font-size:10px;color:var(--muted);align-self:center;margin-right:2px">¿A qué ítems?</span>' + html + '</div>';
+}
 function renderPresupList() {
-  const list  = document.getElementById('presup-list');
-  const badge = document.getElementById('presup-badge');
+  var list  = document.getElementById('presup-list');
+  var badge = document.getElementById('presup-badge');
   if (!list) return;
-
-  if (presupuestos.length === 0) {
-    list.innerHTML = '';
-    if (badge) badge.style.display = 'none';
-    return;
-  }
-
+  var conArchivo = presupuestos.filter(function(p){ return p.name; }).length;
   if (badge) {
-    badge.style.display = 'inline-flex';
-    badge.textContent = presupuestos.length + ' archivo' + (presupuestos.length !== 1 ? 's' : '');
+    if (conArchivo > 0) { badge.style.display = 'inline-flex'; badge.textContent = conArchivo + ' archivo' + (conArchivo !== 1 ? 's' : ''); }
+    else badge.style.display = 'none';
   }
+  var btnStyle = 'padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--s3);color:var(--text);font-size:11px;font-weight:600;cursor:pointer';
+  list.innerHTML = presupuestos.map(function(p, i) {
+    var fileBtn = p.name
+      ? '<span style="font-size:12px;color:var(--text);flex:1;min-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(p.name) + '">' + getPresupIcon(p.name) + ' ' + escHtml(p.name) + ' · ' + fmtSize(p.size) + '</span>'
+        + '<button type="button" onclick="document.getElementById(\'presup-input-' + i + '\').click()" style="' + btnStyle + '">Cambiar</button>'
+      : '<button type="button" onclick="document.getElementById(\'presup-input-' + i + '\').click()" style="' + btnStyle + ';flex:1">📁 Elegir archivo</button>';
+    return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">'
+      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      + '<input type="file" id="presup-input-' + i + '" accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.doc,.docx" onchange="onPresupSelect(' + i + ',event)" style="display:none">'
+      + fileBtn
+      + '<button type="button" onclick="eliminarPresup(' + i + ')" title="Quitar" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer">✕</button>'
+      + '</div>'
+      + _itemChipsHTML(p.items, 'togglePresupItem', i)
+      + '</div>';
+  }).join('');
+}
 
-  list.innerHTML = presupuestos.map((p, i) => `
-    <div class="presup-item">
-      <span class="presup-item-icon">${getPresupIcon(p.name)}</span>
-      <span class="presup-item-name" title="${escHtml(p.name)}">${escHtml(p.name)}</span>
-      <span class="presup-item-size">${fmtSize(p.size)}</span>
-      <button class="presup-item-del" onclick="eliminarPresup(${i})" title="Quitar">✕</button>
-    </div>
-  `).join('');
+// Texto legible de los ítems asignados a un adjunto (para el correo)
+function _itemsRefTexto(itemsArr) {
+  itemsArr = itemsArr || [];
+  if (itemsArr.indexOf('__all') >= 0) return 'General / varios ítems';
+  var refs = itemsArr.map(function(v){ var i = Number(v); return (pedidoItems[i] ? ('Ítem ' + (i+1) + ': ' + (pedidoItems[i].art || '')) : ''); }).filter(Boolean);
+  return refs.length ? refs.join(' · ') : 'Sin asignar';
+}
+// Índices numéricos de ítems cubiertos por un adjunto ('__all' → todos)
+function _resolveItemIdxs(arr) {
+  arr = arr || [];
+  if (arr.indexOf('__all') >= 0) return (pedidoItems || []).map(function(_, i){ return i; });
+  return arr.map(Number).filter(function(n){ return !isNaN(n); });
 }
 
 // ══════════════════════════════════════════════════
@@ -2590,8 +2613,8 @@ function _enviarEmailSC(numSC, numOP) {
   const os       = sinOS ? 'Sin OS' : (document.getElementById('os-num')?.value || '');
 
   // Archivos a guardar en Drive (Apps Script): presupuestos y fotos muestra (con su ítem)
-  const presupuestosPayload = (presupuestos || []).filter(p => p.data).map(p => ({
-    name: p.name, type: p.type, dataUrl: p.data
+  const presupuestosPayload = (presupuestos || []).filter(p => p.data && p.name).map(p => ({
+    name: p.name, type: p.type, dataUrl: p.data, item: _itemsRefTexto(p.items)
   }));
   const fotosPayload = (fotosMuestra || []).filter(f => f.data && f.name).map(f => ({
     name: f.name, type: f.type, dataUrl: f.data,
@@ -2682,6 +2705,16 @@ async function _guardarSCenCC(numSC, numOP) {
       origen:       'FORMULARIO_SC'
     };
 
+    // Ítems con foto muestra / presupuesto asociado (para destacar en el Centro de Control)
+    const _fi = new Set(), _pi = new Set();
+    (fotosMuestra || []).filter(f => f.name).forEach(f => {
+      if (f.itemIdx === '__all') (pedidoItems || []).forEach((_, i) => _fi.add(i));
+      else if (f.itemIdx !== '' && f.itemIdx != null && !isNaN(Number(f.itemIdx))) _fi.add(Number(f.itemIdx));
+    });
+    (presupuestos || []).filter(p => p.name).forEach(p => { _resolveItemIdxs(p.items).forEach(i => _pi.add(i)); });
+    sc.fotos_items  = Array.from(_fi).sort((a, b) => a - b);
+    sc.presup_items = Array.from(_pi).sort((a, b) => a - b);
+
     // 1. Guardar en Supabase (fuente principal) — con reintentos ante fallos transitorios
     let ok = false;
     for (let intento = 1; intento <= 3 && !ok; intento++) {
@@ -2701,6 +2734,7 @@ async function _guardarSCenCC(numSC, numOP) {
       os, osAsunto, osDesc, osResp, destino,
       motivo: motivo === 'OTROS' ? 'OTROS — ' + motivoOt : motivo,
       items: itemsTxt, obs, panolero, valeNum: valeNumActual || '',
+      fotosItems: sc.fotos_items, presupItems: sc.presup_items,
       estado: 'PENDIENTE', origen: 'FORMULARIO_SC',
       creado: new Date().toISOString()
     };

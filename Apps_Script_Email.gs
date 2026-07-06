@@ -23,6 +23,10 @@
 var REMITENTE_CC = 'facundo.godoy@nielsenexpediciones.com.ar';
 var NOMBRE_REMITENTE = 'Compras y Abastecimiento — Nielsen';
 
+// Supabase — para escribir los links de Drive en el registro de la SC (que el CC los muestre)
+var SB_URL = 'https://qivvewvgqlsptydftlhx.supabase.co';
+var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+
 function doGet(e) {
   return ContentService.createTextOutput('OK — Web App de correos Nielsen activa');
 }
@@ -48,7 +52,10 @@ function doPost(e) {
     var tieneDest = /\S+@\S+\.\S+/.test(dest);
 
     // Guardar presupuestos y fotos muestra en Drive (no bloquear el correo si falla)
-    try { p._archivos = _guardarArchivos(p); } catch (fe) { p._archivos = { presup: [], fotos: [], error: String(fe) }; }
+    try {
+      p._archivos = _guardarArchivos(p);
+      if (p.tipo !== 'PA') _patchSCDriveUrls(p.num_sc, p._archivos.fotosFolderUrl, p._archivos.presupFolderUrl);
+    } catch (fe) { p._archivos = { presup: [], fotos: [], error: String(fe) }; }
 
     var asunto, html;
     if (p.tipo === 'PA') {
@@ -187,17 +194,21 @@ function _guardarArchivos(p) {
   if (p.presupuestos && p.presupuestos.length) {
     var fParent = _folderByName(root, 'PRESUPUESTOS SC');
     var fSC = _folderByName(fParent, scId);
+    try { fSC.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    out.presupFolderUrl = fSC.getUrl();
     p.presupuestos.forEach(function(f) {
       var blob = _blobFromDataUrl(f.dataUrl, f.name);
       if (!blob) return;
       var file = fSC.createFile(blob);
       try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
-      out.presup.push({ name: f.name, url: file.getUrl() });
+      out.presup.push({ name: f.name, url: file.getUrl(), item: f.item || '' });
     });
   }
   if (p.fotos && p.fotos.length) {
     var gParent = _folderByName(root, 'FOTOS MUESTRAS SC');
     var gSC = _folderByName(gParent, scId);
+    try { gSC.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    out.fotosFolderUrl = gSC.getUrl();
     p.fotos.forEach(function(f) {
       var blob = _blobFromDataUrl(f.dataUrl, f.name);
       if (!blob) return;
@@ -208,6 +219,23 @@ function _guardarArchivos(p) {
   }
   return out;
 }
+// Escribe los links de las carpetas de Drive en la SC (Supabase) para que el CC los muestre
+function _patchSCDriveUrls(numSC, fotosUrl, presupUrl) {
+  if (!numSC) return;
+  var body = {};
+  if (fotosUrl)  body.drive_fotos_url  = fotosUrl;
+  if (presupUrl) body.drive_presup_url = presupUrl;
+  if (!Object.keys(body).length) return;
+  try {
+    UrlFetchApp.fetch(SB_URL + '/rest/v1/solicitudes_compra?num_sc=eq.' + encodeURIComponent(numSC), {
+      method: 'patch',
+      contentType: 'application/json',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Prefer: 'return=minimal' },
+      payload: JSON.stringify(body),
+      muteHttpExceptions: true
+    });
+  } catch (e) {}
+}
 // Bloque HTML de adjuntos para el correo
 function _archivosHtml(a) {
   if (!a) return '';
@@ -217,7 +245,7 @@ function _archivosHtml(a) {
     h += '<div style="margin-top:18px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:' + OR + '">Presupuestos adjuntos (' + a.presup.length + ')</div>' +
          '<div style="margin-top:6px;font-size:13px;color:#374151;line-height:1.9">' +
          a.presup.map(function(f) {
-           return '📄 <a href="' + _esc(f.url) + '" style="color:' + OR + '">' + _esc(f.name) + '</a>';
+           return '📄 <a href="' + _esc(f.url) + '" style="color:' + OR + '">' + _esc(f.name) + '</a>' + (f.item ? ' — <b>' + _esc(f.item) + '</b>' : '');
          }).join('<br>') + '</div>';
   }
   if (a.fotos && a.fotos.length) {
