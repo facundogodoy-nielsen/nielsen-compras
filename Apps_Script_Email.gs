@@ -12,7 +12,10 @@
  *      - Quién tiene acceso:  Cualquier persona
  * 5. Copiá la URL que termina en /exec.
  * 6. Pegá esa URL en MAIL_WEBAPP_URL dentro de formulario_sc.html y pedidos.html.
- * 7. La primera vez te pedirá autorizar el permiso de Gmail: aceptá.
+ * 7. La primera vez te pedirá autorizar permisos de Gmail y Drive: aceptá.
+ *    (Ahora también guarda presupuestos y fotos muestra en Drive, por eso pide Drive.)
+ *    Si ya tenías una versión anterior implementada, volvé a Implementar → Gestionar
+ *    implementaciones → Editar → Nueva versión, y re-autorizá cuando lo pida.
  *
  * Probar rápido: pegá la URL /exec en el navegador → debe responder "OK".
  ***********************************************************************/
@@ -43,6 +46,9 @@ function doPost(e) {
     var p = JSON.parse(e.postData.contents);
     var dest = (p.email || '').trim();
     var tieneDest = /\S+@\S+\.\S+/.test(dest);
+
+    // Guardar presupuestos y fotos muestra en Drive (no bloquear el correo si falla)
+    try { p._archivos = _guardarArchivos(p); } catch (fe) { p._archivos = { presup: [], fotos: [], error: String(fe) }; }
 
     var asunto, html;
     if (p.tipo === 'PA') {
@@ -86,7 +92,7 @@ function _tplSC(p) {
     _row('Fecha', p.fecha) +
     _row('Fecha límite', p.fecha_limite) +
     _row('N° Vale', p.vale_num),
-    items, p.obs, p.link_historial
+    items, p.obs, p.link_historial, _archivosHtml(p._archivos)
   );
 }
 
@@ -106,7 +112,7 @@ function _tplPA(p) {
 }
 
 // ── Helpers de armado ──
-function _wrap(titulo, filas, items, obs, link) {
+function _wrap(titulo, filas, items, obs, link, extra) {
   var OR = '#E8611A', NAVY = '#13161E';
   return '' +
   '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">' +
@@ -120,6 +126,7 @@ function _wrap(titulo, filas, items, obs, link) {
       (items ? '<div style="margin-top:18px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:' + OR + '">Ítems</div>' +
                '<div style="margin-top:6px;font-size:13px;color:#374151;white-space:pre-line;background:#f9fafb;border:1px solid #eee;border-radius:8px;padding:12px">' + items + '</div>' : '') +
       (obs && obs !== '—' ? '<div style="margin-top:14px;font-size:13px;color:#374151"><b>Observaciones:</b> ' + _esc(obs) + '</div>' : '') +
+      (extra || '') +
       (link ? '<div style="margin-top:22px"><a href="' + _esc(link) + '" style="display:inline-block;background:' + OR + ';color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 20px;border-radius:8px">Ver en el sistema →</a></div>' : '') +
     '</div>' +
     '<div style="background:#f9fafb;padding:14px 24px;border-top:1px solid #eee;color:#9ca3af;font-size:11px">El área de Compras te notificará ante cualquier novedad. — Nielsen Logística y Expediciones S.A.</div>' +
@@ -148,4 +155,81 @@ function _esc(s) {
 }
 function _plain(html) {
   return String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// ─────────────────────────────────────────────────────────────
+// GUARDADO EN DRIVE — Presupuestos y Fotos muestra
+// Carpetas: "PRESUPUESTOS SC" y "FOTOS MUESTRAS SC" (subcarpeta por N° SC)
+// (Requiere permiso de Drive: la primera vez re-autorizá la Web App.)
+// ─────────────────────────────────────────────────────────────
+function _folderByName(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+function _blobFromDataUrl(dataUrl, name) {
+  try {
+    if (!dataUrl) return null;
+    var comma = dataUrl.indexOf(',');
+    if (comma < 0) return null;
+    var meta = dataUrl.substring(0, comma);          // data:<mime>;base64
+    var b64  = dataUrl.substring(comma + 1);
+    var mime = meta.substring(5, meta.indexOf(';'));
+    var bytes = Utilities.base64Decode(b64);
+    return Utilities.newBlob(bytes, mime, name || 'archivo');
+  } catch (e) { return null; }
+}
+function _guardarArchivos(p) {
+  var out = { presup: [], fotos: [] };
+  var root = DriveApp.getRootFolder();
+  var scId = String(p.num_sc || 'SIN_SC');
+  out.scId = scId;
+
+  if (p.presupuestos && p.presupuestos.length) {
+    var fParent = _folderByName(root, 'PRESUPUESTOS SC');
+    var fSC = _folderByName(fParent, scId);
+    p.presupuestos.forEach(function(f) {
+      var blob = _blobFromDataUrl(f.dataUrl, f.name);
+      if (!blob) return;
+      var file = fSC.createFile(blob);
+      try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+      out.presup.push({ name: f.name, url: file.getUrl() });
+    });
+  }
+  if (p.fotos && p.fotos.length) {
+    var gParent = _folderByName(root, 'FOTOS MUESTRAS SC');
+    var gSC = _folderByName(gParent, scId);
+    p.fotos.forEach(function(f) {
+      var blob = _blobFromDataUrl(f.dataUrl, f.name);
+      if (!blob) return;
+      var file = gSC.createFile(blob);
+      try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+      out.fotos.push({ name: f.name, url: file.getUrl(), item: f.item || '' });
+    });
+  }
+  return out;
+}
+// Bloque HTML de adjuntos para el correo
+function _archivosHtml(a) {
+  if (!a) return '';
+  var OR = '#E8611A';
+  var h = '';
+  if (a.presup && a.presup.length) {
+    h += '<div style="margin-top:18px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:' + OR + '">Presupuestos adjuntos (' + a.presup.length + ')</div>' +
+         '<div style="margin-top:6px;font-size:13px;color:#374151;line-height:1.9">' +
+         a.presup.map(function(f) {
+           return '📄 <a href="' + _esc(f.url) + '" style="color:' + OR + '">' + _esc(f.name) + '</a>';
+         }).join('<br>') + '</div>';
+  }
+  if (a.fotos && a.fotos.length) {
+    h += '<div style="margin-top:16px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:' + OR + '">Fotos muestra (' + a.fotos.length + ')</div>' +
+         '<div style="margin-top:6px;font-size:13px;color:#374151;line-height:1.9">' +
+         a.fotos.map(function(f) {
+           return '🖼️ <a href="' + _esc(f.url) + '" style="color:' + OR + '">' + _esc(f.name) + '</a>' + (f.item ? ' — <b>' + _esc(f.item) + '</b>' : '');
+         }).join('<br>') + '</div>';
+  }
+  if (h) {
+    h = '<div style="margin-top:8px;padding-top:12px;border-top:1px dashed #e5e7eb">' + h +
+        '<div style="margin-top:8px;font-size:11px;color:#9ca3af">Archivos guardados en Drive: «PRESUPUESTOS SC» y «FOTOS MUESTRAS SC» (subcarpeta ' + _esc(String(a.scId || '')) + ').</div></div>';
+  }
+  return h;
 }

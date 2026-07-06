@@ -634,23 +634,17 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
         </div>
       </div>
     </div>
+    <!-- Asunto PC/SC — fijo y obligatorio (independiente de la descripción de la OS) -->
     <div class="fg">
+      <label>Asunto PC/SC <span class="req">*</span></label>
+      <input type="text" id="os-asunto" maxlength="80" placeholder="Asunto breve del pedido — aparece en el historial" oninput="updateAsuntoChars()">
+      <span class="asunto-chars" id="asunto-chars" style="display:block;font-size:10px;color:var(--muted);margin-top:3px"></span>
+    </div>
+    <div class="fg" id="os-desc-fg">
       <label>Descripción de la OS <span class="req">*</span></label>
-      <input type="text" id="os-desc" placeholder="Ej: Mantenimiento preventivo equipo N°5" oninput="onOsDesc()">
+      <input type="text" id="os-desc" placeholder="Ej: Mantenimiento preventivo equipo N°5">
     </div>
-    <div class="asunto-wrap" id="asunto-wrap">
-      <div class="asunto-lbl">
-        <label style="margin:0">Asunto OS</label>
-        <span class="asunto-badge">✦ IA</span>
-        <span style="font-size:10px;color:var(--muted)">— aparece en el historial</span>
-      </div>
-      <div class="asunto-input-wrap">
-        <input type="text" id="os-asunto" maxlength="80" placeholder="Generando resumen..." oninput="updateAsuntoChars()">
-        <div class="asunto-spinner" id="asunto-spin"><div class="spin"></div></div>
-        <span class="asunto-chars" id="asunto-chars"></span>
-      </div>
-    </div>
-    <div class="fg">
+    <div class="fg" id="os-resp-fg">
       <label>Responsable de la OS <span class="req">*</span></label>
       <input type="text" id="os-resp" placeholder="Nombre del responsable / supervisor">
     </div>
@@ -997,20 +991,29 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <label style="font-size:12px;font-weight:600;color:var(--text)">Presupuestos adjuntos</label>
         <span class="presup-badge" id="presup-badge" style="display:none">0 archivos</span>
-        <span style="font-size:11px;color:var(--muted)">(opcional — PDF, imagen o Excel)</span>
+        <span style="font-size:11px;color:var(--muted)">(opcional)</span>
       </div>
-      <div class="presup-zone" id="presup-zone"
-        ondragover="event.preventDefault();this.classList.add('over')"
-        ondragleave="this.classList.remove('over')"
-        ondrop="onPresupDrop(event)">
-        <input type="file" id="presup-input" multiple
-          accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.doc,.docx"
-          onchange="onPresupSelect(event)">
-        <div style="font-size:22px;margin-bottom:6px">📎</div>
-        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">Arrastrá archivos o hacé clic para seleccionar</div>
-        <div style="font-size:11px;color:var(--muted)">PDF · Imágenes · Excel · Word — máx. 5 archivos, 5 MB c/u</div>
+      <input type="file" id="presup-input" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.doc,.docx" onchange="onPresupSelect(event)" style="display:none">
+      <button type="button" onclick="document.getElementById('presup-input').click()"
+        style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:999px;border:1.5px solid var(--or);background:rgba(232,93,37,.12);color:var(--or);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">
+        📎 Adjuntar Presupuesto
+      </button>
+      <span style="font-size:11px;color:var(--muted);margin-left:8px">PDF · Imagen · Excel — máx. 5 · 5 MB c/u</span>
+      <div class="presup-list" id="presup-list" style="margin-top:10px"></div>
+    </div>
+
+    <!-- Fotos muestra -->
+    <div style="margin-top:18px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <label style="font-size:12px;font-weight:600;color:var(--text)">Fotos muestra</label>
+        <span class="presup-badge" id="foto-badge" style="display:none">0 fotos</span>
+        <span style="font-size:11px;color:var(--muted)">(opcional — JPG, PNG o PDF; indicá a qué ítem corresponde)</span>
       </div>
-      <div class="presup-list" id="presup-list"></div>
+      <div id="foto-list"></div>
+      <button type="button" onclick="agregarFotoRow()"
+        style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:999px;border:1.5px solid var(--or);background:rgba(232,93,37,.12);color:var(--or);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;margin-top:4px">
+        📷 Agregar Foto Muestra
+      </button>
     </div>
   </div>
   <div class="nav-row">
@@ -1028,6 +1031,7 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
     <div id="prev-items" style="background:var(--s2);border-radius:8px;padding:12px;font-family:var(--fm);font-size:12px;line-height:1.9;color:var(--subtle)"></div>
     <div id="prev-vale-info" style="display:none;margin-top:12px"></div>
     <div id="prev-presupuestos" style="display:none"></div>
+    <div id="prev-fotos" style="display:none"></div>
   </div>
   <div class="nav-row">
     <button class="btn btn-ghost" onclick="prev(5)">← Corregir</button>
@@ -1373,8 +1377,9 @@ function validar(n) {
   const err = m => { toast(m, true); return false; };
   if (n === 0) {
     if (!sinOS && !v('os-num')) return err('Ingresá el N° de OS, o tildá el botón S/OS si no tenés OS');
-    if (!v('os-desc')) return err('Ingresá la descripción de la OS');
-    if (!v('os-resp')) return err('Ingresá el responsable de la OS');
+    if (!v('os-asunto')) return err('Ingresá el Asunto PC/SC');
+    if (!sinOS && !v('os-desc')) return err('Ingresá la descripción de la OS');
+    if (!sinOS && !v('os-resp')) return err('Ingresá el responsable de la OS');
     if (!v('os-destino')) return err('Seleccioná el destino');
     if (!pedidoItems.length) return err('Ingresá el listado del pedido original');
     // Verify all items have both ARTICULO and CANTIDAD filled
@@ -1443,6 +1448,16 @@ function toggleSOS() {
     inp.style.color = 'var(--or)';
     inp.style.fontWeight = '700';
     inp.style.background = 'var(--s3)';
+  }
+  // S/OS → anular Descripción y Responsable de la OS
+  var descI = document.getElementById('os-desc'), respI = document.getElementById('os-resp');
+  var descFg = document.getElementById('os-desc-fg'), respFg = document.getElementById('os-resp-fg');
+  if (sinOS) {
+    [descI, respI].forEach(function(el){ if(el){ el.value=''; el.disabled=true; } });
+    [descFg, respFg].forEach(function(el){ if(el){ el.style.opacity='.4'; el.title='No aplica cuando el pedido es S/OS'; } });
+  } else {
+    [descI, respI].forEach(function(el){ if(el){ el.disabled=false; } });
+    [descFg, respFg].forEach(function(el){ if(el){ el.style.opacity='1'; el.title=''; } });
   }
 }
 
@@ -1689,6 +1704,30 @@ function buildPreview() {
         </div>`;
     } else {
       prevPresup.style.display = 'none';
+    }
+  }
+
+  // Mostrar fotos muestra en el resumen
+  const prevFotos = document.getElementById('prev-fotos');
+  if (prevFotos) {
+    const fotosOk = fotosMuestra.filter(f => f.name);
+    if (fotosOk.length > 0) {
+      prevFotos.style.display = 'block';
+      prevFotos.innerHTML = `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;border-top:1px solid var(--border);padding-top:12px;margin-top:4px">Fotos muestra</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">${fotosOk.map(f => {
+          const isImg = /^image\//.test(f.type) || /\.(jpg|jpeg|png|webp)$/i.test(f.name||'');
+          const ref = f.itemIdx === '__all' ? 'General'
+            : (f.itemIdx !== '' && pedidoItems[f.itemIdx] ? ('Ítem ' + (Number(f.itemIdx)+1) + ': ' + (pedidoItems[f.itemIdx].art||'').slice(0,22)) : 'Sin asignar');
+          const media = (isImg && f.data)
+            ? `<img src="${f.data}" style="width:34px;height:34px;object-fit:cover;border-radius:5px;border:1px solid var(--border)">`
+            : `<span style="font-size:20px">${getPresupIcon(f.name)}</span>`;
+          return `<div style="display:flex;align-items:center;gap:7px;background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:11px">
+            ${media}<div><div style="color:var(--text)">${escHtml(f.name)}</div><div style="color:var(--or);font-size:10px">${escHtml(ref)}</div></div>
+          </div>`;
+        }).join('')}
+        </div>`;
+    } else {
+      prevFotos.style.display = 'none';
     }
   }
 }
@@ -2403,6 +2442,75 @@ function renderPresupList() {
   `).join('');
 }
 
+// ══════════════════════════════════════════════════
+// FOTOS MUESTRA — PASO 5
+// ══════════════════════════════════════════════════
+let fotosMuestra = []; // [{ itemIdx, name, size, type, data(base64) }]
+const FOTO_MAX_FILES = 10;
+const FOTO_MAX_BYTES = 5 * 1024 * 1024;
+
+function agregarFotoRow() {
+  if (fotosMuestra.length >= FOTO_MAX_FILES) { toast('Máximo ' + FOTO_MAX_FILES + ' fotos', true); return; }
+  fotosMuestra.push({ itemIdx:'', name:'', size:0, type:'', data:'' });
+  renderFotoList();
+}
+function _fotoItemOptions(sel) {
+  var opts = '<option value="">— ¿A qué ítem? —</option>';
+  (pedidoItems || []).forEach(function(it, i){
+    var lbl = (it.art || ('Ítem ' + (i+1))).slice(0, 40);
+    opts += '<option value="' + i + '"' + (String(sel) === String(i) ? ' selected' : '') + '>' + (i+1) + '. ' + escHtml(lbl) + '</option>';
+  });
+  opts += '<option value="__all"' + (sel === '__all' ? ' selected' : '') + '>General / varios ítems</option>';
+  return opts;
+}
+function setFotoItem(idx, val) { if (fotosMuestra[idx]) fotosMuestra[idx].itemIdx = val; }
+function onFotoSelect(idx, event) {
+  var file = event.target.files[0];
+  event.target.value = '';
+  if (!file || !fotosMuestra[idx]) return;
+  if (file.size > FOTO_MAX_BYTES) { toast('"' + file.name + '" supera los 5 MB', true); return; }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    fotosMuestra[idx].name = file.name;
+    fotosMuestra[idx].size = file.size;
+    fotosMuestra[idx].type = file.type;
+    fotosMuestra[idx].data = e.target.result;
+    renderFotoList();
+  };
+  reader.readAsDataURL(file);
+}
+function eliminarFoto(idx) { fotosMuestra.splice(idx, 1); renderFotoList(); }
+function renderFotoList() {
+  var list = document.getElementById('foto-list');
+  var badge = document.getElementById('foto-badge');
+  if (!list) return;
+  var conArchivo = fotosMuestra.filter(function(f){ return f.name; }).length;
+  if (badge) {
+    if (conArchivo > 0) { badge.style.display = 'inline-flex'; badge.textContent = conArchivo + ' foto' + (conArchivo !== 1 ? 's' : ''); }
+    else badge.style.display = 'none';
+  }
+  var btnStyle = 'padding:6px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--s3);color:var(--text);font-size:11px;font-weight:600;cursor:pointer';
+  list.innerHTML = fotosMuestra.map(function(f, i){
+    var isImg = /^image\//.test(f.type) || /\.(jpg|jpeg|png|webp)$/i.test(f.name || '');
+    var thumb = f.data
+      ? (isImg
+          ? '<img src="' + f.data + '" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">'
+          : '<span style="font-size:24px">' + getPresupIcon(f.name) + '</span>')
+      : '<span style="font-size:22px;opacity:.45">🖼️</span>';
+    var fileBtn = f.name
+      ? '<span style="font-size:12px;color:var(--text);flex:1;min-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(f.name) + '">' + escHtml(f.name) + ' · ' + fmtSize(f.size) + '</span>'
+        + '<button type="button" onclick="document.getElementById(\'foto-input-' + i + '\').click()" style="' + btnStyle + '">Cambiar</button>'
+      : '<button type="button" onclick="document.getElementById(\'foto-input-' + i + '\').click()" style="' + btnStyle + ';flex:1">📁 Elegir archivo</button>';
+    return '<div style="display:flex;align-items:center;gap:8px;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px;flex-wrap:wrap">'
+      + thumb
+      + '<select onchange="setFotoItem(' + i + ',this.value)" style="padding:7px 9px;border-radius:6px;border:1px solid var(--border2);background:var(--s3);color:var(--text);font-size:12px;max-width:220px">' + _fotoItemOptions(f.itemIdx) + '</select>'
+      + '<input type="file" id="foto-input-' + i + '" accept=".jpg,.jpeg,.png,.webp,.pdf" onchange="onFotoSelect(' + i + ',event)" style="display:none">'
+      + fileBtn
+      + '<button type="button" onclick="eliminarFoto(' + i + ')" title="Quitar" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer">✕</button>'
+      + '</div>';
+  }).join('');
+}
+
 
 // ══════════════════════════════════════════════════════════════
 // SUPABASE — configuración central
@@ -2481,6 +2589,18 @@ function _enviarEmailSC(numSC, numOP) {
   const obs      = document.getElementById('items-obs')?.value   || '';
   const os       = sinOS ? 'Sin OS' : (document.getElementById('os-num')?.value || '');
 
+  // Archivos a guardar en Drive (Apps Script): presupuestos y fotos muestra (con su ítem)
+  const presupuestosPayload = (presupuestos || []).filter(p => p.data).map(p => ({
+    name: p.name, type: p.type, dataUrl: p.data
+  }));
+  const fotosPayload = (fotosMuestra || []).filter(f => f.data && f.name).map(f => ({
+    name: f.name, type: f.type, dataUrl: f.data,
+    item: f.itemIdx === '__all' ? 'General / varios ítems'
+        : (f.itemIdx !== '' && pedidoItems[f.itemIdx]
+            ? ('Ítem ' + (Number(f.itemIdx)+1) + ': ' + (pedidoItems[f.itemIdx].art || ''))
+            : 'Sin asignar')
+  }));
+
   const payload = {
     tipo:         'SC',
     email:        email,            // solicitante (el CC a Compras lo agrega el Apps Script)
@@ -2496,6 +2616,8 @@ function _enviarEmailSC(numSC, numOP) {
     items:        itemsTxt,
     obs:          obs || '—',
     vale_num:     valeNumActual || '—',
+    presupuestos: presupuestosPayload,
+    fotos:        fotosPayload,
     link_historial: 'https://nielsen-compras.vercel.app/#historial'
   };
 

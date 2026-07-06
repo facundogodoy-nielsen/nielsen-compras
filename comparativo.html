@@ -737,6 +737,12 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
       <div class="card-body"><div id="aaTotalsTable"></div></div>
     </div>
 
+    <!-- Calidad / relación precio-calidad -->
+    <div class="card" id="aaCalidadCard" style="margin-bottom:14px;display:none">
+      <div class="card-header"><h3>⭐ Calidad y relación precio-calidad</h3></div>
+      <div class="card-body"><div id="aaCalidad"></div></div>
+    </div>
+
     <!-- Variables críticas / condiciones comerciales -->
     <div class="card" style="margin-bottom:14px">
       <div class="card-header"><h3>📋 Variables críticas y condiciones comerciales</h3></div>
@@ -2559,11 +2565,15 @@ function _fmtMoney(n){
 function _provTotals(){
   // Returns [{idx,name,prov,totalSinIVA,totalConIVA,flete,cobertura}]
   return providers.map(function(p, pIdx){
-    var totalSin = 0, itemsCotizados = 0;
+    var totalSin = 0, itemsCotizados = 0, calSum = 0, calCount = 0;
     items.forEach(function(item, i){
       var price = (p.prices && p.prices[i]) ? parseFloat(p.prices[i])||0 : 0;
       var qty = parseFloat(item.qty)||1;
-      if (price > 0) { totalSin += price * qty; itemsCotizados++; }
+      if (price > 0) {
+        totalSin += price * qty; itemsCotizados++;
+        var cal = (p.calidades && p.calidades[i]) ? parseFloat(p.calidades[i])||0 : 0;
+        if (cal > 0) { calSum += cal; calCount++; }
+      }
     });
     var flete = parseFloat(p.shippingCost)||0;
     totalSin += flete;
@@ -2571,7 +2581,8 @@ function _provTotals(){
     return {
       idx:pIdx, name:p.name||('Proveedor '+(pIdx+1)), prov:p,
       totalSinIVA:totalSin, totalConIVA:totalCon, flete:flete,
-      cobertura:itemsCotizados, totalItems:items.length
+      cobertura:itemsCotizados, totalItems:items.length,
+      calidadProm: calCount ? (calSum/calCount) : 0, calidadCount: calCount
     };
   }).filter(function(t){ return t.totalSinIVA > 0; });
 }
@@ -2594,26 +2605,48 @@ function renderPriceMatrix(){
     return;
   }
 
-  // Garantizar que cada proveedor tenga su array de precios
-  providers.forEach(function(p){ if (!Array.isArray(p.prices)) p.prices = []; });
+  // Garantizar arrays por proveedor
+  providers.forEach(function(p){
+    if (!Array.isArray(p.prices)) p.prices = [];
+    if (!Array.isArray(p.marcas)) p.marcas = [];
+    if (!Array.isArray(p.calidades)) p.calidades = [];
+  });
 
-  var head = '<th style="position:sticky;left:0;background:var(--bg-light);min-width:200px">Ítem</th>'
-    + '<th style="text-align:center;white-space:nowrap">Cant.</th>'
+  // Encabezado de 2 filas: nombre del proveedor (colspan 2) + sub-columnas Precio / Marca-Calidad
+  var head1 = '<th rowspan="2" style="position:sticky;left:0;background:var(--bg-light);min-width:200px">Ítem</th>'
+    + '<th rowspan="2" style="text-align:center;white-space:nowrap">Cant.</th>'
     + providers.map(function(p, pi){
         var color = PROV_COLORS[pi % PROV_COLORS.length];
-        return '<th style="color:'+color+';text-align:right;white-space:nowrap">'
+        return '<th colspan="2" style="color:'+color+';text-align:center;white-space:nowrap;border-left:2px solid var(--orange-border)">'
           + escHtml(p.name || ('Proveedor ' + (pi+1))) + '</th>';
+      }).join('');
+  var head2 = providers.map(function(){
+        return '<th style="text-align:right;white-space:nowrap;font-size:10px;color:var(--orange-dim);border-left:2px solid var(--orange-border)">Precio s/IVA</th>'
+          + '<th style="text-align:center;white-space:nowrap;font-size:10px;color:var(--orange-dim)">Marca / Calidad</th>';
       }).join('');
 
   var body = items.map(function(item, i){
     var cells = providers.map(function(p, pi){
-      var v = (p.prices && p.prices[i] != null && p.prices[i] !== '') ? p.prices[i] : '';
-      return '<td style="text-align:right">'
+      var v  = (p.prices && p.prices[i] != null && p.prices[i] !== '') ? p.prices[i] : '';
+      var mk = (p.marcas && p.marcas[i] != null) ? p.marcas[i] : '';
+      var cal= (p.calidades && p.calidades[i] != null) ? p.calidades[i] : '';
+      var opts = '<option value="">–</option>';
+      for (var q=5; q>=1; q--){ opts += '<option value="'+q+'"'+(String(cal)===String(q)?' selected':'')+'>'+q+'★</option>'; }
+      return '<td style="text-align:right;border-left:2px solid var(--orange-border)">'
         + '<input type="number" min="0" step="any" inputmode="decimal" '
         + 'value="' + escHtml(String(v)) + '" placeholder="0" '
         + 'data-pm-prov="' + pi + '" data-pm-item="' + i + '" '
-        + 'style="width:120px;text-align:right;padding:6px 8px;border-radius:6px;'
+        + 'style="width:110px;text-align:right;padding:6px 8px;border-radius:6px;'
         + 'border:1px solid var(--orange-border);background:var(--bg-mid);color:var(--cream);font-family:inherit;font-size:12px"/>'
+        + '</td>'
+        + '<td style="text-align:center;white-space:nowrap">'
+        + '<input type="text" value="' + escHtml(String(mk)) + '" placeholder="Marca" '
+        + 'data-pm-marca-prov="' + pi + '" data-pm-marca-item="' + i + '" '
+        + 'style="width:82px;text-align:left;padding:6px 7px;border-radius:6px;'
+        + 'border:1px solid var(--orange-border);background:var(--bg-mid);color:var(--cream);font-family:inherit;font-size:11px;margin-right:4px"/>'
+        + '<select data-pm-cal-prov="' + pi + '" data-pm-cal-item="' + i + '" title="Calidad (1 baja · 5 primera)" '
+        + 'style="padding:6px 4px;border-radius:6px;border:1px solid var(--orange-border);background:var(--bg-mid);color:var(--cream);font-family:inherit;font-size:11px">'
+        + opts + '</select>'
         + '</td>';
     }).join('');
     return '<tr>'
@@ -2626,16 +2659,19 @@ function renderPriceMatrix(){
       + cells + '</tr>';
   }).join('');
 
-  var foot = '<td colspan="2" style="position:sticky;left:0;background:var(--bg-light);font-weight:700;color:var(--cream)">Subtotal s/IVA</td>'
-    + providers.map(function(){ return '<td style="text-align:right;font-weight:700;color:var(--orange)"></td>'; }).join('');
+  var foot = '<td colspan="2" style="position:sticky;left:0;background:var(--bg-light);font-weight:700;color:var(--cream)">Subtotal s/IVA · Calidad prom.</td>'
+    + providers.map(function(){
+        return '<td style="text-align:right;font-weight:700;color:var(--orange);border-left:2px solid var(--orange-border)"></td>'
+          + '<td style="text-align:center;font-weight:700;color:var(--orange-dim)"></td>';
+      }).join('');
 
   wrap.innerHTML = '<table class="aa-table" style="min-width:100%">'
-    + '<thead><tr>' + head + '</tr></thead>'
+    + '<thead><tr>' + head1 + '</tr><tr>' + head2 + '</tr></thead>'
     + '<tbody>' + body + '</tbody>'
     + '<tfoot><tr>' + foot + '</tr></tfoot>'
     + '</table>';
 
-  // Binding: escribe el precio sin re-renderizar (no se pierde el foco)
+  // Binding precio (sin re-render, no pierde foco)
   wrap.querySelectorAll('input[data-pm-prov]').forEach(function(el){
     el.addEventListener('input', function(){
       var pi = parseInt(this.dataset.pmProv, 10);
@@ -2646,11 +2682,50 @@ function renderPriceMatrix(){
       _updateMatrixSubtotals();
     });
   });
+  // Binding marca
+  wrap.querySelectorAll('input[data-pm-marca-prov]').forEach(function(el){
+    el.addEventListener('input', function(){
+      var pi = parseInt(this.dataset.pmMarcaProv, 10);
+      var ii = parseInt(this.dataset.pmMarcaItem, 10);
+      if (!providers[pi]) return;
+      if (!Array.isArray(providers[pi].marcas)) providers[pi].marcas = [];
+      providers[pi].marcas[ii] = this.value;
+    });
+  });
+  // Binding calidad
+  wrap.querySelectorAll('select[data-pm-cal-prov]').forEach(function(el){
+    el.addEventListener('change', function(){
+      var pi = parseInt(this.dataset.pmCalProv, 10);
+      var ii = parseInt(this.dataset.pmCalItem, 10);
+      if (!providers[pi]) return;
+      if (!Array.isArray(providers[pi].calidades)) providers[pi].calidades = [];
+      providers[pi].calidades[ii] = this.value;
+      _updateMatrixSubtotals();
+    });
+  });
 
   _updateMatrixSubtotals();
 }
 
 function _updateMatrixSubtotals(){
+  var cells = document.querySelectorAll('#priceMatrixWrap tfoot td');
+  if (!cells.length) return;
+  providers.forEach(function(p, pi){
+    var s = 0, calSum = 0, calCount = 0;
+    items.forEach(function(item, i){
+      var price = (p.prices && p.prices[i]) ? parseFloat(p.prices[i]) || 0 : 0;
+      var qty = parseFloat(item.qty) || 1;
+      if (price > 0) s += price * qty;
+      var cal = (p.calidades && p.calidades[i]) ? parseFloat(p.calidades[i]) || 0 : 0;
+      if (price > 0 && cal > 0) { calSum += cal; calCount++; }
+    });
+    var subCell = cells[1 + pi*2];  // [0]=etiqueta (colspan 2)
+    var calCell = cells[2 + pi*2];
+    if (subCell) subCell.textContent = s > 0 ? _fmtMoney(s) : '—';
+    if (calCell) calCell.textContent = calCount ? (calSum/calCount).toFixed(1) + '★' : '—';
+  });
+}
+function _OLD_updateMatrixSubtotals(){
   var cells = document.querySelectorAll('#priceMatrixWrap tfoot td');
   if (!cells.length) return;
   providers.forEach(function(p, pi){
@@ -2686,13 +2761,18 @@ function generarAnalisisAuto(){
   // ── Comparación por ítem: ganador de cada artículo entre quienes lo cotizaron ──
   var comparables = 0, ahorroSin = 0, spreadSin = 0, optimoSin = 0;
   var itemWinners = [];
+  var hayCalidad = false;
   items.forEach(function(item, i){
     var qty = parseFloat(item.qty)||1;
     var cands = totals.map(function(t){
       var pr = (t.prov.prices && t.prov.prices[i]) ? parseFloat(t.prov.prices[i])||0 : 0;
-      return pr>0 ? { idx:t.idx, name:t.name, price:pr } : null;
+      if (pr<=0) return null;
+      var cal = (t.prov.calidades && t.prov.calidades[i]) ? parseFloat(t.prov.calidades[i])||0 : 0;
+      var mk  = (t.prov.marcas && t.prov.marcas[i]) ? String(t.prov.marcas[i]) : '';
+      if (cal>0) hayCalidad = true;
+      return { idx:t.idx, name:t.name, price:pr, calidad:cal, marca:mk, valor: cal>0 ? pr/cal : null };
     }).filter(Boolean);
-    if (!cands.length){ itemWinners.push({ i:i, desc:item.desc||('Ítem '+(i+1)), qty:qty, best:null, nCand:0 }); return; }
+    if (!cands.length){ itemWinners.push({ i:i, desc:item.desc||('Ítem '+(i+1)), qty:qty, best:null, nCand:0, cands:[] }); return; }
     cands.sort(function(a,b){ return a.price - b.price; });
     optimoSin += cands[0].price * qty;
     if (cands.length >= 2){
@@ -2700,7 +2780,13 @@ function generarAnalisisAuto(){
       ahorroSin += (cands[1].price - cands[0].price) * qty;               // vs 2° mejor (por ítem)
       spreadSin += (cands[cands.length-1].price - cands[0].price) * qty;  // peor vs mejor (por ítem)
     }
-    itemWinners.push({ i:i, desc:item.desc||('Ítem '+(i+1)), qty:qty, best:cands[0], nCand:cands.length });
+    // Mejor relación precio/calidad (menor precio por punto de calidad) entre quienes cargaron calidad
+    var conCal = cands.filter(function(c){ return c.valor != null; });
+    var bestValue = null;
+    if (conCal.length){
+      bestValue = conCal.slice().sort(function(a,b){ return a.valor - b.valor; })[0];
+    }
+    itemWinners.push({ i:i, desc:item.desc||('Ítem '+(i+1)), qty:qty, best:cands[0], bestValue:bestValue, nCand:cands.length, cands:cands });
   });
   var ahorroComparable = ahorroSin * (1 + IVA_RATE);
   var spreadComparable = spreadSin * (1 + IVA_RATE);
@@ -2734,16 +2820,18 @@ function generarAnalisisAuto(){
     ahorroTotalDiff:ahorroTotalDiff, ahorroComparable:ahorroComparable, spreadComparable:spreadComparable,
     comparables:comparables, totalItems:totalItems, allFull:allFull, mode:(allFull?'full':'partial'),
     itemWinners:itemWinners, gruposReco:gruposReco, recoStatus:recoStatus, elegidoLabel:elegidoLabel,
-    optimoConIVA:optimoConIVA };
+    optimoConIVA:optimoConIVA, hayCalidad:hayCalidad };
 
   document.getElementById('aaRendered').style.display = 'block';
   _renderAAMetrics(totals, ganador, segundo, ahorro, ahorroPct, allFull);
   _renderAACobertura(totals, comparables, ahorroComparable, spreadComparable, totalItems, ahorroTotalDiff, allFull);
   _renderAAItemTables(totals);
   _renderAATotals(totals, ganador, recoStatus, allFull, gruposReco);
+  _renderAACalidad(totals, itemWinners, hayCalidad);
   _renderAACond(totals);
   _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct, allFull, gruposReco, optimoConIVA);
   _renderAAMemo(totals, ganador, segundo, ahorro, ahorroPct, allFull, gruposReco, optimoConIVA);
+  _appendCalidadNota();
   showToast('✓ Análisis generado','ok');
   // Guardado SISTEMÁTICO en Supabase → aparece en Centro de Control (Historial de CCP + Ahorro Generado)
   // ...salvo cuando se está CONSULTANDO un CCP (no se vuelve a guardar para no pisar nada).
@@ -2880,6 +2968,7 @@ function _renderAATotals(totals, ganador, recoStatus, allFull, gruposReco){
     return '<tr'+rowStyle+'>'
       + '<td><strong>'+escHtml(t.name)+'</strong>'+badge+subtxt+'</td>'
       + '<td>'+t.cobertura+'/'+t.totalItems+' ítems</td>'
+      + '<td style="text-align:center">'+(t.calidadCount? t.calidadProm.toFixed(1)+'★' : '—')+'</td>'
       + '<td>'+(t.flete>0?_fmtMoney(t.flete):'—')+'</td>'
       + '<td>'+_fmtMoney(t.totalSinIVA)+'</td>'
       + '<td><strong>'+_fmtMoney(t.totalConIVA)+'</strong></td></tr>';
@@ -2888,8 +2977,75 @@ function _renderAATotals(totals, ganador, recoStatus, allFull, gruposReco){
     : '<p style="font-size:12px;color:var(--orange-dim,#c98);margin:8px 2px 0">No se recomienda por total porque los proveedores cotizaron parciales distintos. Cada «Parcial recomendado» es el más económico para los artículos que cotizó, comparado contra ese mismo parcial de los demás.</p>';
   document.getElementById('aaTotalsTable').innerHTML =
     '<div class="aa-table-card"><table class="aa-table"><thead><tr>'
-    + '<th>Proveedor</th><th>Cobertura</th><th>Flete</th><th>Total s/IVA</th><th>Total c/IVA</th>'
+    + '<th>Proveedor</th><th>Cobertura</th><th style="text-align:center">Calidad prom.</th><th>Flete</th><th>Total s/IVA</th><th>Total c/IVA</th>'
     + '</tr></thead><tbody>'+body+'</tbody></table></div>'+nota;
+}
+
+function _calidadNota(){
+  if (!analysisResult || !analysisResult.hayCalidad) return '';
+  var iw = analysisResult.itemWinners || [];
+  var difs = iw.filter(function(w){ return w.bestValue && w.best && w.bestValue.idx !== w.best.idx; });
+  if (difs.length){
+    var ej = difs.slice(0,4).map(function(w){ return escHtml(w.desc)+' (más económico '+(w.best.calidad||'?')+'★ vs '+w.bestValue.calidad+'★ de '+escHtml(w.bestValue.name)+')'; }).join('; ');
+    return 'En '+difs.length+' ítem(s) el más económico es de menor calidad que una alternativa con mejor relación precio-calidad: '+ej+'. Evaluar si la mayor calidad justifica el mayor costo antes de adjudicar.';
+  }
+  return 'En los ítems con calidad cargada, la opción más económica coincide con la mejor relación precio-calidad.';
+}
+function _appendCalidadNota(){
+  var nota = _calidadNota();
+  if (!nota) return;
+  var conc = document.getElementById('aaConclusion');
+  if (conc) conc.innerHTML += '<div class="aa-alert" style="border-color:rgba(245,158,11,.4)"><div class="t">⭐ Consideración de calidad</div><p>'+nota+'</p></div>';
+  var memo = document.getElementById('aaMemo');
+  var doc = memo ? memo.querySelector('#aaMemoDoc') : null;
+  if (doc){
+    var sec = document.createElement('div');
+    sec.className = 'sec';
+    sec.innerHTML = '<div class="sec-t">Consideración de calidad</div><p class="bt">'+nota+'</p>';
+    var ft = doc.querySelector('.ft');
+    if (ft) doc.insertBefore(sec, ft); else doc.appendChild(sec);
+  }
+}
+function _renderAACalidad(totals, itemWinners, hayCalidad){
+  var card = document.getElementById('aaCalidadCard');
+  var el = document.getElementById('aaCalidad');
+  if (!el || !card) return;
+  if (!hayCalidad){ card.style.display = 'none'; el.innerHTML = ''; return; }
+  card.style.display = '';
+  var rows = (itemWinners||[]).filter(function(w){ return w.cands && w.cands.length; }).map(function(w){
+    var barato = w.best, valor = w.bestValue;
+    var difiere = valor && valor.idx !== barato.idx;
+    var cheapCell = '<strong>'+escHtml(barato.name)+'</strong> · '+_fmtMoney(barato.price)
+      + (barato.calidad? ' · '+barato.calidad+'★':'') + (barato.marca? ' · '+escHtml(barato.marca):'');
+    var valCell = valor ? ('<strong>'+escHtml(valor.name)+'</strong> · '+_fmtMoney(valor.price)+' · '+valor.calidad+'★'
+      + (valor.marca?' · '+escHtml(valor.marca):'')) : '<span style="color:var(--orange-dim)">sin calidad cargada</span>';
+    var nota = '';
+    if (difiere){
+      var extra = valor.price - barato.price;
+      var extraPct = barato.price>0 ? (extra/barato.price*100) : 0;
+      nota = '<span style="color:#f59e0b">El más económico es '+(barato.calidad||'?')+'★; '+escHtml(valor.name)+' ofrece '+valor.calidad+'★'
+        + (extra>0 ? ' por +'+_fmtMoney(extra)+' ('+extraPct.toFixed(0)+'% más)' : ' a igual o menor precio') + '</span>';
+    } else if (valor){
+      nota = '<span style="color:#4ade80">El más económico también es la mejor relación precio-calidad</span>';
+    } else {
+      nota = '<span style="color:var(--orange-dim)">—</span>';
+    }
+    return '<tr>'
+      + '<td style="padding:6px 10px;color:#ddd">'+escHtml(w.desc)+'</td>'
+      + '<td style="padding:6px 10px">'+cheapCell+'</td>'
+      + '<td style="padding:6px 10px">'+valCell+'</td>'
+      + '<td style="padding:6px 10px;font-size:12px">'+nota+'</td>'
+      + '</tr>';
+  }).join('');
+  var provCal = totals.filter(function(t){ return t.calidadCount; }).map(function(t){
+    return '<span style="display:inline-block;margin:2px 10px 2px 0"><b style="color:var(--orange)">'+escHtml(t.name)+'</b>: '+t.calidadProm.toFixed(1)+'★ <span style="color:var(--orange-dim)">('+t.calidadCount+' ít.)</span></span>';
+  }).join('');
+  el.innerHTML =
+    '<p style="font-size:12px;color:var(--orange-dim);margin:0 0 10px">La calidad (1★ baja · 5★ primera) permite comparar más allá del precio: algo de primera calidad suele costar más. La <b>relación precio-calidad</b> es el precio por punto de calidad (menor = mejor valor).</p>'
+    + (provCal ? '<div style="margin-bottom:12px;font-size:12px">Calidad promedio por proveedor: '+provCal+'</div>' : '')
+    + '<div class="aa-table-card"><table class="aa-table"><thead><tr>'
+    + '<th>Ítem</th><th>Más económico</th><th>Mejor relación precio-calidad</th><th>Observación</th>'
+    + '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
 function _renderAACond(totals){
