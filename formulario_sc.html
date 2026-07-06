@@ -2614,14 +2614,16 @@ function _enviarEmailSC(numSC, numOP) {
 
   // Archivos a guardar en Drive (Apps Script): presupuestos y fotos muestra (con su ítem)
   const presupuestosPayload = (presupuestos || []).filter(p => p.data && p.name).map(p => ({
-    name: p.name, type: p.type, dataUrl: p.data, item: _itemsRefTexto(p.items)
+    name: p.name, type: p.type, dataUrl: p.data, item: _itemsRefTexto(p.items), itemsIdx: _resolveItemIdxs(p.items)
   }));
   const fotosPayload = (fotosMuestra || []).filter(f => f.data && f.name).map(f => ({
     name: f.name, type: f.type, dataUrl: f.data,
     item: f.itemIdx === '__all' ? 'General / varios ítems'
         : (f.itemIdx !== '' && pedidoItems[f.itemIdx]
             ? ('Ítem ' + (Number(f.itemIdx)+1) + ': ' + (pedidoItems[f.itemIdx].art || ''))
-            : 'Sin asignar')
+            : 'Sin asignar'),
+    itemsIdx: (f.itemIdx === '__all') ? (pedidoItems||[]).map((_, i) => i)
+            : (f.itemIdx !== '' && f.itemIdx != null && !isNaN(Number(f.itemIdx)) ? [Number(f.itemIdx)] : [])
   }));
 
   const payload = {

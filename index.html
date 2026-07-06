@@ -5830,18 +5830,35 @@ function renderEstadoConfirmacion(sc) {
 
 function _scItemAdjuntos(sc, i){
   if(!sc) return '';
-  var fotos = sc.fotosItems || [], presup = sc.presupItems || [];
-  var has = function(arr){ return arr.indexOf(i) >= 0 || arr.indexOf(String(i)) >= 0; };
-  var hasF = has(fotos), hasP = has(presup);
-  if(!hasF && !hasP) return '';
-  var pill = function(url, bg, bd, col, txt){
+  var fmap = sc.fotosMap || {}, pmap = sc.presupMap || {};
+  var fotos  = fmap[i] || fmap[String(i)] || [];
+  var presup = pmap[i] || pmap[String(i)] || [];
+  var has = function(arr){ return (arr||[]).indexOf(i) >= 0 || (arr||[]).indexOf(String(i)) >= 0; };
+  var fotosPres = has(sc.fotosItems), presupPres = has(sc.presupItems);
+  if(!fotos.length && !presup.length && !fotosPres && !presupPres) return '';
+  var esc = function(s){ return String(s||'').replace(/"/g,'&quot;'); };
+  var pill = function(url, bg, bd, col, txt, title){
     var inner = '<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:999px;font-size:9px;font-weight:700;background:'+bg+';border:1px solid '+bd+';color:'+col+'">'+txt+'</span>';
-    return url ? '<a href="'+String(url).replace(/"/g,'&quot;')+'" target="_blank" rel="noopener" style="text-decoration:none" title="Ver en Drive">'+inner+'</a>' : inner;
+    return url ? '<a href="'+esc(url)+'" target="_blank" rel="noopener" style="text-decoration:none" title="'+esc(title||'Abrir en Drive')+'">'+inner+'</a>' : inner;
   };
   var h = '';
-  if(hasF) h += pill(sc.driveFotosUrl,  'rgba(34,197,94,.14)','rgba(34,197,94,.4)','#22c55e','📷 Foto'   + (sc.driveFotosUrl ?' ↗':''));
-  if(hasP) h += pill(sc.drivePresupUrl, 'rgba(232,93,37,.14)','rgba(232,93,37,.4)','var(--or)','📄 Presup.'+ (sc.drivePresupUrl?' ↗':''));
-  return ' <span style="display:inline-flex;gap:5px;margin-left:6px;vertical-align:middle">'+h+'</span>';
+  // FOTOS — link directo por archivo (fallback: carpeta)
+  if(fotos.length){
+    fotos.forEach(function(f, k){
+      h += pill(f.url, 'rgba(34,197,94,.14)','rgba(34,197,94,.4)','#22c55e', '📷 '+(fotos.length>1?('Foto '+(k+1)):'Foto')+' ↗', f.name);
+    });
+  } else if(fotosPres){
+    h += pill(sc.driveFotosUrl, 'rgba(34,197,94,.14)','rgba(34,197,94,.4)','#22c55e', '📷 Foto'+(sc.driveFotosUrl?' ↗':''), 'Carpeta de fotos en Drive');
+  }
+  // PRESUPUESTOS — link directo por archivo (fallback: carpeta)
+  if(presup.length){
+    presup.forEach(function(f, k){
+      h += pill(f.url, 'rgba(232,93,37,.14)','rgba(232,93,37,.4)','var(--or)', '📄 '+(presup.length>1?('Presup. '+(k+1)):'Presup.')+' ↗', f.name);
+    });
+  } else if(presupPres){
+    h += pill(sc.drivePresupUrl, 'rgba(232,93,37,.14)','rgba(232,93,37,.4)','var(--or)', '📄 Presup.'+(sc.drivePresupUrl?' ↗':''), 'Carpeta de presupuestos en Drive');
+  }
+  return ' <span style="display:inline-flex;flex-wrap:wrap;gap:5px;margin-left:6px;vertical-align:middle">'+h+'</span>';
 }
 
 function renderItemsCompra(lineas, sc) {
@@ -8249,6 +8266,8 @@ async function recargarSCsDesdeLS() {
       presupItems:    r.presup_items ? (typeof r.presup_items==='string' ? JSON.parse(r.presup_items) : r.presup_items) : [],
       driveFotosUrl:  r.drive_fotos_url  || '',
       drivePresupUrl: r.drive_presup_url || '',
+      fotosMap:       r.fotos_map  ? (typeof r.fotos_map ==='string' ? JSON.parse(r.fotos_map)  : r.fotos_map)  : {},
+      presupMap:      r.presup_map ? (typeof r.presup_map==='string' ? JSON.parse(r.presup_map) : r.presup_map) : {},
       _sbId:      r.id   // UUID de Supabase
     }));
     _sbOnline = true;

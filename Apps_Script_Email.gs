@@ -54,7 +54,7 @@ function doPost(e) {
     // Guardar presupuestos y fotos muestra en Drive (no bloquear el correo si falla)
     try {
       p._archivos = _guardarArchivos(p);
-      if (p.tipo !== 'PA') _patchSCDriveUrls(p.num_sc, p._archivos.fotosFolderUrl, p._archivos.presupFolderUrl);
+      if (p.tipo !== 'PA') _patchSCDriveUrls(p.num_sc, p._archivos);
     } catch (fe) { p._archivos = { presup: [], fotos: [], error: String(fe) }; }
 
     var asunto, html;
@@ -196,12 +196,19 @@ function _guardarArchivos(p) {
     var fSC = _folderByName(fParent, scId);
     try { fSC.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
     out.presupFolderUrl = fSC.getUrl();
+    out.presupMap = {};
     p.presupuestos.forEach(function(f) {
       var blob = _blobFromDataUrl(f.dataUrl, f.name);
       if (!blob) return;
       var file = fSC.createFile(blob);
       try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
-      out.presup.push({ name: f.name, url: file.getUrl(), item: f.item || '' });
+      var url = file.getUrl();
+      out.presup.push({ name: f.name, url: url, item: f.item || '' });
+      (f.itemsIdx || []).forEach(function(ix){
+        var k = String(ix);
+        if (!out.presupMap[k]) out.presupMap[k] = [];
+        out.presupMap[k].push({ name: f.name, url: url });
+      });
     });
   }
   if (p.fotos && p.fotos.length) {
@@ -209,23 +216,32 @@ function _guardarArchivos(p) {
     var gSC = _folderByName(gParent, scId);
     try { gSC.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
     out.fotosFolderUrl = gSC.getUrl();
+    out.fotosMap = {};
     p.fotos.forEach(function(f) {
       var blob = _blobFromDataUrl(f.dataUrl, f.name);
       if (!blob) return;
       var file = gSC.createFile(blob);
       try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
-      out.fotos.push({ name: f.name, url: file.getUrl(), item: f.item || '' });
+      var url = file.getUrl();
+      out.fotos.push({ name: f.name, url: url, item: f.item || '' });
+      (f.itemsIdx || []).forEach(function(ix){
+        var k = String(ix);
+        if (!out.fotosMap[k]) out.fotosMap[k] = [];
+        out.fotosMap[k].push({ name: f.name, url: url });
+      });
     });
   }
   return out;
 }
-// Escribe los links de las carpetas de Drive en la SC (Supabase) para que el CC los muestre
-function _patchSCDriveUrls(numSC, fotosUrl, presupUrl) {
-  if (!numSC) return;
+// Escribe links de carpetas + mapa ítem→archivos en la SC (Supabase) para que el CC los muestre
+function _patchSCDriveUrls(numSC, a) {
+  if (!numSC || !a) return;
   var body = {};
-  if (fotosUrl)  body.drive_fotos_url  = fotosUrl;
-  if (presupUrl) body.drive_presup_url = presupUrl;
-  if (!Object.keys(body).length) return;
+  if (a.fotosFolderUrl)  body.drive_fotos_url  = a.fotosFolderUrl;
+  if (a.presupFolderUrl) body.drive_presup_url = a.presupFolderUrl;
+  if (a.fotosMap  && _keys(a.fotosMap).length)  body.fotos_map  = a.fotosMap;
+  if (a.presupMap && _keys(a.presupMap).length) body.presup_map = a.presupMap;
+  if (!_keys(body).length) return;
   try {
     UrlFetchApp.fetch(SB_URL + '/rest/v1/solicitudes_compra?num_sc=eq.' + encodeURIComponent(numSC), {
       method: 'patch',
@@ -236,6 +252,7 @@ function _patchSCDriveUrls(numSC, fotosUrl, presupUrl) {
     });
   } catch (e) {}
 }
+function _keys(o){ return o ? Object.keys(o) : []; }
 // Bloque HTML de adjuntos para el correo
 function _archivosHtml(a) {
   if (!a) return '';
