@@ -1721,7 +1721,7 @@ function buildPreview() {
         <div style="display:flex;flex-wrap:wrap;gap:8px">${fotosOk.map(f => {
           const isImg = /^image\//.test(f.type) || /\.(jpg|jpeg|png|webp)$/i.test(f.name||'');
           const ref = f.itemIdx === '__all' ? 'General'
-            : (f.itemIdx !== '' && pedidoItems[f.itemIdx] ? ('Ítem ' + (Number(f.itemIdx)+1) + ': ' + (pedidoItems[f.itemIdx].art||'').slice(0,22)) : 'Sin asignar');
+            : (f.itemIdx !== '' && itemsParsed[f.itemIdx] ? ('Ítem ' + (Number(f.itemIdx)+1) + ': ' + (itemsParsed[f.itemIdx].desc||'').slice(0,22)) : 'Sin asignar');
           const media = (isImg && f.data)
             ? `<img src="${f.data}" style="width:34px;height:34px;object-fit:cover;border-radius:5px;border:1px solid var(--border)">`
             : `<span style="font-size:20px">${getPresupIcon(f.name)}</span>`;
@@ -2420,7 +2420,7 @@ function _itemChipsHTML(selArr, fn, rowIdx) {
     var on = isSel(v);
     return '<span onclick="' + fn + '(' + rowIdx + ',\'' + v + '\')" style="cursor:pointer;user-select:none;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid ' + (on?'var(--or)':'var(--border2)') + ';background:' + (on?'var(--or)':'transparent') + ';color:' + (on?'#fff':'var(--muted)') + '">' + label + '</span>';
   };
-  var html = (pedidoItems || []).map(function(it, i){ return chip(i, (i+1) + '. ' + escHtml((it.art || '').slice(0,18))); }).join('');
+  var html = (itemsParsed || []).map(function(it, i){ return chip(i, (i+1) + '. ' + escHtml((it.desc || '').slice(0,18))); }).join('');
   html += chip('__all', 'General');
   return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'
     + '<span style="font-size:10px;color:var(--muted);align-self:center;margin-right:2px">¿A qué ítems?</span>' + html + '</div>';
@@ -2455,13 +2455,13 @@ function renderPresupList() {
 function _itemsRefTexto(itemsArr) {
   itemsArr = itemsArr || [];
   if (itemsArr.indexOf('__all') >= 0) return 'General / varios ítems';
-  var refs = itemsArr.map(function(v){ var i = Number(v); return (pedidoItems[i] ? ('Ítem ' + (i+1) + ': ' + (pedidoItems[i].art || '')) : ''); }).filter(Boolean);
+  var refs = itemsArr.map(function(v){ var i = Number(v); return (itemsParsed[i] ? ('Ítem ' + (i+1) + ': ' + (itemsParsed[i].desc || '')) : ''); }).filter(Boolean);
   return refs.length ? refs.join(' · ') : 'Sin asignar';
 }
 // Índices numéricos de ítems cubiertos por un adjunto ('__all' → todos)
 function _resolveItemIdxs(arr) {
   arr = arr || [];
-  if (arr.indexOf('__all') >= 0) return (pedidoItems || []).map(function(_, i){ return i; });
+  if (arr.indexOf('__all') >= 0) return (itemsParsed || []).map(function(_, i){ return i; });
   return arr.map(Number).filter(function(n){ return !isNaN(n); });
 }
 
@@ -2479,8 +2479,8 @@ function agregarFotoRow() {
 }
 function _fotoItemOptions(sel) {
   var opts = '<option value="">— ¿A qué ítem? —</option>';
-  (pedidoItems || []).forEach(function(it, i){
-    var lbl = (it.art || ('Ítem ' + (i+1))).slice(0, 40);
+  (itemsParsed || []).forEach(function(it, i){
+    var lbl = (it.desc || ('Ítem ' + (i+1))).slice(0, 40);
     opts += '<option value="' + i + '"' + (String(sel) === String(i) ? ' selected' : '') + '>' + (i+1) + '. ' + escHtml(lbl) + '</option>';
   });
   opts += '<option value="__all"' + (sel === '__all' ? ' selected' : '') + '>General / varios ítems</option>';
@@ -2619,10 +2619,10 @@ function _enviarEmailSC(numSC, numOP) {
   const fotosPayload = (fotosMuestra || []).filter(f => f.data && f.name).map(f => ({
     name: f.name, type: f.type, dataUrl: f.data,
     item: f.itemIdx === '__all' ? 'General / varios ítems'
-        : (f.itemIdx !== '' && pedidoItems[f.itemIdx]
-            ? ('Ítem ' + (Number(f.itemIdx)+1) + ': ' + (pedidoItems[f.itemIdx].art || ''))
+        : (f.itemIdx !== '' && itemsParsed[f.itemIdx]
+            ? ('Ítem ' + (Number(f.itemIdx)+1) + ': ' + (itemsParsed[f.itemIdx].desc || ''))
             : 'Sin asignar'),
-    itemsIdx: (f.itemIdx === '__all') ? (pedidoItems||[]).map((_, i) => i)
+    itemsIdx: (f.itemIdx === '__all') ? (itemsParsed||[]).map((_, i) => i)
             : (f.itemIdx !== '' && f.itemIdx != null && !isNaN(Number(f.itemIdx)) ? [Number(f.itemIdx)] : [])
   }));
 
@@ -2710,7 +2710,7 @@ async function _guardarSCenCC(numSC, numOP) {
     // Ítems con foto muestra / presupuesto asociado (para destacar en el Centro de Control)
     const _fi = new Set(), _pi = new Set();
     (fotosMuestra || []).filter(f => f.name).forEach(f => {
-      if (f.itemIdx === '__all') (pedidoItems || []).forEach((_, i) => _fi.add(i));
+      if (f.itemIdx === '__all') (itemsParsed || []).forEach((_, i) => _fi.add(i));
       else if (f.itemIdx !== '' && f.itemIdx != null && !isNaN(Number(f.itemIdx))) _fi.add(Number(f.itemIdx));
     });
     (presupuestos || []).filter(p => p.name).forEach(p => { _resolveItemIdxs(p.items).forEach(i => _pi.add(i)); });
