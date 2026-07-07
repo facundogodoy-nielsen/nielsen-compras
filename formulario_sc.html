@@ -634,9 +634,9 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
         </div>
       </div>
     </div>
-    <!-- Asunto PC/SC — fijo y obligatorio (independiente de la descripción de la OS) -->
+    <!-- Asunto OS/SC — fijo y obligatorio (independiente de la descripción de la OS) -->
     <div class="fg">
-      <label>Asunto PC/SC <span class="req">*</span></label>
+      <label>Asunto OS/SC <span class="req">*</span></label>
       <input type="text" id="os-asunto" maxlength="80" placeholder="Asunto breve del pedido — aparece en el historial" oninput="updateAsuntoChars()">
       <span class="asunto-chars" id="asunto-chars" style="display:block;font-size:10px;color:var(--muted);margin-top:3px"></span>
     </div>
@@ -1375,7 +1375,7 @@ function validar(n) {
   const err = m => { toast(m, true); return false; };
   if (n === 0) {
     if (!sinOS && !v('os-num')) return err('Ingresá el N° de OS, o tildá el botón S/OS si no tenés OS');
-    if (!v('os-asunto')) return err('Ingresá el Asunto PC/SC');
+    if (!v('os-asunto')) return err('Ingresá el Asunto OS/SC');
     if (!sinOS && !v('os-desc')) return err('Ingresá la descripción de la OS');
     if (!sinOS && !v('os-resp')) return err('Ingresá el responsable de la OS');
     if (!v('os-destino')) return err('Seleccioná el destino');

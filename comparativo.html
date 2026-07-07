@@ -2609,6 +2609,7 @@ function renderPriceMatrix(){
   providers.forEach(function(p){
     if (!Array.isArray(p.prices)) p.prices = [];
     if (!Array.isArray(p.marcas)) p.marcas = [];
+    if (!Array.isArray(p.modelos)) p.modelos = [];
     if (!Array.isArray(p.calidades)) p.calidades = [];
   });
 
@@ -2622,13 +2623,14 @@ function renderPriceMatrix(){
       }).join('');
   var head2 = providers.map(function(){
         return '<th style="text-align:right;white-space:nowrap;font-size:10px;color:var(--orange-dim);border-left:2px solid var(--orange-border)">Precio s/IVA</th>'
-          + '<th style="text-align:center;white-space:nowrap;font-size:10px;color:var(--orange-dim)">Marca / Calidad</th>';
+          + '<th style="text-align:center;white-space:nowrap;font-size:10px;color:var(--orange-dim)">Marca / Modelo / Calidad</th>';
       }).join('');
 
   var body = items.map(function(item, i){
     var cells = providers.map(function(p, pi){
       var v  = (p.prices && p.prices[i] != null && p.prices[i] !== '') ? p.prices[i] : '';
       var mk = (p.marcas && p.marcas[i] != null) ? p.marcas[i] : '';
+      var mo = (p.modelos && p.modelos[i] != null) ? p.modelos[i] : '';
       var cal= (p.calidades && p.calidades[i] != null) ? p.calidades[i] : '';
       var opts = '<option value="">–</option>';
       for (var q=5; q>=1; q--){ opts += '<option value="'+q+'"'+(String(cal)===String(q)?' selected':'')+'>'+q+'★</option>'; }
@@ -2642,7 +2644,11 @@ function renderPriceMatrix(){
         + '<td style="text-align:center;white-space:nowrap">'
         + '<input type="text" value="' + escHtml(String(mk)) + '" placeholder="Marca" '
         + 'data-pm-marca-prov="' + pi + '" data-pm-marca-item="' + i + '" '
-        + 'style="width:82px;text-align:left;padding:6px 7px;border-radius:6px;'
+        + 'style="width:76px;text-align:left;padding:6px 7px;border-radius:6px;'
+        + 'border:1px solid var(--orange-border);background:var(--bg-mid);color:var(--cream);font-family:inherit;font-size:11px;margin-right:4px"/>'
+        + '<input type="text" value="' + escHtml(String(mo)) + '" placeholder="Modelo" '
+        + 'data-pm-modelo-prov="' + pi + '" data-pm-modelo-item="' + i + '" '
+        + 'style="width:76px;text-align:left;padding:6px 7px;border-radius:6px;'
         + 'border:1px solid var(--orange-border);background:var(--bg-mid);color:var(--cream);font-family:inherit;font-size:11px;margin-right:4px"/>'
         + '<select data-pm-cal-prov="' + pi + '" data-pm-cal-item="' + i + '" title="Calidad (1 baja · 5 primera)" '
         + 'style="padding:6px 4px;border-radius:6px;border:1px solid var(--orange-border);background:var(--bg-mid);color:var(--cream);font-family:inherit;font-size:11px">'
@@ -2690,6 +2696,16 @@ function renderPriceMatrix(){
       if (!providers[pi]) return;
       if (!Array.isArray(providers[pi].marcas)) providers[pi].marcas = [];
       providers[pi].marcas[ii] = this.value;
+    });
+  });
+  // Binding modelo
+  wrap.querySelectorAll('input[data-pm-modelo-prov]').forEach(function(el){
+    el.addEventListener('input', function(){
+      var pi = parseInt(this.dataset.pmModeloProv, 10);
+      var ii = parseInt(this.dataset.pmModeloItem, 10);
+      if (!providers[pi]) return;
+      if (!Array.isArray(providers[pi].modelos)) providers[pi].modelos = [];
+      providers[pi].modelos[ii] = this.value;
     });
   });
   // Binding calidad
@@ -2769,8 +2785,9 @@ function generarAnalisisAuto(){
       if (pr<=0) return null;
       var cal = (t.prov.calidades && t.prov.calidades[i]) ? parseFloat(t.prov.calidades[i])||0 : 0;
       var mk  = (t.prov.marcas && t.prov.marcas[i]) ? String(t.prov.marcas[i]) : '';
+      var mo  = (t.prov.modelos && t.prov.modelos[i]) ? String(t.prov.modelos[i]) : '';
       if (cal>0) hayCalidad = true;
-      return { idx:t.idx, name:t.name, price:pr, calidad:cal, marca:mk, valor: cal>0 ? pr/cal : null };
+      return { idx:t.idx, name:t.name, price:pr, calidad:cal, marca:mk, modelo:mo, valor: cal>0 ? pr/cal : null };
     }).filter(Boolean);
     if (!cands.length){ itemWinners.push({ i:i, desc:item.desc||('Ítem '+(i+1)), qty:qty, best:null, nCand:0, cands:[] }); return; }
     cands.sort(function(a,b){ return a.price - b.price; });
@@ -3015,10 +3032,11 @@ function _renderAACalidad(totals, itemWinners, hayCalidad){
   var rows = (itemWinners||[]).filter(function(w){ return w.cands && w.cands.length; }).map(function(w){
     var barato = w.best, valor = w.bestValue;
     var difiere = valor && valor.idx !== barato.idx;
+    var _mm = function(c){ var s=''; if(c.marca) s+=' · '+escHtml(c.marca); if(c.modelo) s+=' '+escHtml(c.modelo); return s; };
     var cheapCell = '<strong>'+escHtml(barato.name)+'</strong> · '+_fmtMoney(barato.price)
-      + (barato.calidad? ' · '+barato.calidad+'★':'') + (barato.marca? ' · '+escHtml(barato.marca):'');
+      + (barato.calidad? ' · '+barato.calidad+'★':'') + _mm(barato);
     var valCell = valor ? ('<strong>'+escHtml(valor.name)+'</strong> · '+_fmtMoney(valor.price)+' · '+valor.calidad+'★'
-      + (valor.marca?' · '+escHtml(valor.marca):'')) : '<span style="color:var(--orange-dim)">sin calidad cargada</span>';
+      + _mm(valor)) : '<span style="color:var(--orange-dim)">sin calidad cargada</span>';
     var nota = '';
     if (difiere){
       var extra = valor.price - barato.price;
