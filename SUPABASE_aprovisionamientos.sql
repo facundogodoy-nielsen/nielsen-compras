@@ -14,6 +14,7 @@ create table if not exists public.aprovisionamientos (
   estado        text default 'PLANIFICADO',
   observaciones text,
   fecha_fin     text,          -- fin de la planificación (Gantt), opcional
+  pedido_ref    text,          -- N° PA vinculado (planificación logística)
   creado_at     timestamptz default now()
 );
 
@@ -27,6 +28,7 @@ alter table public.aprovisionamientos add column if not exists responsable   tex
 alter table public.aprovisionamientos add column if not exists estado        text default 'PLANIFICADO';
 alter table public.aprovisionamientos add column if not exists observaciones text;
 alter table public.aprovisionamientos add column if not exists fecha_fin     text;
+alter table public.aprovisionamientos add column if not exists pedido_ref    text;   -- N° PA vinculado (planificación logística)
 alter table public.aprovisionamientos add column if not exists creado_at     timestamptz default now();
 
 alter table public.aprovisionamientos enable row level security;

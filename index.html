@@ -1816,6 +1816,12 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   <!-- Pestañas de campamentos -->
   <div id="aprov-tabs" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px"></div>
 
+  <!-- Pedidos de PA con destino a este campamento (cruce) -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-header"><h3 style="margin:0;font-size:14px">🚛 Pedidos con destino a <span id="aprov-ped-camp" style="color:var(--or)">—</span> <span style="font-weight:400;color:var(--muted);font-size:12px">(Historial de PA)</span></h3></div>
+    <div class="card-body"><div id="aprov-pedidos"></div></div>
+  </div>
+
   <!-- Calendario + Renglones -->
   <div style="display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:16px;align-items:start" id="aprov-grid">
     <div class="card" style="padding:0">
@@ -2740,7 +2746,7 @@ async function cargarAprov(){
     aprovData = rows.map(r => ({
       id:r.id, campamento:r.campamento||'', fecha:r.fecha||'', carga:r.carga||'', vehiculo:r.vehiculo||'',
       chofer:r.chofer||'', responsable:r.responsable||'', estado:r.estado||'PLANIFICADO',
-      observaciones:r.observaciones||'', fecha_fin:r.fecha_fin||''
+      observaciones:r.observaciones||'', fecha_fin:r.fecha_fin||'', pedido_ref:r.pedido_ref||''
     }));
     try { _lsSet('nielsen_aprov', JSON.stringify(aprovData)); } catch(e){}
   } else {
@@ -2754,6 +2760,8 @@ async function cargarAprov(){
   } else {
     try { aprovCampsDB = JSON.parse(localStorage.getItem('nielsen_aprov_camps')||'[]'); } catch(e){ aprovCampsDB=[]; }
   }
+  // Asegurar PA cargados (para cruzar por destino/campamento) usando el pipeline habitual
+  try { await renderHistorialPA(); } catch(e){}
 }
 function _aprovGetCamps(){
   const def = ['BASE SJ','CAMPAMENTO LA BREA'];
@@ -2768,6 +2776,7 @@ function renderAprov(){
   if (!_aprovMonth){ const n=new Date(); _aprovMonth = new Date(n.getFullYear(), n.getMonth(), 1); }
   renderAprovTabs();
   const nameEl=document.getElementById('aprov-camp-name'); if(nameEl) nameEl.textContent=_aprovCamp;
+  renderAprovPedidos();
   renderAprovCalendar();
   renderAprovTable();
   renderAprovGantt();
@@ -2781,6 +2790,62 @@ function renderAprovTabs(){
   + (esModoEditor()? '<button onclick="agregarAprovCamp()" title="Agregar campamento" style="padding:8px 12px;border-radius:999px;border:1.5px dashed var(--or);background:transparent;color:var(--or);font-size:12px;font-weight:800;cursor:pointer">＋ Campamento</button>':'');
 }
 function pickAprovCamp(c){ _aprovCamp=c; renderAprov(); }
+// Cruce PA ↔ campamento por destino
+function _aprovMatchCamp(paCamp, camp){
+  var a=(paCamp||'').toUpperCase().trim(), b=(camp||'').toUpperCase().trim();
+  if(!a||!b) return false;
+  a=a.replace(/^CAMPAMENTO\s+/,''); b=b.replace(/^CAMPAMENTO\s+/,'');
+  return a===b || a.indexOf(b)>=0 || b.indexOf(a)>=0;
+}
+function _aprovEstadoPABadge(e){
+  var map={ 'COMPLETADA':'var(--green)','EN PROCESO':'var(--blue)','CANCELADA':'var(--red)','PENDIENTE':'var(--yellow)' };
+  var col=map[e]||'var(--muted)';
+  return '<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:999px;background:color-mix(in srgb,'+col+' 16%,transparent);border:1px solid '+col+';color:'+col+'">'+_escPA(e||'—')+'</span>';
+}
+function renderAprovPedidos(){
+  var el=document.getElementById('aprov-pedidos'); if(!el) return;
+  var campEl=document.getElementById('aprov-ped-camp'); if(campEl) campEl.textContent=_aprovCamp;
+  var matches=(paData||[]).filter(function(pa){ return _aprovMatchCamp(pa.campamento, _aprovCamp); });
+  if(!matches.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px">No hay pedidos de PA con destino <b>'+_escPA(_aprovCamp)+'</b>. (Se cruzan por el campo «campamento» de cada PA.)</div>'; return; }
+  var planif=new Set(aprovData.filter(function(a){ return a.campamento===_aprovCamp && a.pedido_ref; }).map(function(a){ return String(a.pedido_ref); }));
+  var ed=esModoEditor();
+  var h='<div style="display:flex;flex-direction:column;gap:6px">';
+  matches.forEach(function(pa){
+    var idx=paData.indexOf(pa);
+    var yaP=planif.has(String(pa.numPA));
+    var nItems=(pa.items||[]).length;
+    h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:8px 10px">'
+      +'<span style="font-family:monospace;font-weight:700;color:var(--or)">'+_escPA(pa.numPA||'—')+'</span>'
+      +(pa.fecha?'<span style="font-size:12px;color:var(--muted)">'+_escPA(pa.fecha)+'</span>':'')
+      +'<span style="font-size:12px;color:var(--text)">'+_escPA(pa.area||pa.solicitante||'')+'</span>'
+      +'<span style="font-size:11px;color:var(--muted)">'+nItems+' ít.</span>'
+      +_aprovEstadoPABadge(pa.estado)
+      +'<div style="flex:1;min-width:8px"></div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="verPA('+idx+')">👁 Ver</button>'
+      +(ed ? (yaP ? '<span style="font-size:11px;color:var(--green);font-weight:700">✓ Planificado</span>'
+                  : '<button class="btn btn-orange btn-sm" data-pa="'+_escPA(pa.numPA)+'" onclick="planificarPedido(this.dataset.pa)">➕ Planificar</button>') : '')
+      +'</div>';
+  });
+  h+='</div>';
+  el.innerHTML=h;
+}
+function planificarPedido(paNum){
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  var pa=(paData||[]).find(function(p){ return String(p.numPA)===String(paNum); }); if(!pa){ showToast('No se encontró el pedido','error'); return; }
+  if(aprovData.some(function(a){ return a.campamento===_aprovCamp && String(a.pedido_ref)===String(paNum); })){ showToast('Ese pedido ya está planificado','error'); return; }
+  var id='apr_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+  var carga='PA '+(pa.numPA||'')+(pa.categoria?(' · '+pa.categoria):'')+((pa.items&&pa.items.length)?(' · '+pa.items.length+' ít.'):'');
+  var row={ id, campamento:_aprovCamp, fecha:pa.fecha||'', carga:carga, vehiculo:'', chofer:'', responsable:pa.solicitante||'', estado:'PLANIFICADO', observaciones:'Pedido '+(pa.numPA||''), fecha_fin:'', pedido_ref:String(pa.numPA||'') };
+  aprovData.push(row);
+  sbInsert('aprovisionamientos', row);
+  try{_lsSet('nielsen_aprov',JSON.stringify(aprovData));}catch(e){}
+  renderAprovPedidos(); renderAprovTable(); renderAprovCalendar(); renderAprovGantt();
+  showToast('✓ Pedido agregado a la planificación','ok');
+}
+function abrirPedidoRef(paNum){
+  var i=(paData||[]).findIndex(function(p){ return String(p.numPA)===String(paNum); });
+  if(i>=0) verPA(i); else showToast('El pedido '+paNum+' no está disponible','error');
+}
 function agregarAprovCamp(){
   if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
   const n=prompt('Nombre del nuevo campamento:'); if(n===null) return;
@@ -2828,11 +2893,14 @@ function renderAprovTable(){
   const inp=(a,f,type)=>'<input type="'+(type||'text')+'" data-id="'+a.id+'" data-f="'+f+'" value="'+_escPA(a[f]||'')+'" '+dis+' oninput="_aprovSet(this.dataset.id,this.dataset.f,this.value)" style="'+iStyle+'">';
   const sel=(a)=>{ let s='<select data-id="'+a.id+'" data-f="estado" '+dis+' onchange="_aprovSet(this.dataset.id,this.dataset.f,this.value)" style="'+iStyle+'">'; APROV_ESTADOS.forEach(e=>{ s+='<option value="'+e+'"'+(a.estado===e?' selected':'')+'>'+e+'</option>'; }); return s+'</select>'; };
   const th=(x)=>'<th style="text-align:left;padding:6px 8px;color:var(--muted);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap">'+x+'</th>';
-  let h='<table style="width:100%;border-collapse:collapse;min-width:820px"><thead><tr>'
-    +th('Fecha')+th('Carga')+th('Vehículo')+th('Chofer')+th('Responsable')+th('Estado')+th('Fecha fin')+th('Observaciones')+th('')+'</tr></thead><tbody>';
+  let h='<table style="width:100%;border-collapse:collapse;min-width:900px"><thead><tr>'
+    +th('Pedido')+th('Fecha')+th('Carga')+th('Vehículo')+th('Chofer')+th('Responsable')+th('Estado')+th('Fecha fin')+th('Observaciones')+th('')+'</tr></thead><tbody>';
   rows.forEach(a=>{
     const td=(c)=>'<td style="padding:5px 6px;vertical-align:top">'+c+'</td>';
-    h+='<tr>'+td(inp(a,'fecha','date'))+td(inp(a,'carga'))+td(inp(a,'vehiculo'))+td(inp(a,'chofer'))+td(inp(a,'responsable'))+td(sel(a))+td(inp(a,'fecha_fin','date'))+td(inp(a,'observaciones'))
+    const pedCell = a.pedido_ref
+      ? '<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 6px" data-pa="'+_escPA(a.pedido_ref)+'" onclick="abrirPedidoRef(this.dataset.pa)" title="Abrir pedido">'+_escPA(a.pedido_ref)+' ↗</button>'
+      : '<span style="color:var(--muted);font-size:11px">—</span>';
+    h+='<tr>'+td(pedCell)+td(inp(a,'fecha','date'))+td(inp(a,'carga'))+td(inp(a,'vehiculo'))+td(inp(a,'chofer'))+td(inp(a,'responsable'))+td(sel(a))+td(inp(a,'fecha_fin','date'))+td(inp(a,'observaciones'))
       +td(ed?'<button data-id="'+a.id+'" onclick="eliminarAprovRow(this.dataset.id)" title="Eliminar" style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer">✕</button>':'')+'</tr>';
   });
   h+='</tbody></table>';
@@ -2848,7 +2916,7 @@ function agregarAprovRow(fechaPre){
   if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
   const id='apr_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
   const fecha=(typeof fechaPre==='string' && /^\d{4}-\d{2}-\d{2}$/.test(fechaPre))?fechaPre:'';
-  const row={ id, campamento:_aprovCamp, fecha, carga:'', vehiculo:'', chofer:'', responsable:'', estado:'PLANIFICADO', observaciones:'', fecha_fin:'' };
+  const row={ id, campamento:_aprovCamp, fecha, carga:'', vehiculo:'', chofer:'', responsable:'', estado:'PLANIFICADO', observaciones:'', fecha_fin:'', pedido_ref:'' };
   aprovData.push(row);
   sbInsert('aprovisionamientos', row);
   try{_lsSet('nielsen_aprov',JSON.stringify(aprovData));}catch(e){}
