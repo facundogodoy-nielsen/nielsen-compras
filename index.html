@@ -2790,11 +2790,15 @@ function renderAprovTabs(){
   + (esModoEditor()? '<button onclick="agregarAprovCamp()" title="Agregar campamento" style="padding:8px 12px;border-radius:999px;border:1.5px dashed var(--or);background:transparent;color:var(--or);font-size:12px;font-weight:800;cursor:pointer">＋ Campamento</button>':'');
 }
 function pickAprovCamp(c){ _aprovCamp=c; renderAprov(); }
-// Cruce PA ↔ campamento por destino
+// Cruce PA ↔ campamento por destino (con alias/abreviaturas)
+function _aprovNorm(s){
+  s=(s||'').toUpperCase().trim().replace(/^CAMPAMENTO\s+/,'').replace(/[.\-_]/g,' ').replace(/\s+/g,' ').trim();
+  s=s.replace(/\bSJ\b/g,'SAN JUAN').replace(/\bS J\b/g,'SAN JUAN');   // BASE SJ ↔ BASE SAN JUAN
+  return s;
+}
 function _aprovMatchCamp(paCamp, camp){
-  var a=(paCamp||'').toUpperCase().trim(), b=(camp||'').toUpperCase().trim();
+  var a=_aprovNorm(paCamp), b=_aprovNorm(camp);
   if(!a||!b) return false;
-  a=a.replace(/^CAMPAMENTO\s+/,''); b=b.replace(/^CAMPAMENTO\s+/,'');
   return a===b || a.indexOf(b)>=0 || b.indexOf(a)>=0;
 }
 function _aprovEstadoPABadge(e){
