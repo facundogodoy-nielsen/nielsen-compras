@@ -1266,6 +1266,9 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('kanban-pa', this)">
       <span class="sb-icon">🗂</span> Vista Kanban
     </button>
+    <button class="sidebar-btn" onclick="showView('aprov', this)">
+      <span class="sb-icon">🚚</span> Aprovisionamientos
+    </button>
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
@@ -1799,6 +1802,43 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <div style="font-size:22px;margin-bottom:8px">⏳</div>
       <div style="font-size:13px">Cargando datos...</div>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ VIEW: APROVISIONAMIENTOS ══════════════════════════════════ -->
+<div id="view-aprov" class="view">
+  <style>@media (max-width:720px){ #aprov-grid{ grid-template-columns:1fr !important; } }</style>
+  <div class="pg-header">
+    <div class="pg-title">APROVISIONAMIENTOS <span>DE CAMPAMENTOS</span></div>
+    <div class="pg-sub">Planificación de aprovisionamiento por campamento — calendario y diagrama de Gantt</div>
+  </div>
+
+  <!-- Pestañas de campamentos -->
+  <div id="aprov-tabs" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px"></div>
+
+  <!-- Calendario + Renglones -->
+  <div style="display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:16px;align-items:start" id="aprov-grid">
+    <div class="card" style="padding:0">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <button class="btn btn-ghost btn-sm" onclick="aprovMonthNav(-1)" title="Mes anterior">‹</button>
+        <h3 id="aprov-cal-title" style="margin:0;font-size:14px">—</h3>
+        <button class="btn btn-ghost btn-sm" onclick="aprovMonthNav(1)" title="Mes siguiente">›</button>
+      </div>
+      <div class="card-body"><div id="aprov-cal"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0;font-size:14px">📋 Planificación — <span id="aprov-camp-name" style="color:var(--or)">—</span></h3>
+        <button class="btn btn-orange btn-sm" onclick="agregarAprovRow()">➕ Agregar renglón</button>
+      </div>
+      <div class="card-body" style="overflow-x:auto"><div id="aprov-table"></div></div>
+    </div>
+  </div>
+
+  <!-- Diagrama de Gantt -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-header"><h3 style="margin:0;font-size:14px">📊 Diagrama de Gantt</h3></div>
+    <div class="card-body" style="overflow-x:auto"><div id="aprov-gantt"></div></div>
   </div>
 </div>
 
@@ -2664,19 +2704,198 @@ async function showView(id, btn) {
   if (id === 'kanban')       { await recargarSCsDesdeLS(); renderKanban(); }
   if (id === 'historial-op')   {
     await recargarSCsDesdeLS();
+    await cargarOPs();
     renderHistorialPedidos();
     // Also keep historial SC in sync
     renderHistorial();
+    if (typeof renderHistorialOP === 'function') renderHistorialOP();
   }
-  if (id === 'comparativas')   renderComparativas();
+  if (id === 'comparativas')   { await cargarTCOverrides(); renderComparativas(); }
   if (id === 'ahorro')         renderAhorro();
   if (id === 'prov-db')      { await cargarProveedoresSB(); renderProvDB(); }
   if (id === 'prov-compras') { await _asegurarDatosCompras(); renderComprasProv(); }
   if (id === 'prov-area')      { await _asegurarDatosCompras(); renderComprasArea(); }
   if (id === 'prov-campamento'){ await _asegurarDatosCompras(); renderComprasCampamento(); }
   if (id === 'prov-eval')    { renderEvalProv(); }
+  if (id === 'aprov')        { await cargarAprov(); renderAprov(); }
   if (id === 'nueva-sc') resetWizard();
   _updateScrollNav();
+}
+
+// ══════════════════════════════════════════════════
+// APROVISIONAMIENTOS DE CAMPAMENTOS
+// ══════════════════════════════════════════════════
+let aprovData = [];
+let aprovCamps = [];
+let aprovCampsDB = [];
+let _aprovCamp = null;
+let _aprovMonth = null;
+let _aprovTimer = null;
+const APROV_ESTADOS = ['PLANIFICADO','EN CURSO','ENTREGADO','CANCELADO'];
+function _aprovEstadoColor(e){ return e==='ENTREGADO'?'var(--green)': e==='EN CURSO'?'var(--yellow)': e==='CANCELADO'?'var(--red)':'var(--blue)'; }
+
+async function cargarAprov(){
+  const rows = await sbSelect('aprovisionamientos');
+  if (rows && Array.isArray(rows)) {
+    aprovData = rows.map(r => ({
+      id:r.id, campamento:r.campamento||'', fecha:r.fecha||'', carga:r.carga||'', vehiculo:r.vehiculo||'',
+      chofer:r.chofer||'', responsable:r.responsable||'', estado:r.estado||'PLANIFICADO',
+      observaciones:r.observaciones||'', fecha_fin:r.fecha_fin||''
+    }));
+    try { _lsSet('nielsen_aprov', JSON.stringify(aprovData)); } catch(e){}
+  } else {
+    try { aprovData = JSON.parse(localStorage.getItem('nielsen_aprov')||'[]'); } catch(e){ aprovData=[]; }
+  }
+  // Campamentos (pestañas) desde la nube
+  const crows = await sbSelect('aprov_campamentos');
+  if (crows && Array.isArray(crows)) {
+    aprovCampsDB = crows.map(r=>r.nombre).filter(Boolean);
+    try { localStorage.setItem('nielsen_aprov_camps', JSON.stringify(aprovCampsDB)); } catch(e){}
+  } else {
+    try { aprovCampsDB = JSON.parse(localStorage.getItem('nielsen_aprov_camps')||'[]'); } catch(e){ aprovCampsDB=[]; }
+  }
+}
+function _aprovGetCamps(){
+  const def = ['BASE SJ','CAMPAMENTO LA BREA'];
+  const fromData = [...new Set(aprovData.map(a=>a.campamento).filter(Boolean))];
+  const all = [];
+  [...def, ...aprovCampsDB, ...fromData].forEach(c=>{ if(c && !all.includes(c)) all.push(c); });
+  return all;
+}
+function renderAprov(){
+  aprovCamps = _aprovGetCamps();
+  if (!_aprovCamp || !aprovCamps.includes(_aprovCamp)) _aprovCamp = aprovCamps[0] || 'BASE SJ';
+  if (!_aprovMonth){ const n=new Date(); _aprovMonth = new Date(n.getFullYear(), n.getMonth(), 1); }
+  renderAprovTabs();
+  const nameEl=document.getElementById('aprov-camp-name'); if(nameEl) nameEl.textContent=_aprovCamp;
+  renderAprovCalendar();
+  renderAprovTable();
+  renderAprovGantt();
+}
+function renderAprovTabs(){
+  const el=document.getElementById('aprov-tabs'); if(!el) return;
+  el.innerHTML = aprovCamps.map(c=>{
+    const on=c===_aprovCamp;
+    return '<button data-c="'+_escPA(c)+'" onclick="pickAprovCamp(this.dataset.c)" style="padding:8px 16px;border-radius:999px;border:1.5px solid '+(on?'var(--or)':'var(--border2)')+';background:'+(on?'var(--or)':'transparent')+';color:'+(on?'#fff':'var(--muted)')+';font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">'+_escPA(c)+'</button>';
+  }).join('')
+  + (esModoEditor()? '<button onclick="agregarAprovCamp()" title="Agregar campamento" style="padding:8px 12px;border-radius:999px;border:1.5px dashed var(--or);background:transparent;color:var(--or);font-size:12px;font-weight:800;cursor:pointer">＋ Campamento</button>':'');
+}
+function pickAprovCamp(c){ _aprovCamp=c; renderAprov(); }
+function agregarAprovCamp(){
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  const n=prompt('Nombre del nuevo campamento:'); if(n===null) return;
+  const name=n.trim().toUpperCase(); if(!name) return;
+  if(!aprovCampsDB.includes(name)) aprovCampsDB.push(name);
+  try{ localStorage.setItem('nielsen_aprov_camps', JSON.stringify(aprovCampsDB)); }catch(e){}
+  sbInsert('aprov_campamentos', { nombre:name });   // sincroniza a la nube
+  _aprovCamp=name; renderAprov(); showToast('✓ Campamento agregado','ok');
+}
+function aprovMonthNav(delta){ _aprovMonth=new Date(_aprovMonth.getFullYear(), _aprovMonth.getMonth()+delta, 1); renderAprovCalendar(); renderAprovGantt(); }
+function _aprovEnMes(a, y, m){ if(!a.fecha) return false; const d=new Date(a.fecha+'T00:00:00'); return d.getFullYear()===y && d.getMonth()===m; }
+function renderAprovCalendar(){
+  const el=document.getElementById('aprov-cal'); if(!el) return;
+  const y=_aprovMonth.getFullYear(), m=_aprovMonth.getMonth();
+  const titleEl=document.getElementById('aprov-cal-title');
+  if(titleEl) titleEl.textContent=_aprovMonth.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+  const startDow=(new Date(y,m,1).getDay()+6)%7;
+  const days=new Date(y,m+1,0).getDate();
+  const byDay={};
+  aprovData.filter(a=>a.campamento===_aprovCamp).forEach(a=>{ if(_aprovEnMes(a,y,m)){ const dn=new Date(a.fecha+'T00:00:00').getDate(); (byDay[dn]=byDay[dn]||[]).push(a); } });
+  let html='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:10px;color:var(--muted);text-align:center;margin-bottom:5px">'+['Lu','Ma','Mi','Ju','Vi','Sa','Do'].map(d=>'<div>'+d+'</div>').join('')+'</div>';
+  html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
+  for(let i=0;i<startDow;i++) html+='<div></div>';
+  for(let dn=1;dn<=days;dn++){
+    const items=byDay[dn]||[]; const has=items.length>0;
+    const color=has?_aprovEstadoColor(items[0].estado):'';
+    const iso=y+'-'+String(m+1).padStart(2,'0')+'-'+String(dn).padStart(2,'0');
+    html+='<div onclick="aprovDayClick(\''+iso+'\')" title="'+(has?items.length+' aprov.':'Agregar')+'" '
+      +'style="cursor:pointer;min-height:38px;border-radius:6px;border:1px solid '+(has?color:'var(--border)')+';'
+      +'background:'+(has?'color-mix(in srgb,'+color+' 16%,transparent)':'transparent')+';padding:3px 4px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start">'
+      +'<span style="font-size:11px;color:'+(has?'var(--text)':'var(--muted)')+';font-weight:'+(has?'700':'400')+'">'+dn+'</span>'
+      +(has?'<span style="font-size:8px;color:'+color+';font-weight:800;margin-top:1px">● '+items.length+'</span>':'')
+      +'</div>';
+  }
+  html+='</div>';
+  el.innerHTML=html;
+}
+function aprovDayClick(iso){ if(esModoEditor()) agregarAprovRow(iso); }
+function renderAprovTable(){
+  const el=document.getElementById('aprov-table'); if(!el) return;
+  const ed=esModoEditor(); const dis=ed?'':'disabled';
+  const rows=aprovData.filter(a=>a.campamento===_aprovCamp).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+  if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px">Sin aprovisionamientos planificados para <b>'+_escPA(_aprovCamp)+'</b>.'+(ed?' Usá «➕ Agregar renglón» o hacé click en un día del calendario.':'')+'</div>'; return; }
+  const iStyle='width:100%;padding:5px 7px;border-radius:6px;border:1px solid var(--border2);background:var(--s3);color:var(--text);font-family:inherit;font-size:12px';
+  const inp=(a,f,type)=>'<input type="'+(type||'text')+'" data-id="'+a.id+'" data-f="'+f+'" value="'+_escPA(a[f]||'')+'" '+dis+' oninput="_aprovSet(this.dataset.id,this.dataset.f,this.value)" style="'+iStyle+'">';
+  const sel=(a)=>{ let s='<select data-id="'+a.id+'" data-f="estado" '+dis+' onchange="_aprovSet(this.dataset.id,this.dataset.f,this.value)" style="'+iStyle+'">'; APROV_ESTADOS.forEach(e=>{ s+='<option value="'+e+'"'+(a.estado===e?' selected':'')+'>'+e+'</option>'; }); return s+'</select>'; };
+  const th=(x)=>'<th style="text-align:left;padding:6px 8px;color:var(--muted);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap">'+x+'</th>';
+  let h='<table style="width:100%;border-collapse:collapse;min-width:820px"><thead><tr>'
+    +th('Fecha')+th('Carga')+th('Vehículo')+th('Chofer')+th('Responsable')+th('Estado')+th('Fecha fin')+th('Observaciones')+th('')+'</tr></thead><tbody>';
+  rows.forEach(a=>{
+    const td=(c)=>'<td style="padding:5px 6px;vertical-align:top">'+c+'</td>';
+    h+='<tr>'+td(inp(a,'fecha','date'))+td(inp(a,'carga'))+td(inp(a,'vehiculo'))+td(inp(a,'chofer'))+td(inp(a,'responsable'))+td(sel(a))+td(inp(a,'fecha_fin','date'))+td(inp(a,'observaciones'))
+      +td(ed?'<button data-id="'+a.id+'" onclick="eliminarAprovRow(this.dataset.id)" title="Eliminar" style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer">✕</button>':'')+'</tr>';
+  });
+  h+='</tbody></table>';
+  el.innerHTML=h;
+}
+function _aprovSet(id, field, val){
+  const a=aprovData.find(x=>x.id===id); if(!a) return;
+  a[field]=val;
+  clearTimeout(_aprovTimer);
+  _aprovTimer=setTimeout(()=>{ sbPatch('aprovisionamientos','id',id,{[field]:val}); try{_lsSet('nielsen_aprov',JSON.stringify(aprovData));}catch(e){} renderAprovCalendar(); renderAprovGantt(); },500);
+}
+function agregarAprovRow(fechaPre){
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  const id='apr_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+  const fecha=(typeof fechaPre==='string' && /^\d{4}-\d{2}-\d{2}$/.test(fechaPre))?fechaPre:'';
+  const row={ id, campamento:_aprovCamp, fecha, carga:'', vehiculo:'', chofer:'', responsable:'', estado:'PLANIFICADO', observaciones:'', fecha_fin:'' };
+  aprovData.push(row);
+  sbInsert('aprovisionamientos', row);
+  try{_lsSet('nielsen_aprov',JSON.stringify(aprovData));}catch(e){}
+  renderAprovTable(); renderAprovCalendar(); renderAprovGantt();
+}
+function eliminarAprovRow(id){
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!confirm('¿Eliminar este renglón de aprovisionamiento?')) return;
+  aprovData=aprovData.filter(x=>x.id!==id);
+  sbDelete('aprovisionamientos','id',id);
+  try{_lsSet('nielsen_aprov',JSON.stringify(aprovData));}catch(e){}
+  renderAprovTable(); renderAprovCalendar(); renderAprovGantt();
+}
+function renderAprovGantt(){
+  const el=document.getElementById('aprov-gantt'); if(!el) return;
+  const y=_aprovMonth.getFullYear(), m=_aprovMonth.getMonth();
+  const days=new Date(y,m+1,0).getDate();
+  const rows=aprovData.filter(a=>a.campamento===_aprovCamp && a.fecha).map(a=>{
+    const s=new Date(a.fecha+'T00:00:00');
+    const e=(a.fecha_fin && /^\d{4}-\d{2}-\d{2}$/.test(a.fecha_fin))?new Date(a.fecha_fin+'T00:00:00'):s;
+    return {a,s,e};
+  }).filter(r=>{
+    const before = (r.e.getFullYear()<y)||(r.e.getFullYear()===y&&r.e.getMonth()<m);
+    const after  = (r.s.getFullYear()>y)||(r.s.getFullYear()===y&&r.s.getMonth()>m);
+    return !before && !after;
+  }).sort((x,z)=>x.s-z.s);
+  if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px">Sin datos para graficar en '+_aprovMonth.toLocaleDateString('es-AR',{month:'long',year:'numeric'})+'.</div>'; return; }
+  const colW=26, labelW=210;
+  let h='<div style="min-width:'+(labelW+days*colW)+'px">';
+  h+='<div style="display:flex;align-items:flex-end;margin-bottom:5px"><div style="width:'+labelW+'px;flex-shrink:0"></div>';
+  for(let d=1;d<=days;d++){ h+='<div style="width:'+colW+'px;text-align:center;font-size:9px;color:var(--muted)">'+d+'</div>'; }
+  h+='</div>';
+  rows.forEach(r=>{
+    const startDay=(r.s.getFullYear()===y&&r.s.getMonth()===m)?r.s.getDate():1;
+    const endDay=(r.e.getFullYear()===y&&r.e.getMonth()===m)?r.e.getDate():days;
+    const span=Math.max(1,endDay-startDay+1);
+    const color=_aprovEstadoColor(r.a.estado);
+    const label=((r.a.carga||'—')+(r.a.vehiculo?(' · '+r.a.vehiculo):'')).slice(0,34);
+    h+='<div style="display:flex;align-items:center;margin-bottom:5px">'
+      +'<div style="width:'+labelW+'px;flex-shrink:0;font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px" title="'+_escPA(label)+'">'+_escPA(label)+'</div>'
+      +'<div style="position:relative;height:18px;width:'+(days*colW)+'px;background:rgba(255,255,255,.02);border-radius:4px">'
+      +'<div title="'+_escPA(r.a.estado)+' ('+_escPA(r.a.fecha)+(r.a.fecha_fin?' → '+_escPA(r.a.fecha_fin):'')+')" style="position:absolute;left:'+((startDay-1)*colW)+'px;width:'+(span*colW-3)+'px;top:2px;height:14px;background:'+color+';border-radius:4px;opacity:.9"></div>'
+      +'</div></div>';
+  });
+  h+='</div>';
+  h+='<div style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap;font-size:10px;color:var(--muted)">'+APROV_ESTADOS.map(e=>'<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:'+_aprovEstadoColor(e)+'"></span>'+e+'</span>').join('')+'</div>';
+  el.innerHTML=h;
 }
 
 // ══ NAVEGACIÓN DE LISTA (badges Inicio / Fin) ══
@@ -3869,15 +4088,34 @@ function _editarTCManual(fecha){
   var v = prompt('Cotización Divisas VENTA (BNA) para los CCP del ' + fecha + ':\n(dejar vacío para volver al valor automático)', actual);
   if (v === null) return;
   v = String(v).trim();
-  if (v === ''){ delete ov[fecha]; }
+  if (v === ''){ delete ov[fecha]; sbDelete('tc_overrides','fecha',fecha); }
   else {
     var n = (v.indexOf(',')>=0) ? parseFloat(v.replace(/\./g,'').replace(',', '.')) : parseFloat(v);
     if (isNaN(n) || n <= 0){ showToast('Valor inválido', 'error'); return; }
     ov[fecha] = n;
+    _tcUpsert(fecha, n);   // sincroniza a la nube
   }
   try{ localStorage.setItem('nielsen_tc_override', JSON.stringify(ov)); }catch(e){}
   showToast('✓ TC USD actualizado', 'ok');
   renderComparativas();
+}
+// Carga los TC manuales desde la nube (disponibles en cualquier dispositivo)
+async function cargarTCOverrides(){
+  const rows = await sbSelect('tc_overrides');
+  if (rows && Array.isArray(rows)){
+    const ov = {};
+    rows.forEach(r=>{ if(r.fecha && Number(r.venta)>0) ov[r.fecha] = Number(r.venta); });
+    try{ localStorage.setItem('nielsen_tc_override', JSON.stringify(ov)); }catch(e){}
+  }
+}
+async function _tcUpsert(fecha, venta){
+  try{
+    await fetch(_SB_URL + '/rest/v1/tc_overrides', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'apikey':_SB_KEY, 'Authorization':'Bearer '+_SB_KEY, 'Prefer':'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ fecha: fecha, venta: venta })
+    });
+  }catch(e){ console.warn('tc upsert', e); }
 }
 
 var _ahoCharts = {};
@@ -6692,6 +6930,25 @@ const _origResetWizard = typeof resetWizard === 'function' ? resetWizard : null;
 // HISTORIAL DE ÓRDENES DE PEDIDO
 // ══════════════════════════════════════════════════
 let ops = JSON.parse(localStorage.getItem('nielsen_ops_2026') || '[]');
+function _opToDB(o){ return { id:String(o.id), num:o.num||'', fecha:o.fecha||'', area:o.area||'', subarea:o.subarea||'', solicitante:o.solicitante||'', os:o.os||'', asunto:o.asunto||'', destino:o.destino||'', items_original:o.itemsOriginal||'', resultado:o.resultado||'', sc_vinculada:o.scVinculada||'' }; }
+function _mapDBOP(r){ return { id:r.id, num:r.num||'', fecha:r.fecha||'', area:r.area||'', subarea:r.subarea||'', solicitante:r.solicitante||'', os:r.os||'', asunto:r.asunto||'', destino:r.destino||'', itemsOriginal:r.items_original||'', resultado:r.resultado||'', scVinculada:r.sc_vinculada||'', createdAt:r.creado_at||'' }; }
+async function cargarOPs(){
+  const rows = await sbSelect('ordenes_pedido');
+  if (rows && Array.isArray(rows)){
+    const dbOps = rows.map(_mapDBOP);
+    // Migrar a la nube cualquier OP que sólo esté en local
+    let local=[]; try{ local=JSON.parse(localStorage.getItem('nielsen_ops_2026')||'[]'); }catch(e){}
+    const dbNums = new Set(dbOps.map(o=>String(o.num)));
+    local.filter(o=> o.num && !dbNums.has(String(o.num))).forEach(o=>{
+      const s = {...o, id:'op_'+(o.id||Date.now())+'_'+Math.random().toString(36).slice(2,5)};
+      sbInsert('ordenes_pedido', _opToDB(s)); dbOps.push(s);
+    });
+    ops = dbOps;
+    try{ _lsSet('nielsen_ops_2026', JSON.stringify(ops)); }catch(e){}
+  } else {
+    try{ ops = JSON.parse(localStorage.getItem('nielsen_ops_2026')||'[]'); }catch(e){ ops=[]; }
+  }
+}
 let paData = JSON.parse(localStorage.getItem('nielsen_pa_2026') || '[]');
 let contadorOPManual = parseInt(localStorage.getItem('nielsen_op_manual_cnt') || '0');
 
@@ -6711,7 +6968,7 @@ function registrarOPdesdeSC(sc) {
   // Verificar que no exista ya
   if (ops.some(op => op.scVinculada === sc.num || op.num === sc.op)) return;
   const op = {
-    id: Date.now(),
+    id: 'op_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
     num: sc.op || generarNumOPManual(),
     fecha: sc.fecha || new Date().toISOString().split('T')[0],
     area: sc.area, subarea: sc.subarea || '',
@@ -6724,6 +6981,7 @@ function registrarOPdesdeSC(sc) {
     createdAt: new Date().toISOString()
   };
   ops.push(op);
+  sbInsert('ordenes_pedido', _opToDB(op));
   _lsSet('nielsen_ops_2026', JSON.stringify(ops));
   actualizarContadoresOP();
 }
@@ -6754,7 +7012,7 @@ function guardarOP() {
   if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Editor','error'); return; }
   const num = generarNumOPManual();
   const op = {
-    id: Date.now(), num,
+    id: 'op_'+Date.now()+'_'+Math.random().toString(36).slice(2,5), num,
     fecha: document.getElementById('mop-fecha').value,
     area: document.getElementById('mop-area').value,
     solicitante: document.getElementById('mop-sol').value,
@@ -6770,6 +7028,7 @@ function guardarOP() {
   if (!op.solicitante) { showToast('Ingresá el solicitante', 'error'); return; }
   if (!op.itemsOriginal) { showToast('Ingresá el listado del pedido', 'error'); return; }
   ops.push(op);
+  sbInsert('ordenes_pedido', _opToDB(op));
   _lsSet('nielsen_ops_2026', JSON.stringify(ops));
   actualizarContadoresOP();
   cerrarModal2('modal-op');
@@ -6780,6 +7039,8 @@ function guardarOP() {
 function eliminarOP(idx) {
   if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Editor','error'); return; }
   if (!confirm('¿Eliminar esta OP?')) return;
+  const _op = ops[idx];
+  if (_op && _op.id) sbDelete('ordenes_pedido','id', String(_op.id));
   ops.splice(idx, 1);
   _lsSet('nielsen_ops_2026', JSON.stringify(ops));
   actualizarContadoresOP();
