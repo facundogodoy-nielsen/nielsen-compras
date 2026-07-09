@@ -1807,44 +1807,82 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 
 <!-- ══════════════════════════════════ VIEW: APROVISIONAMIENTOS ══════════════════════════════════ -->
 <div id="view-aprov" class="view">
-  <style>@media (max-width:720px){ #aprov-grid{ grid-template-columns:1fr !important; } }</style>
+  <style>
+    #aprov-grid{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+    #aprov-grid .aprov-panel{position:relative;box-sizing:border-box;display:flex;flex-direction:column;
+      min-width:280px;min-height:200px;max-width:100%;overflow:hidden;resize:both}
+    #aprov-grid .aprov-panel > .card-body{flex:1;min-height:0;overflow:auto}
+    .aprov-drag{cursor:grab;user-select:none}
+    .aprov-drag:active{cursor:grabbing}
+    .aprov-panel.dragging{opacity:.55;outline:2px dashed var(--or)}
+    .aprov-panel.drop-target{outline:2px solid var(--or)}
+    .aprov-grip{color:var(--muted);font-size:13px;margin-right:6px}
+    .aprov-scroll{overflow-y:auto;overflow-x:auto}
+    @media (max-width:720px){ #aprov-grid .aprov-panel{width:100% !important;resize:vertical} }
+  </style>
   <div class="pg-header">
     <div class="pg-title">APROVISIONAMIENTOS <span>DE CAMPAMENTOS</span></div>
-    <div class="pg-sub">Planificación de aprovisionamiento por campamento — calendario y diagrama de Gantt</div>
+    <div class="pg-sub">Planificación por campamento — arrastrá los cuadros por su título para reordenarlos y estirá la esquina inferior derecha para redimensionarlos</div>
   </div>
 
   <!-- Pestañas de campamentos -->
-  <div id="aprov-tabs" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px"></div>
+  <div id="aprov-tabs" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px"></div>
+  <div style="margin-bottom:12px"><button class="btn btn-ghost btn-sm" onclick="resetAprovLayout()" title="Volver al orden y tamaño original">↺ Restablecer diseño</button></div>
 
-  <!-- Pedidos de PA con destino a este campamento (cruce) -->
-  <div class="card" style="margin-bottom:16px">
-    <div class="card-header"><h3 style="margin:0;font-size:14px">🚛 Pedidos con destino a <span id="aprov-ped-camp" style="color:var(--or)">—</span> <span style="font-weight:400;color:var(--muted);font-size:12px">(Historial de PA)</span></h3></div>
-    <div class="card-body"><div id="aprov-pedidos"></div></div>
-  </div>
+  <div id="aprov-grid">
+    <!-- PEDIDOS -->
+    <div class="card aprov-panel" id="ap-panel-pedidos" data-panel="pedidos" style="width:100%;height:320px">
+      <div class="card-header aprov-drag" draggable="true">
+        <h3 style="margin:0;font-size:14px"><span class="aprov-grip">⠿</span>🚛 Pedidos con destino a <span id="aprov-ped-camp" style="color:var(--or)">—</span> <span style="font-weight:400;color:var(--muted);font-size:12px">(Historial de PA)</span></h3>
+      </div>
+      <div class="card-body"><div id="aprov-pedidos" class="aprov-scroll" style="max-height:100%"></div></div>
+    </div>
 
-  <!-- Calendario + Renglones -->
-  <div style="display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:16px;align-items:start" id="aprov-grid">
-    <div class="card" style="padding:0">
-      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+    <!-- CALENDARIO -->
+    <div class="card aprov-panel" id="ap-panel-cal" data-panel="cal" style="width:340px;height:430px">
+      <div class="card-header aprov-drag" draggable="true" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
         <button class="btn btn-ghost btn-sm" onclick="aprovMonthNav(-1)" title="Mes anterior">‹</button>
-        <h3 id="aprov-cal-title" style="margin:0;font-size:14px">—</h3>
+        <h3 id="aprov-cal-title" style="margin:0;font-size:13px"><span class="aprov-grip">⠿</span>—</h3>
         <button class="btn btn-ghost btn-sm" onclick="aprovMonthNav(1)" title="Mes siguiente">›</button>
       </div>
       <div class="card-body"><div id="aprov-cal"></div></div>
     </div>
-    <div class="card">
-      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-        <h3 style="margin:0;font-size:14px">📋 Planificación — <span id="aprov-camp-name" style="color:var(--or)">—</span></h3>
+
+    <!-- PLANIFICACIÓN -->
+    <div class="card aprov-panel" id="ap-panel-plan" data-panel="plan" style="width:calc(100% - 356px);height:430px">
+      <div class="card-header aprov-drag" draggable="true" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0;font-size:14px"><span class="aprov-grip">⠿</span>📋 Planificación — <span id="aprov-camp-name" style="color:var(--or)">—</span></h3>
         <button class="btn btn-orange btn-sm" onclick="agregarAprovRow()">➕ Agregar renglón</button>
       </div>
-      <div class="card-body" style="overflow-x:auto"><div id="aprov-table"></div></div>
+      <div class="card-body"><div id="aprov-table" class="aprov-scroll" style="max-height:100%"></div></div>
     </div>
-  </div>
 
-  <!-- Diagrama de Gantt -->
-  <div class="card" style="margin-top:16px">
-    <div class="card-header"><h3 style="margin:0;font-size:14px">📊 Diagrama de Gantt</h3></div>
-    <div class="card-body" style="overflow-x:auto"><div id="aprov-gantt"></div></div>
+    <!-- GANTT -->
+    <div class="card aprov-panel" id="ap-panel-gantt" data-panel="gantt" style="width:100%;height:380px">
+      <div class="card-header aprov-drag" draggable="true" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0;font-size:14px"><span class="aprov-grip">⠿</span>📊 Diagrama de Gantt</h3>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap" onmousedown="event.stopPropagation()">
+          <select id="aprov-gantt-periodo" onchange="setGanttPeriodo(this.value)"
+            style="padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--s3);color:var(--text);font-size:11px">
+            <option value="mes">Mes actual del calendario</option>
+            <option value="7">Últimos 7 días</option>
+            <option value="15">Últimos 15 días</option>
+            <option value="30">Últimos 30 días</option>
+            <option value="90">Últimos 90 días</option>
+            <option value="trim">Trimestre del calendario</option>
+            <option value="anio">Año del calendario</option>
+            <option value="todo">Todo el historial</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+          <span id="aprov-gantt-custom" style="display:none;gap:5px;align-items:center">
+            <input type="date" id="aprov-g-desde" onchange="renderAprovGantt()" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--s3);color:var(--text);font-size:11px">
+            <span style="color:var(--muted);font-size:11px">→</span>
+            <input type="date" id="aprov-g-hasta" onchange="renderAprovGantt()" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--s3);color:var(--text);font-size:11px">
+          </span>
+        </div>
+      </div>
+      <div class="card-body"><div id="aprov-gantt" class="aprov-scroll" style="max-height:100%"></div></div>
+    </div>
   </div>
 </div>
 
@@ -2775,6 +2813,7 @@ function renderAprov(){
   if (!_aprovCamp || !aprovCamps.includes(_aprovCamp)) _aprovCamp = aprovCamps[0] || 'BASE SJ';
   if (!_aprovMonth){ const n=new Date(); _aprovMonth = new Date(n.getFullYear(), n.getMonth(), 1); }
   renderAprovTabs();
+  _aprovInitLayout();
   const nameEl=document.getElementById('aprov-camp-name'); if(nameEl) nameEl.textContent=_aprovCamp;
   renderAprovPedidos();
   renderAprovCalendar();
@@ -2790,6 +2829,94 @@ function renderAprovTabs(){
   + (esModoEditor()? '<button onclick="agregarAprovCamp()" title="Agregar campamento" style="padding:8px 12px;border-radius:999px;border:1.5px dashed var(--or);background:transparent;color:var(--or);font-size:12px;font-weight:800;cursor:pointer">＋ Campamento</button>':'');
 }
 function pickAprovCamp(c){ _aprovCamp=c; renderAprov(); }
+
+// ── Layout de paneles: arrastrar para reordenar + redimensionar (se recuerda) ──
+const APROV_LAYOUT_KEY = 'nielsen_aprov_layout';
+const APROV_DEFAULT_SIZES = { pedidos:{w:'100%',h:'320px'}, cal:{w:'340px',h:'430px'}, plan:{w:'calc(100% - 356px)',h:'430px'}, gantt:{w:'100%',h:'380px'} };
+let _aprovLayoutReady = false;
+function _aprovSaveLayout(){
+  const grid=document.getElementById('aprov-grid'); if(!grid) return;
+  const order=[...grid.querySelectorAll('.aprov-panel')].map(p=>p.dataset.panel);
+  const sizes={};
+  grid.querySelectorAll('.aprov-panel').forEach(p=>{ sizes[p.dataset.panel]={ w:p.style.width||'', h:p.style.height||'' }; });
+  try{ localStorage.setItem(APROV_LAYOUT_KEY, JSON.stringify({order,sizes})); }catch(e){}
+}
+function _aprovApplyLayout(){
+  const grid=document.getElementById('aprov-grid'); if(!grid) return;
+  let cfg=null; try{ cfg=JSON.parse(localStorage.getItem(APROV_LAYOUT_KEY)||'null'); }catch(e){}
+  if(!cfg) return;
+  if(Array.isArray(cfg.order)) cfg.order.forEach(k=>{ const el=grid.querySelector('.aprov-panel[data-panel="'+k+'"]'); if(el) grid.appendChild(el); });
+  if(cfg.sizes) Object.keys(cfg.sizes).forEach(k=>{ const el=grid.querySelector('.aprov-panel[data-panel="'+k+'"]'); if(el){ if(cfg.sizes[k].w) el.style.width=cfg.sizes[k].w; if(cfg.sizes[k].h) el.style.height=cfg.sizes[k].h; } });
+}
+function resetAprovLayout(){
+  const grid=document.getElementById('aprov-grid'); if(!grid) return;
+  try{ localStorage.removeItem(APROV_LAYOUT_KEY); }catch(e){}
+  ['pedidos','cal','plan','gantt'].forEach(k=>{
+    const el=grid.querySelector('.aprov-panel[data-panel="'+k+'"]');
+    if(el){ grid.appendChild(el); el.style.width=APROV_DEFAULT_SIZES[k].w; el.style.height=APROV_DEFAULT_SIZES[k].h; }
+  });
+  renderAprovCalendar(); renderAprovGantt();
+  showToast('↺ Diseño restablecido','ok');
+}
+function _aprovInitLayout(){
+  const grid=document.getElementById('aprov-grid'); if(!grid || _aprovLayoutReady) return;
+  _aprovLayoutReady=true;
+  let dragged=null;
+  grid.querySelectorAll('.aprov-panel').forEach(panel=>{
+    const handle=panel.querySelector('.aprov-drag');
+    if(handle){
+      handle.addEventListener('dragstart', e=>{ dragged=panel; panel.classList.add('dragging'); try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', panel.dataset.panel);}catch(_){} });
+      handle.addEventListener('dragend', ()=>{ if(dragged) dragged.classList.remove('dragging'); dragged=null; grid.querySelectorAll('.aprov-panel').forEach(p=>p.classList.remove('drop-target')); _aprovSaveLayout(); renderAprovCalendar(); renderAprovGantt(); });
+    }
+    panel.addEventListener('dragover', e=>{ if(!dragged||dragged===panel) return; e.preventDefault(); panel.classList.add('drop-target'); });
+    panel.addEventListener('dragleave', ()=> panel.classList.remove('drop-target'));
+    panel.addEventListener('drop', e=>{
+      e.preventDefault(); panel.classList.remove('drop-target');
+      if(!dragged||dragged===panel) return;
+      const items=[...grid.querySelectorAll('.aprov-panel')];
+      if(items.indexOf(dragged) < items.indexOf(panel)) panel.after(dragged); else panel.before(dragged);
+      _aprovSaveLayout();
+    });
+    if(window.ResizeObserver){ new ResizeObserver(()=>{ clearTimeout(panel._rt); panel._rt=setTimeout(()=>{ _aprovSaveLayout(); if(panel.dataset.panel==='gantt') renderAprovGantt(); },400); }).observe(panel); }
+  });
+  _aprovApplyLayout();
+}
+// ── Gantt: selector de período ──
+let _ganttPeriodo = 'mes';
+function setGanttPeriodo(v){
+  _ganttPeriodo = v;
+  const c=document.getElementById('aprov-gantt-custom');
+  if(c) c.style.display = (v==='custom') ? 'inline-flex' : 'none';
+  if(v==='custom'){
+    const d=document.getElementById('aprov-g-desde'), h=document.getElementById('aprov-g-hasta');
+    if(d && !d.value){ const x=new Date(); x.setDate(x.getDate()-30); d.value=x.toISOString().slice(0,10); }
+    if(h && !h.value) h.value=new Date().toISOString().slice(0,10);
+  }
+  renderAprovGantt();
+}
+// Rango [desde, hasta] según el período elegido
+function _ganttRango(){
+  const y=_aprovMonth.getFullYear(), m=_aprovMonth.getMonth();
+  const hoy=new Date(); hoy.setHours(0,0,0,0);
+  const p=_ganttPeriodo;
+  if(p==='mes')  return { desde:new Date(y,m,1), hasta:new Date(y,m+1,0) };
+  if(p==='trim'){ const q=Math.floor(m/3)*3; return { desde:new Date(y,q,1), hasta:new Date(y,q+3,0) }; }
+  if(p==='anio') return { desde:new Date(y,0,1), hasta:new Date(y,11,31) };
+  if(p==='todo'){
+    const fs=aprovData.filter(a=>a.campamento===_aprovCamp && a.fecha).map(a=>a.fecha).sort();
+    if(!fs.length) return { desde:new Date(y,m,1), hasta:new Date(y,m+1,0) };
+    const fin=aprovData.filter(a=>a.campamento===_aprovCamp).map(a=>a.fecha_fin||a.fecha).filter(Boolean).sort();
+    return { desde:new Date(fs[0]+'T00:00:00'), hasta:new Date((fin[fin.length-1]||fs[fs.length-1])+'T00:00:00') };
+  }
+  if(p==='custom'){
+    const d=document.getElementById('aprov-g-desde')?.value, h=document.getElementById('aprov-g-hasta')?.value;
+    if(d && h) return { desde:new Date(d+'T00:00:00'), hasta:new Date(h+'T00:00:00') };
+    return { desde:new Date(y,m,1), hasta:new Date(y,m+1,0) };
+  }
+  const n=parseInt(p,10)||30;              // últimos N días (incluye días anteriores)
+  const desde=new Date(hoy); desde.setDate(desde.getDate()-(n-1));
+  return { desde, hasta:hoy };
+}
 // Cruce PA ↔ campamento por destino (con alias/abreviaturas)
 function _aprovNorm(s){
   s=(s||'').toUpperCase().trim().replace(/^CAMPAMENTO\s+/,'').replace(/[.\-_]/g,' ').replace(/\s+/g,' ').trim();
@@ -2865,7 +2992,7 @@ function renderAprovCalendar(){
   const el=document.getElementById('aprov-cal'); if(!el) return;
   const y=_aprovMonth.getFullYear(), m=_aprovMonth.getMonth();
   const titleEl=document.getElementById('aprov-cal-title');
-  if(titleEl) titleEl.textContent=_aprovMonth.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+  if(titleEl) titleEl.innerHTML='<span class="aprov-grip">⠿</span>'+_escPA(_aprovMonth.toLocaleDateString('es-AR',{month:'long',year:'numeric'}));
   const startDow=(new Date(y,m,1).getDay()+6)%7;
   const days=new Date(y,m+1,0).getDate();
   const byDay={};
@@ -2936,33 +3063,44 @@ function eliminarAprovRow(id){
 }
 function renderAprovGantt(){
   const el=document.getElementById('aprov-gantt'); if(!el) return;
-  const y=_aprovMonth.getFullYear(), m=_aprovMonth.getMonth();
-  const days=new Date(y,m+1,0).getDate();
+  const R=_ganttRango();
+  const desde=new Date(R.desde); desde.setHours(0,0,0,0);
+  const hasta=new Date(R.hasta); hasta.setHours(0,0,0,0);
+  if(hasta < desde){ el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px">El rango «hasta» es anterior al «desde».</div>'; return; }
+  const DAY=86400000;
+  const totalDays=Math.round((hasta-desde)/DAY)+1;
   const rows=aprovData.filter(a=>a.campamento===_aprovCamp && a.fecha).map(a=>{
     const s=new Date(a.fecha+'T00:00:00');
     const e=(a.fecha_fin && /^\d{4}-\d{2}-\d{2}$/.test(a.fecha_fin))?new Date(a.fecha_fin+'T00:00:00'):s;
-    return {a,s,e};
-  }).filter(r=>{
-    const before = (r.e.getFullYear()<y)||(r.e.getFullYear()===y&&r.e.getMonth()<m);
-    const after  = (r.s.getFullYear()>y)||(r.s.getFullYear()===y&&r.s.getMonth()>m);
-    return !before && !after;
-  }).sort((x,z)=>x.s-z.s);
-  if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px">Sin datos para graficar en '+_aprovMonth.toLocaleDateString('es-AR',{month:'long',year:'numeric'})+'.</div>'; return; }
-  const colW=26, labelW=210;
-  let h='<div style="min-width:'+(labelW+days*colW)+'px">';
-  h+='<div style="display:flex;align-items:flex-end;margin-bottom:5px"><div style="width:'+labelW+'px;flex-shrink:0"></div>';
-  for(let d=1;d<=days;d++){ h+='<div style="width:'+colW+'px;text-align:center;font-size:9px;color:var(--muted)">'+d+'</div>'; }
-  h+='</div>';
+    return {a,s,e:(e<s?s:e)};
+  }).filter(r=> r.e>=desde && r.s<=hasta ).sort((x,z)=>x.s-z.s);
+  const fmt=(d)=>d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'});
+  const cab='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Período: <b style="color:var(--text)">'+fmt(desde)+'</b> → <b style="color:var(--text)">'+fmt(hasta)+'</b> · '+totalDays+' días · '+rows.length+' aprovisionamiento(s)</div>';
+  if(!rows.length){ el.innerHTML=cab+'<div style="color:var(--muted);font-size:13px;padding:8px">Sin datos para graficar en este período.</div>'; return; }
+  // Escala adaptativa: barras proporcionales al ancho disponible
+  const colW = totalDays<=31 ? 26 : totalDays<=92 ? 10 : totalDays<=200 ? 5 : 3;
+  const labelW=210, chartW=totalDays*colW;
+  let h=cab+'<div style="min-width:'+(labelW+chartW)+'px">';
+  // Encabezado de fechas (denso → sólo hitos)
+  h+='<div style="display:flex;align-items:flex-end;margin-bottom:5px"><div style="width:'+labelW+'px;flex-shrink:0"></div><div style="position:relative;width:'+chartW+'px;height:14px">';
+  const step = totalDays<=31 ? 1 : totalDays<=92 ? 7 : totalDays<=200 ? 14 : 30;
+  for(let i=0;i<totalDays;i+=step){
+    const d=new Date(desde.getTime()+i*DAY);
+    const lbl = totalDays<=31 ? d.getDate() : (d.getDate()+'/'+(d.getMonth()+1));
+    h+='<span style="position:absolute;left:'+(i*colW)+'px;font-size:9px;color:var(--muted);white-space:nowrap">'+lbl+'</span>';
+  }
+  h+='</div></div>';
   rows.forEach(r=>{
-    const startDay=(r.s.getFullYear()===y&&r.s.getMonth()===m)?r.s.getDate():1;
-    const endDay=(r.e.getFullYear()===y&&r.e.getMonth()===m)?r.e.getDate():days;
-    const span=Math.max(1,endDay-startDay+1);
+    const sIdx=Math.max(0, Math.round((r.s-desde)/DAY));
+    const eIdx=Math.min(totalDays-1, Math.round((r.e-desde)/DAY));
+    const span=Math.max(1, eIdx-sIdx+1);
     const color=_aprovEstadoColor(r.a.estado);
     const label=((r.a.carga||'—')+(r.a.vehiculo?(' · '+r.a.vehiculo):'')).slice(0,34);
+    const tip=_escPA(r.a.estado)+' ('+_escPA(r.a.fecha)+(r.a.fecha_fin?' → '+_escPA(r.a.fecha_fin):'')+')'+(r.a.pedido_ref?' · PA '+_escPA(r.a.pedido_ref):'');
     h+='<div style="display:flex;align-items:center;margin-bottom:5px">'
       +'<div style="width:'+labelW+'px;flex-shrink:0;font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px" title="'+_escPA(label)+'">'+_escPA(label)+'</div>'
-      +'<div style="position:relative;height:18px;width:'+(days*colW)+'px;background:rgba(255,255,255,.02);border-radius:4px">'
-      +'<div title="'+_escPA(r.a.estado)+' ('+_escPA(r.a.fecha)+(r.a.fecha_fin?' → '+_escPA(r.a.fecha_fin):'')+')" style="position:absolute;left:'+((startDay-1)*colW)+'px;width:'+(span*colW-3)+'px;top:2px;height:14px;background:'+color+';border-radius:4px;opacity:.9"></div>'
+      +'<div style="position:relative;height:18px;width:'+chartW+'px;background:rgba(255,255,255,.02);border-radius:4px">'
+      +'<div title="'+tip+'" style="position:absolute;left:'+(sIdx*colW)+'px;width:'+Math.max(3,(span*colW-3))+'px;top:2px;height:14px;background:'+color+';border-radius:4px;opacity:.9"></div>'
       +'</div></div>';
   });
   h+='</div>';
