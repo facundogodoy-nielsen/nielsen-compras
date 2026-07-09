@@ -1991,18 +1991,18 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <div style="flex:1;min-width:150px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:8px 12px">
         <div style="font-size:11px;font-weight:800;color:var(--green)">Resp. de Compras</div>
-        <div style="font-size:12px;color:var(--text);margin-top:2px">&lt; USD 100</div>
+        <div style="font-size:12px;color:var(--text);margin-top:2px">&lt; USD 200</div>
       </div>
       <div style="flex:1;min-width:150px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.3);border-radius:8px;padding:8px 12px">
         <div style="font-size:11px;font-weight:800;color:var(--yellow)">Gerencia</div>
-        <div style="font-size:12px;color:var(--text);margin-top:2px">USD 100 – 400</div>
+        <div style="font-size:12px;color:var(--text);margin-top:2px">USD 200 – 500</div>
       </div>
       <div style="flex:1;min-width:150px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:8px;padding:8px 12px">
         <div style="font-size:11px;font-weight:800;color:#f87171">Alta Dirección</div>
-        <div style="font-size:12px;color:var(--text);margin-top:2px">&gt; USD 400</div>
+        <div style="font-size:12px;color:var(--text);margin-top:2px">&gt; USD 500</div>
       </div>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px">Todas las compras requieren un mínimo de <strong>2 presupuestos</strong> para poder autorizarse.</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">Todas las compras requieren un mínimo de <strong>2 presupuestos</strong> para poder autorizarse. Gerencia aprueba con <strong>1 firma</strong>; Alta Dirección requiere <strong>2 de 3</strong>.</div>
   </div>
 
   <!-- Filtro por área -->
@@ -3910,8 +3910,8 @@ function _ccp_authLevel(c) {
   const divisa = (c.divisa||'ARS').toUpperCase();
   const promUSD = divisa === 'USD' ? prom : prom / rate;
   const n = parseInt((c.proveedores_count||c.proveedores?.length||0));
-  if (promUSD > 400) return {level:'DIRECCION', label:'Alta Dirección', color:'#f87171', usd:promUSD, needs2:true};
-  if (promUSD >= 100) return {level:'GERENCIA', label:'Gerencia', color:'var(--yellow)', usd:promUSD, needs2:true};
+  if (promUSD > 500) return {level:'DIRECCION', label:'Alta Dirección', color:'#f87171', usd:promUSD, needs2:true};
+  if (promUSD >= 200) return {level:'GERENCIA', label:'Gerencia', color:'var(--yellow)', usd:promUSD, needs2:true};
   return {level:'COMPRAS', label:'Resp. Compras', color:'var(--green)', usd:promUSD, needs2:true};
 }
 function _ccp_provCount(c) {
@@ -3920,46 +3920,151 @@ function _ccp_provCount(c) {
     return Array.isArray(p) ? p.length : (c.proveedores_count||0);
   } catch(e){ return 0; }
 }
+// ══════════════════════════════════════════════════
+// AUTORIZACIÓN DE COMPRAS — envía por Gmail (Apps Script) con el memo en PDF
+// < USD 200  → Compras autoriza y NOTIFICA a los 3
+// 200 – 500  → Aprobación de Castaño (CC Pablo y Mercedes) — 1 firma
+// > USD 500  → Aprobación de los 3 — alcanza con 2 de 3
+// ══════════════════════════════════════════════════
+const AUTH_DEST = {
+  castano:  { email:'facundo.castano@nielsenexpediciones.com.ar',  nombre:'Facundo Castaño' },
+  pablo:    { email:'pablo.nielsen@nielsenexpediciones.com.ar',    nombre:'Pablo Nielsen' },
+  mercedes: { email:'mercedes@nielsenexpediciones.com.ar',         nombre:'Mercedes' }
+};
+function _authPlan(nivel){
+  const D = AUTH_DEST;
+  if (nivel === 'DIRECCION') return { tipo:'SOLICITUD', aprobadores:[D.castano, D.pablo, D.mercedes], copia:[], requeridas:2, nivelLbl:'Alta Dirección (más de USD 500)' };
+  if (nivel === 'GERENCIA')  return { tipo:'SOLICITUD', aprobadores:[D.castano], copia:[D.pablo, D.mercedes], requeridas:1, nivelLbl:'Gerencia (USD 200 – 500)' };
+  return { tipo:'NOTIFICACION', aprobadores:[], copia:[D.castano, D.pablo, D.mercedes], requeridas:0, nivelLbl:'Responsable de Compras (menos de USD 200)' };
+}
+// Trae la comparativa completa (ítems, proveedores, análisis) para armar el memo
+async function _fetchComparativa(compId){
+  try{
+    const r = await fetch(_SB_URL+'/rest/v1/comparativas?id=eq.'+encodeURIComponent(compId)+'&select=*', {
+      headers:{apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY}, cache:'no-store' });
+    if(!r.ok) return null;
+    const j = await r.json();
+    return (j && j[0]) ? j[0] : null;
+  }catch(e){ return null; }
+}
+function _jparse(v, def){ try{ return typeof v==='string' ? JSON.parse(v) : (v||def); }catch(e){ return def; } }
+function _fmtMoneyCC(n, divisa){ return (divisa||'ARS')+' '+Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:2}); }
+
+// Memo interno en HTML (el Apps Script lo convierte a PDF y lo adjunta)
+function _memoHTML(c){
+  const items = _jparse(c.items, []);
+  const provs = _jparse(c.proveedores, []);
+  const an    = _jparse(c.analisis, {});
+  const divisa = c.divisa || 'ARS';
+  const filaItems = items.map((it,i)=>'<tr><td>'+(i+1)+'</td><td>'+_escPA(it.desc||'')+'</td><td style="text-align:center">'+_escPA(String(it.qty||1))+' '+_escPA(it.unit||'UN')+'</td></tr>').join('');
+  const totals = (an.totals||[]);
+  const filaProv = totals.map(t=>'<tr><td>'+_escPA(t.name||'')+'</td><td style="text-align:center">'+(t.cobertura||0)+'/'+(t.totalItems||0)+'</td>'
+    +'<td style="text-align:center">'+(t.calidadCount?Number(t.calidadProm).toFixed(1)+' ★':'—')+'</td>'
+    +'<td style="text-align:right">'+_fmtMoneyCC(t.totalSinIVA,divisa)+'</td><td style="text-align:right"><b>'+_fmtMoneyCC(t.totalConIVA,divisa)+'</b></td></tr>').join('');
+  const gan = an.ganador || {};
+  const hoy = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
+    +'body{font-family:Arial,Helvetica,sans-serif;color:#1f2937;margin:34px 40px}'
+    +'h1{font-size:17px;color:#13161E;margin:0 0 2px}.br{color:#E8611A;font-size:11px;font-weight:bold;letter-spacing:2px;text-transform:uppercase}'
+    +'.hd{border-bottom:3px solid #E8611A;padding-bottom:10px;margin-bottom:18px}'
+    +'h2{font-size:11px;color:#E8611A;text-transform:uppercase;letter-spacing:1px;margin:20px 0 6px;border-bottom:1px solid #eee;padding-bottom:3px}'
+    +'p{font-size:12.5px;line-height:1.65;margin:0 0 9px;text-align:justify}'
+    +'table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:5px}'
+    +'th{background:#13161E;color:#fff;padding:6px 7px;text-align:left;font-size:10.5px;text-transform:uppercase}'
+    +'td{padding:5px 7px;border-bottom:1px solid #eee}'
+    +'.hi{background:rgba(232,97,26,.07);border:1px solid rgba(232,97,26,.35);border-radius:8px;padding:10px 14px;margin:12px 0}'
+    +'.hi .v{font-size:16px;font-weight:bold;color:#13161E}.hi .k{font-size:10px;font-weight:bold;color:#E8611A;text-transform:uppercase;letter-spacing:1px}'
+    +'.ft{margin-top:26px;border-top:1px solid #ddd;padding-top:9px;font-size:10px;color:#9ca3af}'
+    +'</style></head><body>'
+    +'<div class="hd"><div class="br">Nielsen Logística y Expediciones S.A.</div>'
+    +'<h1>Memorándum interno — Comparativa de presupuestos '+_escPA(c.num_comp||'')+'</h1>'
+    +'<div style="font-size:11px;color:#6b7280">Departamento de Compras y Abastecimiento · '+hoy+'</div></div>'
+    +'<p><b>Para:</b> Dirección General<br><b>De:</b> Facundo Godoy Iramain — Responsable de Compras y Abastecimiento<br>'
+    +'<b>Asunto:</b> '+_escPA(c.asunto||'—')+(c.num_sc?(' · Solicitud '+_escPA(c.num_sc)):'')+'</p>'
+    +'<h2>1. Objeto</h2><p>Se eleva para su consideración la comparativa de presupuestos correspondiente a '
+    +_escPA((c.asunto||'la compra solicitada').toLowerCase())+', solicitada por el área de <b>'+_escPA(c.area||'—')+'</b>'
+    +(c.num_sc?(' bajo la solicitud <b>'+_escPA(c.num_sc)+'</b>'):'')+'.</p>'
+    +(filaItems?('<h2>2. Elementos requeridos</h2><table><tr><th style="width:34px">#</th><th>Descripción</th><th style="width:80px;text-align:center">Cantidad</th></tr>'+filaItems+'</table>'):'')
+    +(filaProv?('<h2>3. Ofertas analizadas</h2><table><tr><th>Proveedor</th><th style="text-align:center">Cobertura</th><th style="text-align:center">Calidad</th><th style="text-align:right">Total s/IVA</th><th style="text-align:right">Total c/IVA</th></tr>'+filaProv+'</table>'):'')
+    +'<h2>4. Recomendación</h2>'
+    +'<p>Luego del análisis de las ofertas recibidas, desde el Departamento de Compras y Abastecimiento se recomienda avanzar con la propuesta de <b>'
+    +_escPA(c.proveedor_elegido||gan.name||'—')+'</b>, por resultar la opción más conveniente en términos económicos.</p>'
+    +'<div class="hi"><div class="k">Monto total recomendado (IVA incluido)</div><div class="v">'+_fmtMoneyCC(c.precio_elegido, divisa)+'</div></div>'
+    +(Number(c.ahorro)>0?('<p>Dicha alternativa representa un <b>ahorro estimado de '+_fmtMoneyCC(c.ahorro,divisa)+'</b> respecto de la siguiente oferta considerada.</p>'):'')
+    +(c.observaciones?('<h2>5. Observaciones</h2><p>'+_escPA(c.observaciones)+'</p>'):'')
+    +'<h2>'+(c.observaciones?'6':'5')+'. Solicitud</h2>'
+    +'<p>En virtud de lo expuesto, se solicita autorización para proceder con la emisión de la orden de compra correspondiente'
+    +(c.proveedor_elegido?(' a favor de <b>'+_escPA(c.proveedor_elegido)+'</b>'):'')+'.</p>'
+    +'<div class="ft">Documento generado automáticamente por el sistema de Compras y Abastecimiento — Nielsen Logística y Expediciones S.A.</div>'
+    +'</body></html>';
+}
+
 async function autorizarCCP(compId, numComp, asunto, montoStr, nivel) {
   if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
-  // Patch autorizado_en in Supabase
+  const plan = _authPlan(nivel);
+  const esSolicitud = plan.tipo === 'SOLICITUD';
+  const aviso = esSolicitud
+    ? '¿Enviar la SOLICITUD DE AUTORIZACIÓN de la CCP '+numComp+'?\n\nNivel: '+plan.nivelLbl+'\nAprueban: '+plan.aprobadores.map(a=>a.nombre).join(', ')+'\nSe requieren '+plan.requeridas+' aprobación(es).'
+    : '¿Autorizar la compra de la CCP '+numComp+' y NOTIFICAR a Dirección?\n\nNivel: '+plan.nivelLbl;
+  if (!confirm(aviso)) return;
+
+  const c = await _fetchComparativa(compId);
+  if (!c) { showToast('No se pudo leer la comparativa','error'); return; }
+
   const now = new Date().toISOString().split('T')[0];
+  const payload = {
+    tipo: 'CCP_AUTH',
+    modo: plan.tipo,                       // SOLICITUD | NOTIFICACION
+    comp_id: String(compId),
+    num_comp: numComp || '',
+    num_sc: c.num_sc || '',
+    asunto: asunto || c.asunto || '',
+    area: c.area || '',
+    nivel: nivel,
+    nivel_label: plan.nivelLbl,
+    requeridas: plan.requeridas,
+    monto: montoStr || '',
+    monto_num: Number(c.precio_elegido)||0,
+    divisa: c.divisa || 'ARS',
+    proveedor: c.proveedor_elegido || '',
+    ahorro: Number(c.ahorro)||0,
+    condicion_pago: _condPagoElegida(c),
+    n_presupuestos: _ccp_provCount(c),
+    items: _jparse(c.items, []).map(it => (it.qty||1)+' '+(it.unit||'')+' '+(it.desc||'')).slice(0,30),
+    aprobadores: plan.aprobadores,
+    copia: plan.copia,
+    memo_html: _memoHTML(c),
+    link_sistema: 'https://nielsen-compras.vercel.app/#comparativas'
+  };
+
+  // Estado inicial en Supabase
   await fetch(_SB_URL+'/rest/v1/comparativas?id=eq.'+compId, {
     method:'PATCH',
-    headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},
-    body:JSON.stringify({autorizado_por:'Compras y Abastecimiento',autorizado_en:now,nivel_autorizacion:nivel})
-  });
-  // Send email via EmailJS
-  const pubKey=localStorage.getItem('nielsen_emailjs_pubkey')||'';
-  const svcId =localStorage.getItem('nielsen_emailjs_service')||'';
-  const tmpl  =localStorage.getItem('nielsen_emailjs_tmpl_sc')||'';
-  const NIVEL_EMAILS = {
-    GERENCIAL: ['facundo.castano@nielsenexpediciones.com.ar','pablo.nielsen@nielsenexpediciones.com.ar','mercedes@nielsenexpediciones.com.ar'],
-    JEFATURA:  ['facundo.castano@nielsenexpediciones.com.ar'],
-    COMPRAS:   ['facundo.castano@nielsenexpediciones.com.ar','pablo.nielsen@nielsenexpediciones.com.ar','mercedes@nielsenexpediciones.com.ar']
-  };
-  const recipients = NIVEL_EMAILS[nivel]||[];
-  const isCompras = nivel==='COMPRAS';
-  const msgTipo = isCompras ? 'AUTORIZACIÓN DE COMPRA — Responsable de Compras' : 'SOLICITUD DE AUTORIZACIÓN DE COMPRA';
-  if (pubKey&&svcId&&tmpl) {
-    emailjs.init({publicKey:pubKey});
-    for (const to of recipients) {
-      emailjs.send(svcId, tmpl, {
-        to_email: to,
-        to_name: 'Equipo Nielsen',
-        from_name: 'Compras y Abastecimiento — Nielsen',
-        num_pa: numComp,
-        campamento: asunto||'—',
-        categoria: msgTipo,
-        fecha: now,
-        fecha_entrega: isCompras?'AUTORIZADO — Queda registrada la compra':'Requiere su aprobación para continuar',
-        items: '📊 CCP N° '+numComp+'\nAsunto: '+asunto+'\nMonto: '+montoStr+'\nNivel: '+nivel,
-        obs: isCompras?'Facundo Godoy (Responsable de Compras) ha autorizado esta compra y la comunica a los destinatarios.':'Facundo Godoy (Responsable de Compras) solicita la AUTORIZACIÓN DE COMPRA.'
-      }).catch(()=>{});
-    }
-  }
-  showToast('✅ Autorización enviada a '+recipients.length+' destinatario'+(recipients.length!==1?'s':''),'ok');
+    headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
+    body: JSON.stringify(esSolicitud
+      ? { estado_autorizacion:'PENDIENTE', nivel_autorizacion:nivel, aprob_requeridas:plan.requeridas, aprob_contadas:0, solicitado_en:now }
+      : { estado_autorizacion:'APROBADA', nivel_autorizacion:nivel, aprob_requeridas:0, aprob_contadas:0,
+          autorizado_por:'Facundo Godoy (Responsable de Compras)', autorizado_en:now, solicitado_en:now })
+  }).catch(()=>{});
+
+  try {
+    await fetch(MAIL_WEBAPP_URL, {
+      method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify(payload)
+    });
+  } catch(e) { console.warn('CCP_AUTH', e); }
+
+  showToast(esSolicitud
+    ? '📧 Solicitud de autorización enviada a '+plan.aprobadores.map(a=>a.nombre).join(', ')
+    : '✅ Compra autorizada — se notificó a Dirección', 'ok');
   renderComparativas();
+}
+// Condición de pago del proveedor elegido (si está cargada)
+function _condPagoElegida(c){
+  const provs = _jparse(c.proveedores, []);
+  const el = provs.find(p => (p.name||'') === (c.proveedor_elegido||''));
+  return (el && (el.paymentTerms || el.pago)) || '';
 }
 
 // ── Editar Historial de CCP (Ajustes, PIN 1102) — impacta también en Comparativo ──
@@ -4111,8 +4216,8 @@ function _ccp_authLevelRate(c, rate){
   var prom = _ccp_montoProm(c);
   var divisa = (c.divisa||'ARS').toUpperCase();
   var promUSD = divisa==='USD' ? prom : (rate>0 ? prom/rate : 0);
-  if (promUSD > 400) return {level:'DIRECCION', label:'Alta Dirección', color:'#f87171', usd:promUSD, needs2:true};
-  if (promUSD >= 100) return {level:'GERENCIA', label:'Gerencia', color:'var(--yellow)', usd:promUSD, needs2:true};
+  if (promUSD > 500) return {level:'DIRECCION', label:'Alta Dirección', color:'#f87171', usd:promUSD, needs2:true};
+  if (promUSD >= 200) return {level:'GERENCIA', label:'Gerencia', color:'var(--yellow)', usd:promUSD, needs2:true};
   return {level:'COMPRAS', label:'Resp. Compras', color:'var(--green)', usd:promUSD, needs2:true};
 }
 function _nivelBadgeHTML(auth, ok2){
@@ -4122,8 +4227,28 @@ function _nivelBadgeHTML(auth, ok2){
     + (!ok2?'<div style="font-size:9px;color:#f87171">⚠ Falta 2° presupuesto</div>':'');
 }
 function _authCellHTML(c, auth, ok2, promStr){
-  if (c.autorizado_en) return '<div style="font-size:11px;font-weight:700;color:var(--green)">✅ Autorizado</div><div style="font-size:9px;color:var(--muted)">'+c.autorizado_en+'</div>';
-  if (ok2 && esModoEditor()) return '<button onclick="autorizarCCP(\''+c.id+'\',\''+(c.num_comp||'')+'\',\''+(c.asunto||'').replace(/'/g,'&#39;')+'\',\''+promStr+'\',\''+auth.level+'\')" style="padding:5px 10px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);border-radius:6px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--ff);white-space:nowrap">✅ Autorizar</button>';
+  const est = c.estado_autorizacion || (c.autorizado_en ? 'APROBADA' : '');
+  const btn = (txt) => '<button onclick="autorizarCCP(\''+c.id+'\',\''+(c.num_comp||'')+'\',\''+(c.asunto||'').replace(/'/g,'&#39;')+'\',\''+promStr+'\',\''+auth.level+'\')" style="padding:5px 10px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);border-radius:6px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--ff);white-space:nowrap">'+txt+'</button>';
+  if (est === 'APROBADA')
+    return '<div style="font-size:11px;font-weight:700;color:var(--green)">✅ Aprobada</div>'
+      + '<div style="font-size:9px;color:var(--muted)">'+_escPA(c.autorizado_por||'')+(c.autorizado_en?(' · '+c.autorizado_en):'')+'</div>';
+  if (est === 'RECHAZADA')
+    return '<div style="font-size:11px;font-weight:700;color:var(--red)">✕ Rechazada</div>'
+      + '<div style="font-size:9px;color:var(--muted)" title="'+_escPA(c.rechazo_motivo||'')+'">'+_escPA(c.rechazado_por||'')+'</div>';
+  if (est === 'STANDBY')
+    return '<div style="font-size:11px;font-weight:700;color:var(--yellow)">⏸ En espera</div>'
+      + '<div style="font-size:9px;color:var(--muted)">Recordatorio programado</div>'
+      + (esModoEditor()? '<div style="margin-top:3px">'+btn('↻ Reenviar')+'</div>' : '');
+  if (est === 'PENDIENTE'){
+    const req = c.aprob_requeridas||1, got = c.aprob_contadas||0;
+    return '<div style="font-size:11px;font-weight:700;color:var(--blue)">📧 Pendiente</div>'
+      + '<div style="font-size:9px;color:var(--muted)">'+got+' de '+req+' aprobación(es)</div>'
+      + (esModoEditor()? '<div style="margin-top:3px">'+btn('↻ Reenviar')+'</div>' : '');
+  }
+  if (ok2 && esModoEditor()){
+    const lvl = auth.level;
+    return btn(lvl==='COMPRAS' ? '✅ Autorizar' : '📧 Solicitar autorización');
+  }
   if (!ok2) return '<span style="font-size:10px;color:var(--muted)">Sin 2° ppto</span>';
   return '<span style="font-size:10px;color:var(--muted)">—</span>';
 }
