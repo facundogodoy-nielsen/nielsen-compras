@@ -1840,7 +1840,10 @@ async function enviar() {
 async function showSuccess(numSC, numOP) {
   // ── Guardar PRIMERO en Supabase (con reintentos) y verificar ANTES de confirmar ──
   const guardadoOk = await _guardarSCenCC(numSC, numOP);   // Supabase + localStorage
-  _enviarEmailSC(numSC, numOP);                             // confirmación al solicitante
+  // Esperar el despacho: lleva las fotos/presupuestos (base64) y se cortaría al cambiar de pantalla
+  const _hayAdjuntos = (presupuestos||[]).some(x=>x.data) || (fotosMuestra||[]).some(x=>x.data);
+  if (_hayAdjuntos && typeof toast === 'function') toast('⏳ Subiendo adjuntos a Drive...');
+  await _enviarEmailSC(numSC, numOP);                       // confirmación al solicitante
 
   document.querySelectorAll('.panel').forEach(p => p.style.display = 'none');
   document.getElementById('success').style.display = 'block';
@@ -2595,7 +2598,7 @@ async function sbDelete(tabla, col, val) {
 // ENVÍO DE EMAIL — EmailJS
 // Configuración en Ajustes del Centro de Control
 // ══════════════════════════════════════════════════════════
-function _enviarEmailSC(numSC, numOP) {
+async function _enviarEmailSC(numSC, numOP) {
   if (!MAIL_WEBAPP_URL) {
     if (typeof toast === 'function') toast('⚠️ Falta configurar la URL de correos (MAIL_WEBAPP_URL)', true);
     console.warn('MAIL_WEBAPP_URL vacío en formulario_sc.html');
@@ -2649,15 +2652,14 @@ function _enviarEmailSC(numSC, numOP) {
   if (typeof toast === 'function') toast('📧 Enviando confirmación...');
   // Apps Script no envía cabeceras CORS → usamos no-cors (fire-and-forget).
   // El body va como texto plano y el Apps Script lo parsea con JSON.parse.
-  fetch(MAIL_WEBAPP_URL, { method:'POST', mode:'no-cors', body: JSON.stringify(payload) })
-    .then(() => {
-      console.log('✅ Correo SC despachado al Web App');
-      if (typeof toast === 'function') toast('✅ Confirmación enviada (solicitante + Compras)');
-    })
-    .catch(err => {
-      console.warn('⚠️ Error al despachar correo SC:', err);
-      if (typeof toast === 'function') toast('⚠️ No se pudo enviar el correo de confirmación', true);
-    });
+  try {
+    await fetch(MAIL_WEBAPP_URL, { method:'POST', mode:'no-cors', body: JSON.stringify(payload) });
+    console.log('✅ Correo SC despachado al Web App');
+    if (typeof toast === 'function') toast('✅ Confirmación enviada (solicitante + Compras)');
+  } catch (err) {
+    console.warn('⚠️ Error al despachar correo SC:', err);
+    if (typeof toast === 'function') toast('⚠️ No se pudo enviar el correo de confirmación', true);
+  }
 }
 
 

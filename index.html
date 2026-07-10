@@ -4688,8 +4688,18 @@ function verSC(idx) {
          <div style="font-size:16px;font-weight:700;color:var(--text);line-height:1.3">${_escPA(sc.osAsunto)}</div>
        </div>`
     : '';
+  const _adjBanner = _scAdjuntosRotos(sc)
+    ? `<div style="margin-bottom:14px;padding:11px 14px;background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.35);border-radius:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+         <div style="flex:1;min-width:220px">
+           <div style="font-size:12px;font-weight:700;color:var(--yellow)">⚠️ Adjuntos sin enlace</div>
+           <div style="font-size:11px;color:var(--muted);margin-top:2px">Esta SC tiene fotos o presupuestos marcados, pero sin link a Drive. Reparalo para volver a vincularlos.</div>
+         </div>
+         <button onclick="repararAdjuntosSC()" style="padding:7px 13px;border-radius:7px;border:1.5px solid var(--yellow);background:rgba(234,179,8,.12);color:var(--yellow);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">🔗 Reparar adjuntos</button>
+       </div>`
+    : '';
   document.getElementById('modal-sc-body').innerHTML = `
     ${_asuntoBanner}
+    ${_adjBanner}
     ${_cancelBanner}
     ${modoEditarSC && esModoEditor() ? renderEditGridSC(sc, idx) + '<div style="display:none">' : ''}
     ${!modoEditarSC && esModoEditor() ? `<div class="sc-edit-panel">
@@ -6440,6 +6450,16 @@ function renderEstadoConfirmacion(sc) {
   return '<div class="compra-estado-actual">Última confirmación: <strong>' + fecha + '</strong> · Cobertura registrada: <strong style="color:var(--or)">' + pct + '%</strong></div>';
 }
 
+// Repara los enlaces de fotos/presupuestos de una SC (relee la carpeta de Drive)
+function repararAdjuntosSC(){
+  const sc = scs[window._scIdx];
+  if(!sc){ showToast('No hay SC abierta','error'); return; }
+  const num = sc.numSC || sc.num || '';
+  if(!num){ showToast('La SC no tiene número','error'); return; }
+  window.open(MAIL_WEBAPP_URL + '?a=reindex&sc=' + encodeURIComponent(num), '_blank');
+  showToast('Se abrió la reparación. Al terminar, volvé y recargá la SC.', 'ok');
+}
+
 function _scItemAdjuntos(sc, i){
   if(!sc) return '';
   var fmap = sc.fotosMap || {}, pmap = sc.presupMap || {};
@@ -6475,6 +6495,14 @@ function _scItemAdjuntos(sc, i){
 function _driveSearchUrl(sc){
   var q = (sc && (sc.numSC || sc.num || sc.num_sc)) || '';
   return q ? ('https://drive.google.com/drive/search?q=' + encodeURIComponent(q)) : 'https://drive.google.com/drive/my-drive';
+}
+// ¿La SC tiene marcados adjuntos pero sin enlaces reales? → conviene reparar
+function _scAdjuntosRotos(sc){
+  if(!sc) return false;
+  var marcados = (sc.fotosItems||[]).length || (sc.presupItems||[]).length;
+  var conLink  = Object.keys(sc.fotosMap||{}).length || Object.keys(sc.presupMap||{}).length
+                 || (sc.driveFotosUrl||'') || (sc.drivePresupUrl||'');
+  return !!marcados && !conLink;
 }
 
 function renderItemsCompra(lineas, sc) {

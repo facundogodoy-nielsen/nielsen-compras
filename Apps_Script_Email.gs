@@ -33,6 +33,8 @@ var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 // ─────────────────────────────────────────────────────────────
 function doGet(e) {
   var p = (e && e.parameter) ? e.parameter : {};
+  // Reparar adjuntos de una SC: ...exec?a=reindex&sc=<N° SC>
+  if (p.a === 'reindex') return _htmlOut(_reindexarSC(p.sc));
   if (!p.t || !p.a) return _htmlOut(_pagina('Web App activa', 'El sistema de Compras de Nielsen está funcionando.', '#13161E'));
   var reg = _sbGetToken(p.t);
   if (!reg) return _htmlOut(_pagina('Enlace no válido', 'Este enlace no corresponde a ninguna solicitud vigente.', '#dc2626'));
@@ -408,6 +410,7 @@ function _guardarArchivos(p) {
       var blob = _blobFromDataUrl(f.dataUrl, f.name);
       if (!blob) return;
       var file = fSC.createFile(blob);
+      try { file.setName(_prefijoItem(f.itemsIdx) + f.name); } catch (e) {}
       try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
       var url = file.getUrl();
       out.presup.push({ name: f.name, url: url, item: f.item || '' });
@@ -428,6 +431,7 @@ function _guardarArchivos(p) {
       var blob = _blobFromDataUrl(f.dataUrl, f.name);
       if (!blob) return;
       var file = gSC.createFile(blob);
+      try { file.setName(_prefijoItem(f.itemsIdx) + f.name); } catch (e) {}
       try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
       var url = file.getUrl();
       out.fotos.push({ name: f.name, url: url, item: f.item || '' });
@@ -441,6 +445,18 @@ function _guardarArchivos(p) {
   return out;
 }
 // Escribe links de carpetas + mapa ítem→archivos en la SC (Supabase) para que el CC los muestre
+// PATCH resiliente: si alguna columna no existe, PostgREST rechaza TODO el body.
+// Por eso escribimos por partes y reintentamos campo por campo.
+function _sbPatchSC(numSC, body) {
+  try {
+    var r = UrlFetchApp.fetch(SB_URL + '/rest/v1/solicitudes_compra?num_sc=eq.' + encodeURIComponent(numSC), {
+      method: 'patch', contentType: 'application/json',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Prefer: 'return=minimal' },
+      payload: JSON.stringify(body), muteHttpExceptions: true
+    });
+    return r.getResponseCode() < 300;
+  } catch (e) { return false; }
+}
 function _patchSCDriveUrls(numSC, a) {
   if (!numSC || !a) return;
   var body = {};
@@ -449,15 +465,11 @@ function _patchSCDriveUrls(numSC, a) {
   if (a.fotosMap  && _keys(a.fotosMap).length)  body.fotos_map  = a.fotosMap;
   if (a.presupMap && _keys(a.presupMap).length) body.presup_map = a.presupMap;
   if (!_keys(body).length) return;
-  try {
-    UrlFetchApp.fetch(SB_URL + '/rest/v1/solicitudes_compra?num_sc=eq.' + encodeURIComponent(numSC), {
-      method: 'patch',
-      contentType: 'application/json',
-      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Prefer: 'return=minimal' },
-      payload: JSON.stringify(body),
-      muteHttpExceptions: true
-    });
-  } catch (e) {}
+  if (_sbPatchSC(numSC, body)) return;               // 1º intento: todo junto
+  _keys(body).forEach(function(k){                    // 2º: campo por campo (ignora los que no existan)
+    var one = {}; one[k] = body[k];
+    _sbPatchSC(numSC, one);
+  });
 }
 function _keys(o){ return o ? Object.keys(o) : []; }
 // Bloque HTML de adjuntos para el correo
@@ -616,4 +628,92 @@ function _tplCCPSolicitud(p, token, esRecordatorio) {
     + '<div style="font-size:11px;color:#9ca3af;margin-top:11px;line-height:1.6"><b>Stand by</b> deja la compra en espera y programa un recordatorio automático para una nueva evaluación (podrás elegir en cuántos días).<br>' + reqTxt + '</div>'
     + '</div>' + _ccpFirma();
   return _ccpShell('Solicitud de autorización de compra', b, 'Solicitud generada desde el sistema de Compras — Nielsen Logística y Expediciones S.A.');
+}
+
+
+// ═════════════════════════════════════════════════════════════
+// ADJUNTOS — prefijo de ítem en el nombre del archivo
+// Permite reconstruir el mapa ítem→archivo leyendo la carpeta de Drive.
+//   [IT02] foto.jpg   → ítem 2 (índice 1)
+//   [IT02-05] foto.jpg → ítems 2 y 5
+//   [GRAL] foto.jpg   → general / todos los ítems
+// ═════════════════════════════════════════════════════════════
+function _prefijoItem(itemsIdx) {
+  if (!itemsIdx || !itemsIdx.length) return '[GRAL] ';
+  var nums = itemsIdx.map(function(i){ var n = Number(i) + 1; return (n < 10 ? '0' : '') + n; });
+  return '[IT' + nums.join('-') + '] ';
+}
+function _idxDesdeNombre(nombre, totalItems) {
+  var m = String(nombre || '').match(/^\[IT([\d\-]+)\]/i);
+  if (m) return m[1].split('-').map(function(x){ return parseInt(x, 10) - 1; }).filter(function(n){ return !isNaN(n) && n >= 0; });
+  if (/^\[GRAL\]/i.test(nombre || '')) {
+    var all = [];
+    for (var i = 0; i < (totalItems || 0); i++) all.push(i);
+    return all;
+  }
+  return null;   // archivo viejo, sin prefijo
+}
+function _subcarpeta(padre, nombre) {
+  var it = DriveApp.getFoldersByName(padre);
+  while (it.hasNext()) {
+    var f = it.next();
+    var sub = f.getFoldersByName(nombre);
+    if (sub.hasNext()) return sub.next();
+  }
+  return null;
+}
+// Reindexa las carpetas de Drive de una SC y reescribe los links en Supabase.
+// URL:  ...exec?a=reindex&sc=SCSSMA-2026-0016
+function _reindexarSC(numSC) {
+  if (!numSC) return _pagina('Falta el N° de SC', 'No se indicó qué solicitud reparar.', '#dc2626');
+  var comp = _sbGet('solicitudes_compra?num_sc=eq.' + encodeURIComponent(numSC) + '&select=items');
+  var totalItems = 0;
+  if (comp && comp[0] && comp[0].items) totalItems = String(comp[0].items).split('\n').filter(function(l){ return l.trim(); }).length;
+
+  var res = { fotos: 0, presup: 0 };
+  var body = {};
+
+  var gSC = _subcarpeta('FOTOS MUESTRAS SC', numSC);
+  if (gSC) {
+    try { gSC.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    body.drive_fotos_url = gSC.getUrl();
+    var mapF = {}, itF = gSC.getFiles();
+    while (itF.hasNext()) {
+      var f = itF.next();
+      try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+      res.fotos++;
+      var idxs = _idxDesdeNombre(f.getName(), totalItems);
+      if (!idxs) continue;
+      idxs.forEach(function(ix){ var k = String(ix); if (!mapF[k]) mapF[k] = []; mapF[k].push({ name: f.getName(), url: f.getUrl() }); });
+    }
+    if (_keys(mapF).length) body.fotos_map = mapF;
+  }
+  var fSC = _subcarpeta('PRESUPUESTOS SC', numSC);
+  if (fSC) {
+    try { fSC.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    body.drive_presup_url = fSC.getUrl();
+    var mapP = {}, itP = fSC.getFiles();
+    while (itP.hasNext()) {
+      var g = itP.next();
+      try { g.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+      res.presup++;
+      var ip = _idxDesdeNombre(g.getName(), totalItems);
+      if (!ip) continue;
+      ip.forEach(function(ix){ var k = String(ix); if (!mapP[k]) mapP[k] = []; mapP[k].push({ name: g.getName(), url: g.getUrl() }); });
+    }
+    if (_keys(mapP).length) body.presup_map = mapP;
+  }
+
+  if (!_keys(body).length) {
+    return _pagina('No se encontraron archivos',
+      'No hay carpeta en Drive para la solicitud <b>' + _esc(numSC) + '</b>.<br><br>'
+      + 'Es decir: <b>las fotos/presupuestos nunca llegaron a guardarse</b> desde el Formulario SC. '
+      + 'Volvé a cargarlos desde el formulario o subilos a mano a «FOTOS MUESTRAS SC / ' + _esc(numSC) + '».', '#dc2626');
+  }
+  _keys(body).forEach(function(k){ var one = {}; one[k] = body[k]; _sbPatchSC(numSC, one); });
+  return _pagina('✓ Adjuntos reparados',
+    'Solicitud <b>' + _esc(numSC) + '</b>:<br>· Fotos encontradas: <b>' + res.fotos + '</b><br>· Presupuestos: <b>' + res.presup + '</b><br><br>'
+    + 'Los enlaces quedaron actualizados. Volvé al Centro de Control y recargá la solicitud.'
+    + (res.fotos && !body.fotos_map ? '<br><br><i>Nota: los archivos no tienen el prefijo de ítem (son anteriores a esta versión), '
+      + 'por eso el badge abrirá la carpeta en lugar del archivo puntual.</i>' : ''), '#16a34a');
 }
