@@ -8906,10 +8906,80 @@ function exportarPA() {
   XLSX.writeFile(wb, 'nielsen_PA_' + new Date().toISOString().slice(0,10) + '.xlsx');
 }
 
+// Trae TODAS las solicitudes de Supabase (pagina de a 1000; sbSelect cortaba en 1000)
+async function _sbSelectAllSC() {
+  const headers = {'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY};
+  const PAGE = 1000;
+  let all = [];
+  try {
+    for (let guard = 0; guard < 100; guard++) {          // tope: 100k filas
+      const r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra?select=*&order=id.asc'
+        + '&limit=' + PAGE + '&offset=' + (guard * PAGE), { headers, cache:'no-store' });
+      if (!r.ok) return (guard === 0) ? null : all;      // error en la 1ª página → offline
+      const rows = await r.json();
+      if (!rows || !rows.length) break;
+      all = all.concat(rows);
+      if (rows.length < PAGE) break;
+    }
+    return all;
+  } catch(e) { console.warn('SB offline (SC):', e.message); return null; }
+}
+
+// ══════════════════════════════════════════════════
+// RECUPERAR PC — restaura los pedidos de compra del Historial Pedidos
+// Junta: nube (paginada, sin tope de 1000) + copia local + marcados como borrados
+// ══════════════════════════════════════════════════
+async function recuperarPCs() {
+  showToast('🔎 Buscando pedidos...', 'ok');
+
+  const nube = await _sbSelectAllSC();
+  if (!nube) { showToast('⛔ Sin conexión con la nube. Reintentá en un momento.', 'error'); return; }
+
+  // 1) Todo lo de la nube
+  const porNum = new Map();
+  nube.forEach(r => { const n = normSCCode(r.num_sc); if (n) porNum.set(n, r); });
+
+  // 2) Lo que sólo esté en la copia local (aunque el N° no esté en la nube)
+  let local = [];
+  try { local = JSON.parse(localStorage.getItem('nielsen_scs_2026') || '[]'); } catch(e) {}
+  const soloLocal = local.filter(sc => { const n = normSCCode(sc.numSC || sc.num || ''); return n && !porNum.has(n); });
+
+  // 3) ¿Hay SC marcadas como borradas que tengan PC cargado? Ofrecer restaurarlas.
+  const tomb = _getTombstones('nielsen_scs_deleted');
+  const conPC = nube.filter(r => (r.num_op || '').trim() && tomb.includes(normSCCode(r.num_sc)));
+  let restauradas = 0;
+  if (conPC.length) {
+    const lista = conPC.slice(0, 8).map(r => '· ' + normSCCode(r.num_sc) + ' → PC ' + r.num_op).join('\n');
+    if (confirm('Hay ' + conPC.length + ' solicitud(es) con N° PC que están marcadas como eliminadas:\n\n' + lista
+      + (conPC.length > 8 ? '\n…' : '') + '\n\n¿Restaurarlas al Historial Pedidos?')) {
+      const keep = tomb.filter(t => !conPC.some(r => normSCCode(r.num_sc) === t));
+      try { localStorage.setItem('nielsen_scs_deleted', JSON.stringify(keep)); } catch(e) {}
+      restauradas = conPC.length;
+    }
+  }
+
+  // 4) Re-subir a la nube lo que sólo estaba en local
+  let subidas = 0;
+  for (const sc of soloLocal) { if (await _sbInsertSC(sc)) subidas++; }
+
+  // 5) Recargar todo con la lógica normal (ya paginada) y repintar
+  await recargarSCsDesdeLS();
+  renderHistorialPedidos();
+  renderHistorial();
+  actualizarContadores();
+
+  const conPCTotal = scs.filter(s => (s.numOP || s.numPC || '').trim()).length;
+  const detalle = [];
+  if (subidas)     detalle.push(subidas + ' re-subida(s) a la nube');
+  if (restauradas) detalle.push(restauradas + ' restaurada(s)');
+  showToast('✅ ' + scs.length + ' solicitudes · ' + conPCTotal + ' con N° PC'
+    + (detalle.length ? ' — ' + detalle.join(' · ') : ''), 'ok');
+}
+
 // ── Cargar SCs desde Supabase (fuente principal) + localStorage (fallback) ──
 async function recargarSCsDesdeLS() {
-  // 1. Intentar Supabase primero
-  const rows = await sbSelect('solicitudes_compra');
+  // 1. Intentar Supabase primero — TODAS las filas (paginado)
+  const rows = await _sbSelectAllSC();
   if (rows && Array.isArray(rows)) {
     // Convertir snake_case → camelCase para compatibilidad con el resto del CC
     let fromDB = rows.map(r => ({
@@ -10428,6 +10498,16 @@ window.addEventListener('orientationchange', () => {
         </div>
         <button onclick="cerrarSettings();recuperarSCsFaltantes()" style="padding:7px 14px;border-radius:7px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:var(--green);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
           Recuperar
+        </button>
+
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:rgba(232,93,37,.07);border:1px solid rgba(232,93,37,.3);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--or)">🧾 Recuperar PC</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Trae todos los pedidos de compra desde la nube y restaura los que falten en el Historial Pedidos</div>
+        </div>
+        <button onclick="cerrarSettings();recuperarPCs()" style="padding:7px 14px;border-radius:7px;border:1.5px solid var(--or);background:rgba(232,93,37,.12);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+          Recuperar PC
         </button>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
