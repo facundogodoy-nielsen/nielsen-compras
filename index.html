@@ -5001,6 +5001,67 @@ function listaPedidoPA() {
 let _selPrintPA = null;
 function _escPA(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+// ══════════════════════════════════════════════════
+// IMPRESIÓN / PDF — funciona en móvil (sin depender de pop-ups)
+// Usa un <iframe> oculto en la misma página; si algo falla, ofrece
+// abrir el documento en una pestaña para imprimir/guardar a mano.
+// ══════════════════════════════════════════════════
+function _printHTML(innerHTML, titulo){
+  var doc = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<title>' + (titulo||'Impresión') + '</title><style>'
+    + 'body{font-family:Arial,Helvetica,sans-serif;padding:20px;color:#222;font-size:13px;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+    + 'table{width:100%;border-collapse:collapse;margin:10px 0}'
+    + 'th{background:#E8612A;color:#fff;padding:7px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+    + 'td{padding:6px 10px;border-bottom:1px solid #eee}'
+    + 'button{display:none!important}'
+    + '@media print{body{padding:10px}}'
+    + '</style></head><body>' + innerHTML + '</body></html>';
+
+  // 1) Camino principal: iframe oculto en la MISMA página (anda en iOS/Android)
+  try {
+    var old = document.getElementById('_print_frame');
+    if (old) old.remove();
+    var f = document.createElement('iframe');
+    f.id = '_print_frame';
+    f.setAttribute('aria-hidden','true');
+    f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    document.body.appendChild(f);
+    var fw = f.contentWindow;
+    fw.document.open(); fw.document.write(doc); fw.document.close();
+    var done = false;
+    var go = function(){
+      if (done) return; done = true;
+      try {
+        fw.focus();
+        fw.print();
+      } catch(e) { _printFallback(doc); }
+      setTimeout(function(){ try{ f.remove(); }catch(_){} }, 2000);
+    };
+    // esperar a que el iframe cargue (imágenes/fuentes) antes de imprimir
+    if (f.addEventListener) f.addEventListener('load', function(){ setTimeout(go, 350); });
+    setTimeout(go, 900);   // respaldo por si 'load' no dispara
+    return;
+  } catch(e) {
+    _printFallback(doc);
+  }
+}
+// Respaldo: abrir el documento en una pestaña; el usuario usa "Compartir → Imprimir/PDF"
+function _printFallback(doc){
+  try {
+    var w = window.open('', '_blank');
+    if (w) { w.document.open(); w.document.write(doc + '<script>setTimeout(function(){try{window.print()}catch(e){}},500)<\/script>'); w.document.close(); return; }
+  } catch(e){}
+  // Último recurso: data-URL (para navegadores muy restrictivos)
+  try {
+    var url = 'data:text/html;charset=utf-8,' + encodeURIComponent(doc);
+    var a = window.open(url, '_blank');
+    if (!a && typeof showToast === 'function') showToast('Permití ventanas emergentes para imprimir', 'error');
+  } catch(e){
+    if (typeof showToast === 'function') showToast('No se pudo abrir la impresión en este navegador', 'error');
+  }
+}
+
 function imprimirSeleccionPA(){
   const pa = paData[window._paIdx]; if(!pa){ showToast('No hay PA seleccionado','error'); return; }
   const items = pa.items || [];
@@ -5075,29 +5136,16 @@ function _ejecutarImprimirSeleccionPA(){
   });
   const numTxt = (typeof normPA==='function' ? normPA(pa.numPA||'') : (pa.numPA||''));
   const fecha = pa.fecha ? formatFecha(pa.fecha) : '';
-  const win = window.open('','_blank','width=820,height=720');
-  if(!win){ alert('Bloqueador de popups activo — permití ventanas emergentes'); return; }
-  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+_escPA(numTxt)+'</title><style>'
-    + 'body{font-family:Arial,sans-serif;padding:24px;color:#222;font-size:13px}'
-    + 'table{width:100%;border-collapse:collapse;margin-top:10px}'
-    + '.hdr{border-bottom:2px solid #E8612A;padding-bottom:10px;margin-bottom:14px}'
-    + '.brand{font-weight:800;letter-spacing:2px;color:#E8612A;font-size:14px}'
-    + '.num{font-size:22px;font-weight:800;color:#E8612A;letter-spacing:1px;margin-top:6px}'
-    + '.meta{color:#555;font-size:12px;margin:2px 0}'
-    + 'th{background:#fff;border-bottom:2px solid #999;padding:6px 8px;text-align:left}'
-    + '</style></head><body>'
-    + '<div class="hdr"><div class="brand">NIELSEN LOGÍSTICA Y EXPEDICIONES S.A.</div></div>'
-    + '<div class="num">'+_escPA(numTxt)+'</div>'
-    + '<div class="meta"><b>Campamento:</b> '+_escPA(pa.campamento||'—')+'</div>'
-    + '<div class="meta"><b>Solicitante:</b> '+_escPA(pa.solicitante||'—')+'</div>'
-    + (fecha?'<div class="meta"><b>Fecha:</b> '+fecha+'</div>':'')
-    + '<div class="meta"><b>Ítems:</b> '+totalItems+'</div>'
+  const contenido = '<div style="border-bottom:2px solid #E8612A;padding-bottom:10px;margin-bottom:14px"><div style="font-weight:800;letter-spacing:2px;color:#E8612A;font-size:14px">NIELSEN LOGÍSTICA Y EXPEDICIONES S.A.</div></div>'
+    + '<div style="font-size:22px;font-weight:800;color:#E8612A;letter-spacing:1px;margin-top:6px">'+_escPA(numTxt)+'</div>'
+    + '<div style="color:#555;font-size:12px;margin:2px 0"><b>Campamento:</b> '+_escPA(pa.campamento||'—')+'</div>'
+    + '<div style="color:#555;font-size:12px;margin:2px 0"><b>Solicitante:</b> '+_escPA(pa.solicitante||'—')+'</div>'
+    + (fecha?'<div style="color:#555;font-size:12px;margin:2px 0"><b>Fecha:</b> '+fecha+'</div>':'')
+    + '<div style="color:#555;font-size:12px;margin:2px 0"><b>Ítems:</b> '+totalItems+'</div>'
     + '<table><thead><tr><th>Artículo</th><th style="text-align:center">Cant.</th><th>U.M.</th></tr></thead><tbody>'
-    + rowsHTML
-    + '</tbody></table>'
-    + '<scr'+'ipt>setTimeout(function(){window.print();window.close();},400);<'+'/scr'+'ipt>'
-    + '</body></html>');
-  win.document.close();
+    + rowsHTML + '</tbody></table>';
+  var _o=document.getElementById('sel-print-overlay'); if(_o) _o.remove();
+  _printHTML(contenido, _escPA(numTxt));
   const ov=document.getElementById('sel-print-overlay'); if(ov) ov.remove();
 }
 
@@ -5147,31 +5195,17 @@ actualizarContadores();
 
 // ══ IMPRIMIR ══
 function imprimirSC() {
+  if (document.getElementById('modal-sc-body')) { imprimirModalSC(); return; }
   window.print();
 }
 function imprimirModalSC() {
-  // Get full modal content including header (numSC/numPA) and body
   const numEl  = document.getElementById('modal-sc-num');
   const subEl  = document.getElementById('modal-sc-sub');
   const bodyEl = document.getElementById('modal-sc-body');
   if (!bodyEl) return;
   const headerHTML = `<div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:800;letter-spacing:2px;color:#E8612A;margin-bottom:${subEl&&subEl.textContent?'2px':'16px'}">${numEl?numEl.textContent:''}</div>${subEl&&subEl.textContent?`<div style="font-size:13px;color:#666;margin-bottom:14px">${subEl.textContent}</div>`:''}`;
   const logoLine = `<div style="border-bottom:2px solid #E8612A;padding-bottom:10px;margin-bottom:18px"><b style="font-family:'Barlow Condensed',sans-serif;font-size:14px;letter-spacing:2px;color:#E8612A">NIELSEN LOGÍSTICA Y EXPEDICIONES S.A.</b></div>`;
-  const content = logoLine + headerHTML + bodyEl.innerHTML;
-  const win = window.open('','_blank','width=800,height=700');
-  if (!win) { alert('Bloqueador de popups activo — permite ventanas emergentes'); return; }
-  const printTag = '<scr'+'ipt>setTimeout(()=>{window.print();window.close();},400);<'+'/scr'+'ipt>';
-  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Imprimir</title>'
-    +'<style>'
-    +'body{font-family:Arial,sans-serif;padding:24px;color:#222;font-size:13px;}'
-    +'table{width:100%;border-collapse:collapse;margin:12px 0;}'
-    +'th{background:#E8612A;color:white;padding:7px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;}'
-    +'td{padding:7px 10px;border-bottom:1px solid #eee;}'
-    +'button{display:none!important;}'
-    +'@media print{body{padding:12px;}}'
-    +'</style>'
-    +'</head><body>'+content+printTag+'</body></html>');
-  win.document.close();
+  _printHTML(logoLine + headerHTML + bodyEl.innerHTML, (numEl?numEl.textContent:'') || 'Solicitud');
 }
 
 // ══ EXPORTAR EXCEL ══
