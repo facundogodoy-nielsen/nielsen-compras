@@ -1229,6 +1229,40 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 #view-proyectos .estado.ejecucion{background:rgba(60,157,110,.18);color:#7fd0a6}
 #view-proyectos .estado.finalizado{background:var(--s3);color:var(--muted)}
 
+/* ===== DETALLE DEL PROYECTO — paneles, tablas, calendario, gantt ===== */
+/* Paneles grandes (Materiales, Cotizaciones, Presupuesto global, Planos, Gantt, Calendario) */
+#view-proyectos .panel{background:var(--s1)!important;border:1px solid var(--border2)!important;box-shadow:none!important}
+#view-proyectos .panel h3,#view-proyectos .panel h3 .lbl,#view-proyectos .section-title{color:var(--text)!important}
+#view-proyectos .muted{color:var(--muted)!important}
+/* Cabeceras de tabla y celdas */
+#view-proyectos thead,#view-proyectos thead tr{background:var(--s3)!important}
+#view-proyectos th{background:var(--s3)!important;color:var(--muted)!important;border-bottom:1px solid var(--border2)!important}
+#view-proyectos td{border-bottom:1px solid var(--border)!important;color:var(--text)!important}
+#view-proyectos tr:hover td{background:rgba(255,255,255,.02)!important}
+/* Cajas de subtotal / total (naranja claro → naranja translúcido) */
+#view-proyectos .total-item{background:rgba(232,97,26,.10)!important;border:1px solid rgba(232,97,26,.30)!important}
+#view-proyectos .total-item .l{color:var(--or)!important}
+#view-proyectos .total-item .v{color:var(--text)!important}
+/* Chips de "embebido"/referencia */
+#view-proyectos .tag-embed,#view-proyectos .tag,#view-proyectos .ref{background:var(--s3)!important;color:var(--muted)!important;border:1px solid var(--border2)!important}
+/* Archivos (planos / cotizaciones) */
+#view-proyectos .file-item{background:var(--s2)!important;border:1px solid var(--border)!important}
+#view-proyectos .file-meta,#view-proyectos .file-item .fn{color:var(--text)!important}
+/* Zona de arrastre (dropzone) */
+#view-proyectos .dropzone,#view-proyectos [id^="drop"]{background:var(--s2)!important;border:2px dashed var(--border2)!important;color:var(--muted)!important}
+#view-proyectos .dropzone:hover,#view-proyectos [id^="drop"]:hover{border-color:var(--or)!important}
+/* Calendario */
+#view-proyectos .cal-cell,#view-proyectos .calcell,#view-proyectos .cal-day{background:var(--s2)!important;border:1px solid var(--border)!important}
+#view-proyectos .cal-daynum{color:var(--muted)!important}
+#view-proyectos .cal-dow{color:var(--muted)!important}
+#view-proyectos .cal-head,#view-proyectos .cal-title{color:var(--text)!important}
+#view-proyectos .cal-cell.hoy,#view-proyectos .cal-day.hoy{border-color:var(--or)!important;box-shadow:inset 0 0 0 1px var(--or)!important}
+#view-proyectos .cal-day.other{background:var(--s3)!important;color:var(--muted)!important;opacity:.6}
+#view-proyectos .cal-grid,#view-proyectos .cal-body,#view-proyectos .calbody{background:transparent!important}
+/* Gantt */
+#view-proyectos .gantt-grid,#view-proyectos .gantt-track,#view-proyectos .gantt-row{background:transparent!important;border-color:var(--border)!important}
+#view-proyectos .gantt-months,#view-proyectos .gantt-month,#view-proyectos .gantt-label{color:var(--muted)!important;border-color:var(--border)!important}
+
 
 
 
