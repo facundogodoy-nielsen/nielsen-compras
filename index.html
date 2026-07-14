@@ -1189,6 +1189,46 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 #view-proyectos .card,#view-proyectos .modal-box,#view-proyectos .stat,#view-proyectos .tabpane,#view-proyectos .rubro-box,#view-proyectos table,#view-proyectos .toolbar .search input,#view-proyectos .field input,#view-proyectos .field select,#view-proyectos .field textarea,#view-proyectos input,#view-proyectos select,#view-proyectos textarea{background:var(--s2);color:var(--text);border-color:var(--border2)}
 #view-proyectos th{color:#fff}#view-proyectos .muted{color:var(--muted)}#view-proyectos header{display:none!important}
 
+/* ===== OVERRIDES DE COLOR — homogéneo con el Centro de Control ===== */
+#view-proyectos .stat{background:var(--s2)!important;border:1px solid var(--border2);box-shadow:none!important}
+#view-proyectos .stat .lbl{color:var(--muted)!important}
+#view-proyectos .stat .val{color:var(--text)!important}
+#view-proyectos .stat-row{background:transparent!important}
+#view-proyectos .toolbar .search input,
+#view-proyectos input,#view-proyectos select,#view-proyectos textarea{
+  background:var(--s3)!important;color:var(--text)!important;border:1px solid var(--border2)!important}
+#view-proyectos .toolbar .search::before{opacity:.6}
+#view-proyectos .btn-sec{background:var(--s2)!important;color:var(--text)!important;border:1px solid var(--border2)!important}
+#view-proyectos .btn-sec:hover{border-color:var(--or)!important}
+#view-proyectos .btn-ghost{color:var(--muted)!important;background:transparent!important}
+/* Modal */
+#view-proyectos .modal,#view-proyectos .modal-box{background:var(--s1)!important;border:1px solid var(--border2);box-shadow:0 20px 60px rgba(0,0,0,.5)!important}
+#view-proyectos .modal-body{background:transparent!important}
+#view-proyectos .modal-head{border-bottom:1px solid var(--border)!important}
+#view-proyectos .modal-head h2{color:var(--text)!important}
+#view-proyectos .modal-foot{border-top:1px solid var(--border)!important;background:transparent!important}
+#view-proyectos .field label{color:var(--muted)!important}
+#view-proyectos .field .hint,#view-proyectos .hint{color:var(--muted)!important}
+#view-proyectos .close-x{color:var(--muted)!important;background:transparent!important}
+/* Cards de proyecto */
+#view-proyectos .card{background:var(--s2)!important;border:1px solid var(--border)!important;box-shadow:none!important}
+#view-proyectos .card:hover{border-color:var(--or)!important;box-shadow:0 6px 24px rgba(0,0,0,.3)!important}
+#view-proyectos .card-body,#view-proyectos .card-meta{background:transparent!important;color:var(--text)}
+#view-proyectos .card-meta{color:var(--muted)!important}
+#view-proyectos .proj-head{background:transparent!important;color:var(--text)}
+#view-proyectos .tabpane,#view-proyectos .rubro-box{background:var(--s2)!important;border:1px solid var(--border)!important}
+#view-proyectos table{background:transparent!important}
+#view-proyectos td{border-color:var(--border)!important}
+#view-proyectos .tab{color:var(--muted)!important}
+#view-proyectos .tab.active{color:var(--or)!important;border-bottom-color:var(--or)!important}
+#view-proyectos .tabs,#view-proyectos .rubro-tabs,#view-proyectos .cal-head{border-color:var(--border)!important}
+#view-proyectos .empty{color:var(--muted)!important}
+/* estados badge — más contraste sobre fondo oscuro */
+#view-proyectos .estado.planificacion{background:rgba(62,124,177,.18);color:#8fc0e8}
+#view-proyectos .estado.compras{background:rgba(232,97,26,.18);color:#f3a26f}
+#view-proyectos .estado.ejecucion{background:rgba(60,157,110,.18);color:#7fd0a6}
+#view-proyectos .estado.finalizado{background:var(--s3);color:var(--muted)}
+
 
 
 
@@ -11365,6 +11405,10 @@ window.addEventListener('orientationchange', () => {
 window.PROY=(function(){'use strict';
 
 /* =================== ESTADO / PERSISTENCIA =================== */
+const RUBROS_DEFAULT=['ELECTRICIDAD','SEGURIDAD','PLOMERÍA/DESAGÜE','CLOACA/SANEAMIENTO','INSUMOS','MEDIO AMBIENTE','MOBILIARIO'];
+let current=null;      // proyecto en detalle
+let curRubro=null;     // rubro activo
+let calDate=new Date();
 const PROY_LS='nielsen_proyectos_cache';
 let DB=[]; let seq=0; let _proyReady=false;
 function _proyToRow(p){ return { id:p.id, num:p.num||'', nombre:p.nombre||'', estado:p.estado||'planificacion', data:p }; }
