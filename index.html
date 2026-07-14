@@ -1271,6 +1271,14 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 /* Fila TOTAL de la tabla (tfoot) — quedaba blanca */
 #view-proyectos tfoot td{background:rgba(232,97,26,.10)!important;color:var(--text)!important;border-top:2px solid rgba(232,97,26,.35)!important}
 #view-proyectos tr.total td{background:rgba(232,97,26,.10)!important;color:var(--text)!important}
+/* Banda superior de la tarjeta de proyecto (degradado gris → navy del CC) */
+#view-proyectos .card-top{background:linear-gradient(135deg,var(--s3),var(--s2))!important;border-bottom:2px solid var(--or)!important}
+#view-proyectos .card-num{color:var(--or)!important}
+#view-proyectos .card-nombre{color:var(--text)!important}
+#view-proyectos .card-meta b{color:var(--text)!important}
+/* Botón Eliminar — rojo translúcido, coherente con el tablero */
+#view-proyectos .btn-danger{background:rgba(220,66,59,.14)!important;color:#f08a84!important;border:1px solid rgba(220,66,59,.40)!important}
+#view-proyectos .btn-danger:hover{background:var(--red)!important;color:#fff!important;border-color:var(--red)!important}
 
 
 
@@ -11224,6 +11232,15 @@ window.addEventListener('orientationchange', () => {
           Recuperar PC
         </button>
       </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:rgba(232,93,37,.07);border:1px solid rgba(232,93,37,.3);border-radius:8px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--or)">🏗️ Editar datos de proyectos</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Modificá el N° de proyecto; el cambio impacta en la nube y en todos los dispositivos</div>
+        </div>
+        <button onclick="cerrarSettings();PROY.abrirEditorNums()" style="padding:7px 14px;border-radius:7px;border:1.5px solid var(--or);background:rgba(232,93,37,.12);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+          Editar N°
+        </button>
+      </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--text)">🔧 Reparar ítems PA</div>
@@ -12055,7 +12072,56 @@ async function initProyectos(){
   if(!_proyInit){ _proyInit=true; try{ if(document.getElementById('dropCot'))setupDrop('dropCot',handleCot);}catch(e){} try{ if(document.getElementById('dropPlanos'))setupDrop('dropPlanos',handlePlanos);}catch(e){} }
 }
 
-return {addItem:addItem, borrarEtapa:borrarEtapa, borrarRubro:borrarRubro, calHoy:calHoy, calMove:calMove, cambiarEstado:cambiarEstado, closeModal:closeModal, delCot:delCot, delItem:delItem, delPlano:delPlano, doExport:doExport, editarProyecto:editarProyecto, eliminarProyecto:eliminarProyecto, goList:goList, guardarEtapa:guardarEtapa, guardarProyecto:guardarProyecto, guardarRubro:guardarRubro, initProyectos:initProyectos, openCargarLista:openCargarLista, openDetail:openDetail, openEtapa:openEtapa, openExport:openExport, openNuevo:openNuevo, openRubro:openRubro, procesarLista:procesarLista, renderList:renderList, selRubro:selRubro, setTab:setTab, upCot:upCot, upItem:upItem};
+// ══ Editar N° de proyecto desde Ajustes (impacta en la nube) ══
+async function abrirEditorNums(){
+  await cargarProyectos();
+  let ov=document.getElementById('proy-editnum-ov');
+  if(!ov){ ov=document.createElement('div'); ov.id='proy-editnum-ov'; document.body.appendChild(ov); }
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px';
+  const filas = DB.slice().sort((a,b)=>(b.num||'').localeCompare(a.num||'')).map(p=>
+    '<div style="display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border)">'
+    +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_proyEsc(p.nombre||'—')+'</div>'
+    +'<div style="font-size:10px;color:var(--muted)">'+_proyEsc(p.estado||'')+'</div></div>'
+    +'<input id="en_'+p.id+'" value="'+_proyEsc(p.num||'')+'" style="width:150px;padding:7px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--s3);color:var(--text);font-family:var(--ff);font-size:12px;font-weight:700">'
+    +'<button onclick="PROY.guardarNum(\''+p.id+'\')" style="padding:7px 12px;border-radius:6px;border:1px solid var(--or);background:rgba(232,97,26,.12);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Guardar</button>'
+    +'</div>').join('');
+  ov.innerHTML='<div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;max-width:560px;width:100%;max-height:85vh;display:flex;flex-direction:column">'
+    +'<div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">'
+    +'<div style="font-family:var(--ff);font-weight:800;color:var(--or);font-size:15px">🏗️ Editar N° de proyectos</div>'
+    +'<button onclick="var o=document.getElementById(\'proy-editnum-ov\');if(o)o.remove();" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button></div>'
+    +'<div style="padding:10px 18px 4px;font-size:11px;color:var(--muted)">Modificá el N° de cada proyecto. El cambio se guarda en la nube y se refleja en todos los dispositivos. El identificador interno no cambia, así que no se pierde ningún dato del proyecto.</div>'
+    +'<div style="padding:6px 18px 12px;overflow:auto">'+(filas||'<div style="padding:20px;text-align:center;color:var(--muted)">No hay proyectos cargados.</div>')+'</div>'
+    +'</div>';
+}
+async function guardarNum(id){
+  const inp=document.getElementById('en_'+id);
+  if(!inp) return;
+  const nuevo=inp.value.trim();
+  if(!nuevo){ toast('El N° no puede quedar vacío'); return; }
+  const p=DB.find(x=>x.id===id);
+  if(!p){ toast('Proyecto no encontrado'); return; }
+  // evitar duplicados
+  if(DB.some(x=>x.id!==id && (x.num||'').trim().toUpperCase()===nuevo.toUpperCase())){
+    toast('Ya existe otro proyecto con ese N°'); return;
+  }
+  p.num=nuevo;
+  // impactar en la nube: escribir num (columna) + data.num (jsonb), sin tocar el id
+  try{
+    await fetch(_SB_URL+'/rest/v1/proyectos?id=eq.'+encodeURIComponent(id),{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=minimal'},
+      body:JSON.stringify({num:nuevo, data:p})
+    });
+    try{ localStorage.setItem(PROY_LS, JSON.stringify(DB)); }catch(e){}
+    // si el proyecto está abierto en detalle, refrescar su encabezado
+    if(current && current.id===id){ current.num=nuevo; try{ renderDetail(); }catch(e){} }
+    try{ renderList(); }catch(e){}
+    toast('N° actualizado a '+nuevo);
+    inp.style.borderColor='var(--green)';
+  }catch(e){ console.warn('guardarNum',e); toast('No se pudo guardar en la nube'); }
+}
+
+return {abrirEditorNums:abrirEditorNums, guardarNum:guardarNum, addItem:addItem, borrarEtapa:borrarEtapa, borrarRubro:borrarRubro, calHoy:calHoy, calMove:calMove, cambiarEstado:cambiarEstado, closeModal:closeModal, delCot:delCot, delItem:delItem, delPlano:delPlano, doExport:doExport, editarProyecto:editarProyecto, eliminarProyecto:eliminarProyecto, goList:goList, guardarEtapa:guardarEtapa, guardarProyecto:guardarProyecto, guardarRubro:guardarRubro, initProyectos:initProyectos, openCargarLista:openCargarLista, openDetail:openDetail, openEtapa:openEtapa, openExport:openExport, openNuevo:openNuevo, openRubro:openRubro, procesarLista:procesarLista, renderList:renderList, selRubro:selRubro, setTab:setTab, upCot:upCot, upItem:upItem};
 })();
 function initProyectos(){return window.PROY.initProyectos();}
 </script>
