@@ -1262,6 +1262,15 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 /* Gantt */
 #view-proyectos .gantt-grid,#view-proyectos .gantt-track,#view-proyectos .gantt-row{background:transparent!important;border-color:var(--border)!important}
 #view-proyectos .gantt-months,#view-proyectos .gantt-month,#view-proyectos .gantt-label{color:var(--muted)!important;border-color:var(--border)!important}
+/* Pestañas de rubros (inactivas quedaban blancas) */
+#view-proyectos .rubro-tab{background:var(--s3)!important;color:var(--muted)!important;border:1px solid var(--border2)!important}
+#view-proyectos .rubro-tab:hover{border-color:var(--or)!important;color:var(--text)!important}
+#view-proyectos .rubro-tab.active{background:var(--or)!important;color:#fff!important;border-color:var(--or)!important}
+#view-proyectos .rubro-tab .cnt{background:rgba(0,0,0,.28)!important;color:var(--text)!important}
+#view-proyectos .rubro-tab.active .cnt{background:rgba(255,255,255,.28)!important;color:#fff!important}
+/* Fila TOTAL de la tabla (tfoot) — quedaba blanca */
+#view-proyectos tfoot td{background:rgba(232,97,26,.10)!important;color:var(--text)!important;border-top:2px solid rgba(232,97,26,.35)!important}
+#view-proyectos tr.total td{background:rgba(232,97,26,.10)!important;color:var(--text)!important}
 
 
 
