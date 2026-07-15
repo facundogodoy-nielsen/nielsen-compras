@@ -1371,13 +1371,13 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 
 #view-proyectos .estado{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;letter-spacing:.3px}
 
-#view-proyectos .estado.planificacion{background:#e8eef5;color:var(--azul)}
+#view-proyectos .estado.planificacion{background:rgba(62,124,177,.18);color:#8fc0e8}
 
-#view-proyectos .estado.compras{background:var(--naranja-claro);color:var(--naranja-osc)}
+#view-proyectos .estado.compras{background:rgba(232,97,26,.18);color:#f3a26f}
 
-#view-proyectos .estado.ejecucion{background:#e6f3ec;color:var(--verde)}
+#view-proyectos .estado.ejecucion{background:rgba(60,157,110,.18);color:#7fd0a6}
 
-#view-proyectos .estado.finalizado{background:var(--gris-claro);color:var(--gris)}
+#view-proyectos .estado.finalizado{background:var(--s3);color:var(--muted)}
 
 
 #view-proyectos .empty{text-align:center;padding:70px 20px;color:var(--gris-medio)}
@@ -11493,7 +11493,7 @@ function _proyUpsert(p){
       headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'resolution=merge-duplicates,return=minimal'},
       body:JSON.stringify(_proyToRow(p))}); }catch(e){ console.warn('proy upsert',e); } }, 500);
 }
-async function _proyDelete(id){ try{ await fetch(_SB_URL+'/rest/v1/proyectos?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY}}); }catch(e){} }
+async function _proyDelete(id){ try{ const r=await fetch(_SB_URL+'/rest/v1/proyectos?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY}}); return r.ok; }catch(e){ return false; } }
 function saveSeq(){}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 
@@ -11574,6 +11574,7 @@ function renderList(){
 let editId=null;
 function openNuevo(){
   editId=null;
+  _recalcSeq();                                  // asegura correlativo tras altas/bajas
   document.getElementById('mpTitle').textContent='Nuevo proyecto';
   document.getElementById('mpNum').value=nextNum();
   ['mpNombre','mpCliente','mpUbic','mpFini','mpFfin','mpResp','mpNotas'].forEach(i=>document.getElementById(i).value='');
@@ -11610,8 +11611,10 @@ function guardarProyecto(){
     if(current&&current.id===editId){current=p;renderDetail()}
     toast('Proyecto actualizado');
   }else{
-    seq++;saveSeq();
-    const p={id:uid(),num:document.getElementById('mpNum').value,estado:'planificacion',creado:new Date().toISOString(),
+    _recalcSeq();                              // correlativo = mayor N° existente
+    const numGenerado = nextNum();             // = mayor+1 (seq+1)
+    seq++;                                      // reservar ese número
+    const p={id:uid(),num:numGenerado,estado:'planificacion',creado:new Date().toISOString(),
       rubros:{},planos:[],etapas:[],...data};
     RUBROS_DEFAULT.forEach(r=>p.rubros[r]={items:[],cotiz:[]});
     DB.push(p); _proyUpsert(p); try{ localStorage.setItem(PROY_LS, JSON.stringify(DB)); }catch(e){}
@@ -11621,10 +11624,25 @@ function guardarProyecto(){
   editId?null:renderList();
   renderList();
 }
-function eliminarProyecto(){
-  if(current&&current.id)_proyDelete(current.id);
+async function eliminarProyecto(){
+  if(!current||!current.id){ toast('No hay proyecto abierto'); return; }
   if(!confirm('¿Eliminar el proyecto '+current.num+'? Esta acción no se puede deshacer.'))return;
-  DB=DB.filter(x=>x.id!==current.id);save();goList();toast('Proyecto eliminado');
+  const id=current.id, num=current.num;
+  // 1) sacar de memoria y guardar caché local (SIN reintroducirlo en la nube)
+  DB=DB.filter(x=>x.id!==id);
+  try{ localStorage.setItem(PROY_LS, JSON.stringify(DB)); }catch(e){}
+  current=null;
+  // 2) borrar de la nube y confirmar
+  const ok=await _proyDelete(id);
+  // 3) recalcular el correlativo y refrescar
+  _recalcSeq();
+  goList(); renderList();
+  toast(ok ? ('Proyecto '+num+' eliminado') : ('Eliminado localmente — sin conexión con la nube'));
+}
+// Recalcula el correlativo (seq) = mayor número de proyecto existente
+function _recalcSeq(){
+  seq=0;
+  DB.forEach(p=>{ const m=/(\d+)$/.exec(p.num||''); if(m) seq=Math.max(seq, parseInt(m[1],10)); });
 }
 function cambiarEstado(){
   current.estado=document.getElementById('dEstado').value;save();renderChips();toast('Estado actualizado');
