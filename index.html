@@ -2277,6 +2277,18 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       </div>
     </div>
 
+    <div class="panel" style="border:1px solid var(--border2)">
+      <h3>
+        <span class="lbl">🔗 Solicitudes de compra asociadas</span>
+        <button class="btn btn-sec btn-sm" onclick="PROY.toggleSCPicker()" id="scPickBtn">＋ Asociar SC</button>
+      </h3>
+      <div id="scPickerBox" style="display:none;margin-bottom:12px;padding:12px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
+        <input id="scPickSearch" oninput="PROY.renderSCPicker()" placeholder="Buscar por N° SC, asunto o solicitante..." style="width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--s3);color:var(--text);font-family:var(--ff);font-size:12px;margin-bottom:8px">
+        <div id="scPickList" style="max-height:240px;overflow:auto"></div>
+      </div>
+      <div id="scAsociadas"></div>
+    </div>
+
     <div class="tabs">
       <button class="tab active" data-tab="presupuesto" onclick="PROY.setTab('presupuesto')">💰 Presupuesto</button>
       <button class="tab" data-tab="planos" onclick="PROY.setTab('planos')">📐 Planos y Diseño</button>
@@ -9724,6 +9736,7 @@ async function recargarSCsDesdeLS() {
       items:      r.items || '',
       obs:        r.obs || '',
       panolero:   r.panolero || '',
+      proyectoAsociado: r.proyecto_asociado || '',
       valeNum:    r.vale_num || '',
       estado:     r.estado || 'PENDIENTE',
       origen:     r.origen || '',
@@ -11671,6 +11684,7 @@ function renderDetail(){
   renderChips();
   renderRubroTabs();renderRubro();renderTotal();
   renderPlanos();renderGantt();renderCal();
+  renderSCAsociadas();
 }
 function renderChips(){
   const p=current;
@@ -12139,7 +12153,75 @@ async function guardarNum(id){
   }catch(e){ console.warn('guardarNum',e); toast('No se pudo guardar en la nube'); }
 }
 
-return {abrirEditorNums:abrirEditorNums, guardarNum:guardarNum, addItem:addItem, borrarEtapa:borrarEtapa, borrarRubro:borrarRubro, calHoy:calHoy, calMove:calMove, cambiarEstado:cambiarEstado, closeModal:closeModal, delCot:delCot, delItem:delItem, delPlano:delPlano, doExport:doExport, editarProyecto:editarProyecto, eliminarProyecto:eliminarProyecto, goList:goList, guardarEtapa:guardarEtapa, guardarProyecto:guardarProyecto, guardarRubro:guardarRubro, initProyectos:initProyectos, openCargarLista:openCargarLista, openDetail:openDetail, openEtapa:openEtapa, openExport:openExport, openNuevo:openNuevo, openRubro:openRubro, procesarLista:procesarLista, renderList:renderList, selRubro:selRubro, setTab:setTab, upCot:upCot, upItem:upItem};
+// ══ SC asociadas al proyecto (trazabilidad) ══
+function _scsCC(){ try{ return Array.isArray(window.scs)?window.scs:[]; }catch(e){ return []; } }
+function _scNum(sc){ return sc.numSC||sc.num||sc.num_sc||''; }
+function _scAsunto(sc){ return sc.osAsunto||sc.asunto||''; }
+function renderSCAsociadas(){
+  const box=document.getElementById('scAsociadas'); if(!box||!current) return;
+  const manual=(current.scs_asociadas||[]).map(String);
+  // SC que se asociaron desde el Formulario SC (campo proyecto_asociado == N° del proyecto)
+  const all=_scsCC();
+  const desdeForm=all.filter(sc=>String(sc.proyectoAsociado||sc.proyecto_asociado||'')===String(current.num)).map(sc=>String(_scNum(sc)));
+  const arr=Array.from(new Set([...manual,...desdeForm]));
+  if(!arr.length){ box.innerHTML='<div style="color:var(--muted);font-size:12px;padding:6px 2px">Sin solicitudes asociadas. Usá «＋ Asociar SC» para vincular una o más, o tildá «Asociar a proyecto» al crear una SC.</div>'; return; }
+  box.innerHTML=arr.map(numSC=>{
+    const sc=all.find(x=>String(_scNum(x))===String(numSC));
+    const asunto=sc?_scAsunto(sc):'';
+    const sol=sc?(sc.solicitante||''):'';
+    const auto=!manual.includes(String(numSC));   // vino del formulario
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--s2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">'
+      +'<span style="font-weight:700;color:var(--or);font-size:12px;white-space:nowrap">'+_proyEsc(numSC)+'</span>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_proyEsc(asunto||'(sin asunto)')+(auto?' <span style="font-size:9px;color:var(--muted);border:1px solid var(--border2);border-radius:4px;padding:1px 4px;margin-left:4px">desde formulario</span>':'')+'</div>'
+      +(sol?'<div style="font-size:10px;color:var(--muted)">Solicita: '+_proyEsc(sol)+'</div>':'')+'</div>'
+      +(sc?'<button class="btn btn-ghost btn-xs" onclick="PROY.verSCdesdeProyecto(\''+encodeURIComponent(numSC)+'\')" title="Ver la SC">👁</button>':'<span style="font-size:10px;color:var(--muted)" title="No encontrada en el Historial de SC actual">⚠</span>')
+      +(auto?'':'<button class="btn btn-ghost btn-xs" onclick="PROY.quitarSC(\''+encodeURIComponent(numSC)+'\')" title="Quitar asociación">✕</button>')
+      +'</div>';
+  }).join('');
+}
+function toggleSCPicker(){
+  const b=document.getElementById('scPickerBox'); if(!b) return;
+  const show=b.style.display==='none';
+  b.style.display=show?'block':'none';
+  document.getElementById('scPickBtn').textContent=show?'✕ Cerrar':'＋ Asociar SC';
+  if(show){ document.getElementById('scPickSearch').value=''; renderSCPicker(); }
+}
+function renderSCPicker(){
+  const list=document.getElementById('scPickList'); if(!list||!current) return;
+  const q=(document.getElementById('scPickSearch').value||'').toLowerCase();
+  const asoc=new Set((current.scs_asociadas||[]).map(String));
+  let all=_scsCC().slice().sort((a,b)=>String(_scNum(b)).localeCompare(String(_scNum(a))));
+  if(q) all=all.filter(sc=>[_scNum(sc),_scAsunto(sc),sc.solicitante||''].join(' ').toLowerCase().includes(q));
+  if(!all.length){ list.innerHTML='<div style="color:var(--muted);font-size:12px;padding:8px">No hay solicitudes que coincidan.</div>'; return; }
+  list.innerHTML=all.slice(0,200).map(sc=>{
+    const num=String(_scNum(sc)); const on=asoc.has(num);
+    return '<label style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-bottom:1px solid var(--border);cursor:pointer">'
+      +'<input type="checkbox" '+(on?'checked':'')+' onchange="PROY.toggleSCEnProyecto(\''+encodeURIComponent(num)+'\',this.checked)" style="width:16px;height:16px;accent-color:var(--or)">'
+      +'<span style="font-weight:700;color:var(--or);font-size:12px;white-space:nowrap">'+_proyEsc(num)+'</span>'
+      +'<span style="flex:1;min-width:0;font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_proyEsc(_scAsunto(sc)||'(sin asunto)')+'</span>'
+      +'</label>';
+  }).join('');
+}
+function toggleSCEnProyecto(numEnc, on){
+  const num=decodeURIComponent(numEnc); if(!current) return;
+  let arr=current.scs_asociadas||[];
+  if(on){ if(!arr.map(String).includes(String(num))) arr.push(num); }
+  else { arr=arr.filter(x=>String(x)!==String(num)); }
+  current.scs_asociadas=arr;
+  _proyUpsert(current); try{ localStorage.setItem(PROY_LS, JSON.stringify(DB)); }catch(e){}
+  renderSCAsociadas();
+}
+function quitarSC(numEnc){ toggleSCEnProyecto(numEnc,false); renderSCPicker(); }
+function verSCdesdeProyecto(numEnc){
+  const num=decodeURIComponent(numEnc);
+  const all=_scsCC(); const idx=all.findIndex(x=>String(_scNum(x))===String(num));
+  if(idx<0){ toast('La SC no está en el Historial actual'); return; }
+  try{ if(typeof window.verSC==='function'){ window.verSC(idx); return; } }catch(e){}
+  try{ if(typeof window.abrirModalSC==='function'){ window.abrirModalSC(idx); return; } }catch(e){}
+  toast('Abrí la SC desde Compras › Historial de SC');
+}
+
+return {renderSCAsociadas:renderSCAsociadas, toggleSCPicker:toggleSCPicker, renderSCPicker:renderSCPicker, toggleSCEnProyecto:toggleSCEnProyecto, quitarSC:quitarSC, verSCdesdeProyecto:verSCdesdeProyecto, abrirEditorNums:abrirEditorNums, guardarNum:guardarNum, addItem:addItem, borrarEtapa:borrarEtapa, borrarRubro:borrarRubro, calHoy:calHoy, calMove:calMove, cambiarEstado:cambiarEstado, closeModal:closeModal, delCot:delCot, delItem:delItem, delPlano:delPlano, doExport:doExport, editarProyecto:editarProyecto, eliminarProyecto:eliminarProyecto, goList:goList, guardarEtapa:guardarEtapa, guardarProyecto:guardarProyecto, guardarRubro:guardarRubro, initProyectos:initProyectos, openCargarLista:openCargarLista, openDetail:openDetail, openEtapa:openEtapa, openExport:openExport, openNuevo:openNuevo, openRubro:openRubro, procesarLista:procesarLista, renderList:renderList, selRubro:selRubro, setTab:setTab, upCot:upCot, upItem:upItem};
 })();
 function initProyectos(){return window.PROY.initProyectos();}
 </script>

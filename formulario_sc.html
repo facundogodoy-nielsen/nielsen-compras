@@ -668,6 +668,18 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
         </optgroup>
       </select>
     </div>
+    <div class="fg" style="margin-top:2px">
+      <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-weight:600">
+        <input type="checkbox" id="os-asoc-check" onchange="toggleAsocProyecto()" style="width:17px;height:17px;accent-color:var(--or)">
+        🔗 Asociar a un proyecto
+      </label>
+      <div id="os-asoc-box" style="display:none;margin-top:8px">
+        <select id="os-proyecto">
+          <option value="">— Seleccionar proyecto —</option>
+        </select>
+        <span style="display:block;font-size:10px;color:var(--muted);margin-top:4px">La solicitud quedará vinculada al proyecto elegido para su trazabilidad.</span>
+      </div>
+    </div>
   </div>
     <div class="fg" style="margin-top:6px">
       <label>Listado del Pedido Original <span class="req">*</span></label>
@@ -2666,6 +2678,41 @@ async function _enviarEmailSC(numSC, numOP) {
 // ══════════════════════════════════════════════════════════
 // GUARDAR SC → Supabase + localStorage (fallback)
 // ══════════════════════════════════════════════════════════
+// ══ Asociar SC a un proyecto (lee de la tabla proyectos en la nube) ══
+let _proyectosCargados = null;
+async function toggleAsocProyecto() {
+  const on = document.getElementById('os-asoc-check')?.checked;
+  const box = document.getElementById('os-asoc-box');
+  if (box) box.style.display = on ? 'block' : 'none';
+  if (on) await cargarProyectosSC();
+}
+async function cargarProyectosSC() {
+  const sel = document.getElementById('os-proyecto');
+  if (!sel) return;
+  if (_proyectosCargados) return;   // ya cargados en esta sesión
+  sel.innerHTML = '<option value="">Cargando proyectos...</option>';
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/proyectos?select=num,nombre,estado&order=num.desc', {
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }, cache: 'no-store'
+    });
+    if (!r.ok) throw new Error('http ' + r.status);
+    const rows = await r.json();
+    _proyectosCargados = rows || [];
+    if (!_proyectosCargados.length) {
+      sel.innerHTML = '<option value="">No hay proyectos cargados</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">— Seleccionar proyecto —</option>' +
+      _proyectosCargados.map(p =>
+        '<option value="' + (p.num || '').replace(/"/g, '&quot;') + '">' +
+        ((p.num || '') + ' · ' + (p.nombre || '')).replace(/</g, '&lt;') + '</option>'
+      ).join('');
+  } catch (e) {
+    console.warn('cargarProyectosSC', e);
+    sel.innerHTML = '<option value="">No se pudieron cargar (sin conexión)</option>';
+  }
+}
+
 async function _guardarSCenCC(numSC, numOP) {
   try {
     const area     = document.getElementById('sol-area')?.value || '';
@@ -2684,6 +2731,7 @@ async function _guardarSCenCC(numSC, numOP) {
     const itemsTxt = document.getElementById('items-texto')?.value || '';
     const obs      = document.getElementById('items-obs')?.value || '';
     const panolero = document.getElementById('panolero')?.value || '';
+    const proyectoAsoc = (document.getElementById('os-asoc-check')?.checked ? (document.getElementById('os-proyecto')?.value || '') : '');
 
     const sc = {
       num_sc:       numSC,
@@ -2704,6 +2752,7 @@ async function _guardarSCenCC(numSC, numOP) {
       items:        itemsTxt,
       obs,
       panolero,
+      proyecto_asociado: proyectoAsoc || null,
       vale_num:     valeNumActual || '',
       estado:       'PENDIENTE',
       origen:       'FORMULARIO_SC'
