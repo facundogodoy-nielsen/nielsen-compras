@@ -81,6 +81,7 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
   text-transform:uppercase;
 }
 .fg input[type=email],.fg input[type=date],.fg input[type=datetime-local]{text-transform:none;}
+.fg input[type=checkbox]{width:17px;height:17px;-webkit-appearance:auto;appearance:auto;padding:0;accent-color:var(--or);flex:none;}
 .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--or);}
 .fg select option{background:var(--s2);}
 .fg textarea{resize:vertical;min-height:100px;line-height:1.6;}
@@ -674,9 +675,14 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
         🔗 Asociar a un proyecto
       </label>
       <div id="os-asoc-box" style="display:none;margin-top:8px">
-        <select id="os-proyecto">
+        <select id="os-proyecto" onchange="onProyectoSelChange()">
           <option value="">— Seleccionar proyecto —</option>
+          <option value="__NUEVO__">➕ Crear nuevo proyecto…</option>
         </select>
+        <div id="os-proyecto-nuevo" style="display:none;margin-top:8px">
+          <input type="text" id="os-proyecto-nuevo-nombre" placeholder="Nombre del nuevo proyecto (ej: Lavadero Base San Juan)" style="text-transform:none">
+          <span style="display:block;font-size:10px;color:var(--muted);margin-top:4px">Se creará en Presupuestos → Proyectos con el próximo N° correlativo y quedará asociado a esta solicitud.</span>
+        </div>
         <span style="display:block;font-size:10px;color:var(--muted);margin-top:4px">La solicitud quedará vinculada al proyecto elegido para su trazabilidad.</span>
       </div>
     </div>
@@ -2686,31 +2692,56 @@ async function toggleAsocProyecto() {
   if (box) box.style.display = on ? 'block' : 'none';
   if (on) await cargarProyectosSC();
 }
+function onProyectoSelChange() {
+  const sel = document.getElementById('os-proyecto');
+  const nb = document.getElementById('os-proyecto-nuevo');
+  if (nb) nb.style.display = (sel && sel.value === '__NUEVO__') ? 'block' : 'none';
+}
 async function cargarProyectosSC() {
   const sel = document.getElementById('os-proyecto');
   if (!sel) return;
   if (_proyectosCargados) return;   // ya cargados en esta sesión
-  sel.innerHTML = '<option value="">Cargando proyectos...</option>';
+  const optNuevo = '<option value="__NUEVO__">➕ Crear nuevo proyecto…</option>';
+  sel.innerHTML = '<option value="">Cargando proyectos...</option>' + optNuevo;
   try {
-    const r = await fetch(SB_URL + '/rest/v1/proyectos?select=num,nombre,estado&order=num.desc', {
-      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }, cache: 'no-store'
+    const r = await fetch(_SB_URL + '/rest/v1/proyectos?select=num,nombre,estado&order=num.desc', {
+      headers: { apikey: _SB_KEY, Authorization: 'Bearer ' + _SB_KEY }, cache: 'no-store'
     });
     if (!r.ok) throw new Error('http ' + r.status);
     const rows = await r.json();
     _proyectosCargados = rows || [];
-    if (!_proyectosCargados.length) {
-      sel.innerHTML = '<option value="">No hay proyectos cargados</option>';
-      return;
-    }
-    sel.innerHTML = '<option value="">— Seleccionar proyecto —</option>' +
+    sel.innerHTML = '<option value="">— Seleccionar proyecto —</option>' + optNuevo +
       _proyectosCargados.map(p =>
         '<option value="' + (p.num || '').replace(/"/g, '&quot;') + '">' +
         ((p.num || '') + ' · ' + (p.nombre || '')).replace(/</g, '&lt;') + '</option>'
       ).join('');
   } catch (e) {
     console.warn('cargarProyectosSC', e);
-    sel.innerHTML = '<option value="">No se pudieron cargar (sin conexión)</option>';
+    sel.innerHTML = '<option value="">No se pudieron cargar (sin conexión)</option>' + optNuevo;
   }
+}
+// Crea un proyecto nuevo en Supabase (mismo formato que el módulo Proyectos del CC) y devuelve su N°
+async function _crearProyectoDesdeSC(nombre) {
+  // calcular próximo correlativo mirando los proyectos existentes
+  let maxN = 0;
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/proyectos?select=num', { headers: { apikey: _SB_KEY, Authorization: 'Bearer ' + _SB_KEY }, cache: 'no-store' });
+    if (r.ok) { const rows = await r.json(); (rows || []).forEach(p => { const m = /(\d+)$/.exec(p.num || ''); if (m) maxN = Math.max(maxN, parseInt(m[1], 10)); }); }
+  } catch (e) {}
+  const year = new Date().getFullYear();
+  const num = 'PR-' + year + '-' + String(maxN + 1).padStart(4, '0');
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const RUBROS = ['ELECTRICIDAD','SEGURIDAD','PLOMERÍA/DESAGÜE','CLOACA/SANEAMIENTO','INSUMOS','MEDIO AMBIENTE','MOBILIARIO'];
+  const rubros = {}; RUBROS.forEach(r => rubros[r] = { items: [], cotiz: [] });
+  const proyecto = { id, num, nombre, estado: 'planificacion', creado: new Date().toISOString(), rubros, planos: [], etapas: [], cliente: '', ubic: '', resp: 'Facundo Godoy', notas: '', scs_asociadas: [] };
+  try {
+    await fetch(_SB_URL + '/rest/v1/proyectos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: _SB_KEY, Authorization: 'Bearer ' + _SB_KEY, Prefer: 'return=minimal' },
+      body: JSON.stringify({ id, num, nombre, estado: 'planificacion', data: proyecto })
+    });
+    return num;
+  } catch (e) { console.warn('_crearProyectoDesdeSC', e); return null; }
 }
 
 async function _guardarSCenCC(numSC, numOP) {
@@ -2731,7 +2762,19 @@ async function _guardarSCenCC(numSC, numOP) {
     const itemsTxt = document.getElementById('items-texto')?.value || '';
     const obs      = document.getElementById('items-obs')?.value || '';
     const panolero = document.getElementById('panolero')?.value || '';
-    const proyectoAsoc = (document.getElementById('os-asoc-check')?.checked ? (document.getElementById('os-proyecto')?.value || '') : '');
+    let proyectoAsoc = '';
+    if (document.getElementById('os-asoc-check')?.checked) {
+      const sel = document.getElementById('os-proyecto')?.value || '';
+      if (sel === '__NUEVO__') {
+        const nombreNuevo = (document.getElementById('os-proyecto-nuevo-nombre')?.value || '').trim();
+        if (nombreNuevo) {
+          const numCreado = await _crearProyectoDesdeSC(nombreNuevo);
+          if (numCreado) proyectoAsoc = numCreado;
+        }
+      } else {
+        proyectoAsoc = sel;
+      }
+    }
 
     const sc = {
       num_sc:       numSC,

@@ -3084,6 +3084,7 @@ let pasoActual = 0;
 let criticidadSel = '';
 let juroChecked = false;
 let scs = JSON.parse(localStorage.getItem('nielsen_scs_2026') || '[]');
+try{ window.scs = scs; }catch(e){}
 let contadorPorArea = JSON.parse(localStorage.getItem('nielsen_sc_contadores') || '{}');
 // Contadores globales correlativos para OP y OS (nunca retroceden aunque se eliminen)
 let contadorOP = parseInt(localStorage.getItem('nielsen_op_contador') || '0');
@@ -5564,6 +5565,7 @@ function _purgeTombstonesSC(){
   if(!d.size || !Array.isArray(scs)) return;
   const before = scs.length;
   scs = scs.filter(s => !d.has(normSCCode(s.numSC || s.num || '')));
+    try{ window.scs = scs; }catch(e){}
   if(scs.length !== before){ try{ _lsSet('nielsen_scs_2026', JSON.stringify(scs)); }catch(e){} }
 }
 function _purgeTombstonesPA(){
@@ -6314,6 +6316,7 @@ function ejecutarLimpiar() {
   }
   if(limpiarSC){
     scs=[]; contadorPorArea={};
+    try{ window.scs = scs; }catch(e){}
     localStorage.removeItem('nielsen_scs_2026');
     localStorage.removeItem('nielsen_sc_contadores');
     // DELETE from Supabase (borra todo el historial SC de la base)
@@ -9771,6 +9774,7 @@ async function recargarSCsDesdeLS() {
       return n && !_dbNums.has(n) && !_delSC.has(n);   // excluir los borrados permanentemente
     });
     scs = fromDB.concat(_soloLocal);
+    try{ window.scs = scs; }catch(e){}
     _lsSet('nielsen_scs_2026', JSON.stringify(scs));
     actualizarContadores();
     // RECUPERACIÓN AUTOMÁTICA: re-subir a Supabase las que sólo estaban en local
@@ -9795,6 +9799,7 @@ async function recargarSCsDesdeLS() {
   _lsSet('nielsen_scs_2026', JSON.stringify(scs));
   actualizarContadores();
 }
+try{ window.recargarSCsDesdeLS = recargarSCsDesdeLS; }catch(e){}
 
 // ── Storage event: actualizar cuando otra tab guarda datos ──
 window.addEventListener('storage', function(e) {
@@ -12100,7 +12105,10 @@ renderList();
 
 let _proyInit=false;
 async function initProyectos(){
-  await cargarProyectos(); goList(); renderList(); renderStats();
+  await cargarProyectos();
+  // Asegurar que las SC del CC estén cargadas (para el asociador de SC)
+  try{ if((!window.scs||!window.scs.length) && typeof window.recargarSCsDesdeLS==='function'){ await window.recargarSCsDesdeLS(); } }catch(e){}
+  goList(); renderList(); renderStats();
   if(!_proyInit){ _proyInit=true; try{ if(document.getElementById('dropCot'))setupDrop('dropCot',handleCot);}catch(e){} try{ if(document.getElementById('dropPlanos'))setupDrop('dropPlanos',handlePlanos);}catch(e){} }
 }
 
