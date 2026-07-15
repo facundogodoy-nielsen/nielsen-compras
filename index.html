@@ -5368,6 +5368,7 @@ function verSC(idx) {
            <div style="font-size:11px;color:var(--muted);margin-top:2px">Esta SC tiene fotos o presupuestos marcados, pero sin link a Drive. Reparalo para volver a vincularlos.</div>
          </div>
          <button onclick="repararAdjuntosSC()" style="padding:7px 13px;border-radius:7px;border:1.5px solid var(--yellow);background:rgba(234,179,8,.12);color:var(--yellow);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">🔗 Reparar adjuntos</button>
+         <button onclick="diagnosticarAdjuntosSC()" style="padding:7px 13px;border-radius:7px;border:1.5px solid var(--border2);background:var(--s3);color:var(--muted);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap" title="Ver qué está fallando">🔍 Diagnosticar</button>
        </div>`
     : '';
   document.getElementById('modal-sc-body').innerHTML = `
@@ -7167,6 +7168,14 @@ function repararAdjuntosSC(){
   if(!num){ showToast('La SC no tiene número','error'); return; }
   window.open(MAIL_WEBAPP_URL + '?a=reindex&sc=' + encodeURIComponent(num), '_blank');
   showToast('Se abrió la reparación. Al terminar, volvé y recargá la SC.', 'ok');
+}
+// Diagnóstico end-to-end de los adjuntos de una SC (abre reporte del Apps Script)
+function diagnosticarAdjuntosSC(){
+  const sc = scs[window._scIdx];
+  if(!sc){ showToast('No hay SC abierta','error'); return; }
+  const num = sc.numSC || sc.num || '';
+  if(!num){ showToast('La SC no tiene número','error'); return; }
+  window.open(MAIL_WEBAPP_URL + '?a=diag&sc=' + encodeURIComponent(num), '_blank');
 }
 
 function _scItemAdjuntos(sc, i){

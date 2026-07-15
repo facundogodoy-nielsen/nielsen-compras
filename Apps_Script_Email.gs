@@ -35,6 +35,7 @@ function doGet(e) {
   var p = (e && e.parameter) ? e.parameter : {};
   // Reparar adjuntos de una SC: ...exec?a=reindex&sc=<N° SC>
   if (p.a === 'reindex') return _htmlOut(_reindexarSC(p.sc));
+  if (p.a === 'diag') return _htmlOut(_diagSC(p.sc));
   if (!p.t || !p.a) return _htmlOut(_pagina('Web App activa', 'El sistema de Compras de Nielsen está funcionando.', '#13161E'));
   var reg = _sbGetToken(p.t);
   if (!reg) return _htmlOut(_pagina('Enlace no válido', 'Este enlace no corresponde a ninguna solicitud vigente.', '#dc2626'));
@@ -451,11 +452,22 @@ function _sbPatchSC(numSC, body) {
   try {
     var r = UrlFetchApp.fetch(SB_URL + '/rest/v1/solicitudes_compra?num_sc=eq.' + encodeURIComponent(numSC), {
       method: 'patch', contentType: 'application/json',
-      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Prefer: 'return=minimal' },
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Prefer: 'return=representation' },
       payload: JSON.stringify(body), muteHttpExceptions: true
     });
-    return r.getResponseCode() < 300;
+    if (r.getResponseCode() >= 300) return false;
+    // return=representation → si la fila existía, devuelve el registro; si no, array vacío
+    var txt = r.getContentText();
+    try { var arr = JSON.parse(txt); return (arr && arr.length > 0); } catch (e) { return true; }
   } catch (e) { return false; }
+}
+// PATCH con reintentos: cubre la carrera INSERT(formulario) vs PATCH(este script)
+function _sbPatchSCRetry(numSC, body) {
+  for (var i = 0; i < 4; i++) {
+    if (_sbPatchSC(numSC, body)) return true;
+    Utilities.sleep(1200);   // esperar a que el INSERT del formulario termine
+  }
+  return false;
 }
 function _patchSCDriveUrls(numSC, a) {
   if (!numSC || !a) return;
@@ -465,10 +477,10 @@ function _patchSCDriveUrls(numSC, a) {
   if (a.fotosMap  && _keys(a.fotosMap).length)  body.fotos_map  = a.fotosMap;
   if (a.presupMap && _keys(a.presupMap).length) body.presup_map = a.presupMap;
   if (!_keys(body).length) return;
-  if (_sbPatchSC(numSC, body)) return;               // 1º intento: todo junto
+  if (_sbPatchSCRetry(numSC, body)) return;          // 1º intento (con reintentos): todo junto
   _keys(body).forEach(function(k){                    // 2º: campo por campo (ignora los que no existan)
     var one = {}; one[k] = body[k];
-    _sbPatchSC(numSC, one);
+    _sbPatchSCRetry(numSC, one);
   });
 }
 function _keys(o){ return o ? Object.keys(o) : []; }
@@ -716,4 +728,74 @@ function _reindexarSC(numSC) {
     + 'Los enlaces quedaron actualizados. Volvé al Centro de Control y recargá la solicitud.'
     + (res.fotos && !body.fotos_map ? '<br><br><i>Nota: los archivos no tienen el prefijo de ítem (son anteriores a esta versión), '
       + 'por eso el badge abrirá la carpeta en lugar del archivo puntual.</i>' : ''), '#16a34a');
+}
+
+// ═════════════════════════════════════════════════════════════
+// DIAGNÓSTICO DE ADJUNTOS — ...exec?a=diag&sc=<N° SC>
+// Verifica de punta a punta por qué una SC no muestra fotos/presupuestos.
+// ═════════════════════════════════════════════════════════════
+function _diagSC(numSC) {
+  if (!numSC) return _pagina('Falta el N° de SC', 'Usá: ...exec?a=diag&sc=SCSSMA-2026-0001', '#dc2626');
+  var out = [];
+  var okAll = true;
+
+  // 1) ¿Existe la SC en Supabase y qué columnas de adjuntos trae?
+  var row = null;
+  try {
+    var j = _sbGet('solicitudes_compra?num_sc=eq.' + encodeURIComponent(numSC) + '&select=num_sc,fotos_map,presup_map,drive_fotos_url,drive_presup_url,fotos_items,presup_items');
+    row = (j && j[0]) ? j[0] : null;
+  } catch (e) { row = null; }
+
+  if (!row) {
+    out.push(['❌', 'La SC <b>' + _esc(numSC) + '</b> no existe en Supabase (o el N° no coincide exactamente).']);
+    okAll = false;
+  } else {
+    out.push(['✅', 'La SC existe en Supabase.']);
+    // columnas presentes?
+    var tieneCols = ('fotos_map' in row) && ('presup_map' in row);
+    if (tieneCols) out.push(['✅', 'Las columnas <code>fotos_map</code> y <code>presup_map</code> existen.']);
+    else { out.push(['❌', 'Faltan columnas <code>fotos_map</code>/<code>presup_map</code>. Corré <b>SUPABASE_sc_adjuntos.sql</b>.']); okAll = false; }
+
+    var nF = row.fotos_map ? Object.keys(typeof row.fotos_map === 'string' ? JSON.parse(row.fotos_map) : row.fotos_map).length : 0;
+    var nP = row.presup_map ? Object.keys(typeof row.presup_map === 'string' ? JSON.parse(row.presup_map) : row.presup_map).length : 0;
+    out.push([nF ? '✅' : '⚠️', 'Mapa de fotos: <b>' + nF + '</b> ítem(es) con enlace.']);
+    out.push([nP ? '✅' : '⚠️', 'Mapa de presupuestos: <b>' + nP + '</b> ítem(es) con enlace.']);
+    if (!nF && !nP) { out.push(['⚠️', 'La SC no tiene ningún enlace guardado. Si cargaste fotos/presupuestos, el problema está en el guardado (revisá los pasos de abajo).']); okAll = false; }
+  }
+
+  // 2) ¿Hay carpeta y archivos en Drive?
+  var gSC = _subcarpeta('FOTOS MUESTRAS SC', numSC);
+  var fSC = _subcarpeta('PRESUPUESTOS SC', numSC);
+  var cntF = 0, cntP = 0;
+  if (gSC) { var itf = gSC.getFiles(); while (itf.hasNext()) { itf.next(); cntF++; } }
+  if (fSC) { var itp = fSC.getFiles(); while (itp.hasNext()) { itp.next(); cntP++; } }
+  out.push([gSC ? '✅' : '⚠️', gSC ? ('Carpeta de fotos en Drive con <b>' + cntF + '</b> archivo(s).') : 'No hay carpeta de fotos en Drive para esta SC.']);
+  out.push([fSC ? '✅' : '⚠️', fSC ? ('Carpeta de presupuestos en Drive con <b>' + cntP + '</b> archivo(s).') : 'No hay carpeta de presupuestos en Drive para esta SC.']);
+
+  // 3) Veredicto y acción sugerida
+  var accion = '';
+  if ((cntF || cntP) && row) {
+    accion = '<div style="margin-top:14px;padding:12px 14px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px">'
+      + '<b>Los archivos están en Drive.</b> Si los enlaces en Supabase están vacíos, tocá el botón para <b>reconstruirlos</b>:'
+      + '<div style="margin-top:10px"><a href="' + ScriptApp.getService().getUrl() + '?a=reindex&sc=' + encodeURIComponent(numSC)
+      + '" style="display:inline-block;background:#E8611A;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:bold">🔗 Reparar enlaces ahora</a></div></div>';
+  } else if (!cntF && !cntP) {
+    accion = '<div style="margin-top:14px;padding:12px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px">'
+      + '<b>Las fotos/presupuestos nunca llegaron a Drive.</b> Esto pasa si: (a) el envío se cortó al cambiar de pantalla, o (b) esta Web App está corriendo una versión vieja del código. '
+      + 'Reenviá la SC desde el Formulario adjuntando los archivos, y verificá que en Apps Script esté desplegada la <b>última versión</b> (Implementar → Administrar implementaciones → Editar → Versión: Nueva).</div>';
+  }
+
+  var filas = out.map(function(r) {
+    return '<tr><td style="padding:8px 10px;font-size:18px;text-align:center;width:40px">' + r[0] + '</td>'
+      + '<td style="padding:8px 10px;font-size:13px;color:#374151">' + r[1] + '</td></tr>';
+  }).join('');
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Diagnóstico SC</title></head>'
+    + '<body style="margin:0;background:#eceff3;font-family:Arial,Helvetica,sans-serif;padding:34px 16px">'
+    + '<div style="max-width:640px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">'
+    + '<div style="background:#13161E;padding:18px 22px"><div style="color:#E8611A;font-size:11px;font-weight:bold;letter-spacing:2px;text-transform:uppercase">Nielsen — Diagnóstico de adjuntos</div>'
+    + '<div style="color:#fff;font-size:18px;font-weight:800;margin-top:3px">SC ' + _esc(numSC) + '</div></div>'
+    + '<div style="padding:16px 22px"><table style="width:100%;border-collapse:collapse">' + filas + '</table>' + accion + '</div>'
+    + '<div style="background:#f9fafb;padding:12px 22px;border-top:1px solid #eee;color:#9ca3af;font-size:11px">Nielsen Logística y Expediciones S.A.</div>'
+    + '</div></body></html>';
 }
