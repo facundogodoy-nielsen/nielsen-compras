@@ -36,6 +36,7 @@ function doGet(e) {
   // Reparar adjuntos de una SC: ...exec?a=reindex&sc=<N° SC>
   if (p.a === 'reindex') return _htmlOut(_reindexarSC(p.sc));
   if (p.a === 'diag') return _htmlOut(_diagSC(p.sc));
+  if (p.a === 'carpetas') return _htmlOut(_verCarpetas());
   if (!p.t || !p.a) return _htmlOut(_pagina('Web App activa', 'El sistema de Compras de Nielsen está funcionando.', '#13161E'));
   var reg = _sbGetToken(p.t);
   if (!reg) return _htmlOut(_pagina('Enlace no válido', 'Este enlace no corresponde a ninguna solicitud vigente.', '#dc2626'));
@@ -221,6 +222,12 @@ function doPost(e) {
 
     // Autorización de compra (CCP) — solicitud o notificación, con memo en PDF
     if (p.tipo === 'CCP_AUTH') { return _ccpAuth(p); }
+
+    // Fotos por ítem de un Comparativo (CCP) → Drive «COMPARATIVO/CCP-aaaa-xxxx»
+    if (p.tipo === 'CCP_FOTOS') { return _guardarCCPFotos(p); }
+
+    // Planos/archivos de un Proyecto → Drive «PROYECTOS/PR-aaaa-xxxx»
+    if (p.tipo === 'PROY_ARCHIVOS') { return _guardarProyArchivos(p); }
 
     // Aviso de cambio de N° PC (desde el Centro de Control) — sin archivos
     if (p.tipo === 'PC_UPDATE') {
@@ -797,5 +804,141 @@ function _diagSC(numSC) {
     + '<div style="color:#fff;font-size:18px;font-weight:800;margin-top:3px">SC ' + _esc(numSC) + '</div></div>'
     + '<div style="padding:16px 22px"><table style="width:100%;border-collapse:collapse">' + filas + '</table>' + accion + '</div>'
     + '<div style="background:#f9fafb;padding:12px 22px;border-top:1px solid #eee;color:#9ca3af;font-size:11px">Nielsen Logística y Expediciones S.A.</div>'
+    + '</div></body></html>';
+}
+
+// ═════════════════════════════════════════════════════════════
+// COMPARATIVO — fotos por ítem  →  Drive «COMPARATIVO / CCP-aaaa-xxxx»
+// payload: { tipo:'CCP_FOTOS', num_comp, comp_id, fotos:[{name,type,dataUrl,itemsIdx:[..]}] }
+// Devuelve { ok, fotos_map, folder } y PATCHea la tabla comparativas.
+// ═════════════════════════════════════════════════════════════
+function _guardarCCPFotos(p) {
+  var res = { ok: true, fotos: [], fotos_map: {} };
+  try {
+    var root = DriveApp.getRootFolder();
+    var parent = _folderByName(root, 'COMPARATIVO');
+    var ccpId = String(p.num_comp || p.comp_id || 'SIN_CCP');
+    var carpeta = _folderByName(parent, ccpId);
+    try { carpeta.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    res.folderUrl = carpeta.getUrl();
+    (p.fotos || []).forEach(function(f) {
+      var blob = _blobFromDataUrl(f.dataUrl, f.name);
+      if (!blob) return;
+      var file = carpeta.createFile(blob);
+      try { file.setName(_prefijoItem(f.itemsIdx) + f.name); } catch (e) {}
+      try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+      var url = file.getUrl();
+      res.fotos.push({ name: f.name, url: url });
+      (f.itemsIdx || []).forEach(function(ix) {
+        var k = String(ix);
+        if (!res.fotos_map[k]) res.fotos_map[k] = [];
+        res.fotos_map[k].push({ name: f.name, url: url });
+      });
+    });
+    // Guardar en la tabla comparativas (columnas fotos_map / drive_fotos_url)
+    if (_keys(res.fotos_map).length || res.folderUrl) {
+      var body = {};
+      if (_keys(res.fotos_map).length) body.fotos_map = res.fotos_map;
+      if (res.folderUrl) body.drive_fotos_url = res.folderUrl;
+      _patchComparativa(p.comp_id, p.num_comp, body);
+    }
+  } catch (e) { res.ok = false; res.error = String(e); }
+  return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
+}
+function _patchComparativa(compId, numComp, body) {
+  var sel = compId ? ('id=eq.' + encodeURIComponent(compId)) : ('num_comp=eq.' + encodeURIComponent(numComp));
+  for (var i = 0; i < 4; i++) {
+    try {
+      var r = UrlFetchApp.fetch(SB_URL + '/rest/v1/comparativas?' + sel, {
+        method: 'patch', contentType: 'application/json',
+        headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Prefer: 'return=representation' },
+        payload: JSON.stringify(body), muteHttpExceptions: true
+      });
+      if (r.getResponseCode() < 300) { try { if (JSON.parse(r.getContentText()).length) return true; } catch (e) { return true; } }
+    } catch (e) {}
+    Utilities.sleep(1000);
+  }
+  // por si alguna columna no existe: campo por campo
+  _keys(body).forEach(function(k) {
+    var one = {}; one[k] = body[k];
+    try {
+      UrlFetchApp.fetch(SB_URL + '/rest/v1/comparativas?' + sel, {
+        method: 'patch', contentType: 'application/json',
+        headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Prefer: 'return=minimal' },
+        payload: JSON.stringify(one), muteHttpExceptions: true
+      });
+    } catch (e) {}
+  });
+  return false;
+}
+
+// ═════════════════════════════════════════════════════════════
+// PROYECTOS — planos/archivos  →  Drive «PROYECTOS / PR-aaaa-xxxx»
+// payload: { tipo:'PROY_ARCHIVOS', num, proy_id, archivos:[{name,type,dataUrl}] }
+// Devuelve { ok, archivos:[{name,url}], folderUrl } y PATCHea proyectos.data.planos_drive
+// ═════════════════════════════════════════════════════════════
+function _guardarProyArchivos(p) {
+  var res = { ok: true, archivos: [] };
+  try {
+    var root = DriveApp.getRootFolder();
+    var parent = _folderByName(root, 'PROYECTOS');
+    var prId = String(p.num || p.proy_id || 'SIN_PROY');
+    var carpeta = _folderByName(parent, prId);
+    try { carpeta.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    res.folderUrl = carpeta.getUrl();
+    (p.archivos || []).forEach(function(f) {
+      var blob = _blobFromDataUrl(f.dataUrl, f.name);
+      if (!blob) return;
+      var file = carpeta.createFile(blob);
+      try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+      res.archivos.push({ name: f.name, url: file.getUrl(), type: f.type || '' });
+    });
+  } catch (e) { res.ok = false; res.error = String(e); }
+  return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// ═════════════════════════════════════════════════════════════
+// ESTRUCTURA DE CARPETAS — ...exec?a=carpetas
+// Muestra un árbol de las carpetas de Drive creadas por el sistema.
+// ═════════════════════════════════════════════════════════════
+function _verCarpetas() {
+  var root = DriveApp.getRootFolder();
+  var raices = ['PRESUPUESTOS SC', 'FOTOS MUESTRAS SC', 'COMPARATIVO', 'PROYECTOS'];
+  var html = '';
+  raices.forEach(function(nombre) {
+    var it = root.getFoldersByName(nombre);
+    if (!it.hasNext()) {
+      html += '<div style="margin:14px 0"><div style="font-weight:800;color:#9ca3af">📁 ' + _esc(nombre) + ' <span style="font-size:11px;font-weight:400">(todavía no creada)</span></div></div>';
+      return;
+    }
+    var f = it.next();
+    html += '<div style="margin:16px 0"><a href="' + f.getUrl() + '" target="_blank" style="font-weight:800;color:#13161E;text-decoration:none;font-size:15px">📁 ' + _esc(nombre) + ' ↗</a>';
+    var subs = f.getFolders();
+    var subList = [];
+    while (subs.hasNext()) {
+      var s = subs.next();
+      var cnt = 0; var fi = s.getFiles(); while (fi.hasNext()) { fi.next(); cnt++; }
+      subList.push({ name: s.getName(), url: s.getUrl(), cnt: cnt });
+    }
+    subList.sort(function(a, b) { return b.name.localeCompare(a.name); });
+    if (!subList.length) { html += '<div style="margin:6px 0 0 22px;color:#9ca3af;font-size:12px">— Sin subcarpetas todavía —</div>'; }
+    else {
+      html += '<div style="margin:8px 0 0 22px">';
+      subList.forEach(function(s) {
+        html += '<div style="padding:6px 0;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center">'
+          + '<a href="' + s.url + '" target="_blank" style="color:#E8611A;text-decoration:none;font-weight:600;font-size:13px">📂 ' + _esc(s.name) + ' ↗</a>'
+          + '<span style="font-size:11px;color:#6b7280">' + s.cnt + ' archivo(s)</span></div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Carpetas en Drive</title></head>'
+    + '<body style="margin:0;background:#eceff3;font-family:Arial,Helvetica,sans-serif;padding:34px 16px">'
+    + '<div style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">'
+    + '<div style="background:#13161E;padding:18px 22px"><div style="color:#E8611A;font-size:11px;font-weight:bold;letter-spacing:2px;text-transform:uppercase">Nielsen — Archivos en Drive</div>'
+    + '<div style="color:#fff;font-size:18px;font-weight:800;margin-top:3px">Estructura de carpetas del sistema</div></div>'
+    + '<div style="padding:16px 22px">' + html + '</div>'
+    + '<div style="background:#f9fafb;padding:12px 22px;border-top:1px solid #eee;color:#9ca3af;font-size:11px">Cada solicitud, comparativa y proyecto guarda sus archivos en su propia subcarpeta. — Nielsen Logística y Expediciones S.A.</div>'
     + '</div></body></html>';
 }

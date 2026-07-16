@@ -633,6 +633,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
               <th style="width:80px">Cantidad</th>
               <th style="width:90px">Unidad</th>
               <th style="width:140px">Especificaciones</th>
+              <th style="width:60px;text-align:center">Fotos</th>
               <th style="width:34px"></th>
             </tr>
           </thead>
@@ -926,6 +927,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
 // ══════════════════════════════════════════════════════════════════
 var _SB_URL = 'https://qivvewvgqlsptydftlhx.supabase.co';
 var _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+var MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxgLMhi31Xc5YEcHANuq9CiJsjh4Y-wh7SIqaUsUjZ7MnG7gc2pEDU80bAQubSA5RiP/exec';
 
 async function sbComparativaInsert(data) {
   try {
@@ -1275,6 +1277,7 @@ async function guardarEnSupabase(showMsg) {
   if (!patched) { var ins = await sbComparativaInsert(data); okSave = !!ins; }
   if (okSave) {
     if(showMsg!==false) showToast('✅ Comparativa '+_currentCompNum+' guardada en Supabase','ok');
+    try{ await _subirFotosCCP(_currentCompNum, (data && data.id) || null); }catch(e){ console.warn('fotos CCP', e); }
   } else {
     showToast('⚠️ No se pudo guardar en Supabase. Revisá la tabla "comparativas" (RLS / columnas).','err');
     throw new Error('No se pudo guardar la comparativa en Supabase');
@@ -1833,6 +1836,66 @@ function addItem(desc, qty, unit, spec) {
   renderItems();
 }
 
+// ══ Fotos por ítem en el Comparativo ══
+function _ccpFotoBadge(item, idx){
+  var subidas = (item.fotosMap && item.fotosMap.length) ? item.fotosMap.length : 0;
+  var pend = (item.fotosPend && item.fotosPend.length) ? item.fotosPend.length : 0;
+  var n = subidas + pend;
+  var col = n ? '#22c55e' : 'var(--muted, #8a8f98)';
+  var bg = n ? 'rgba(34,197,94,.14)' : 'transparent';
+  var bd = n ? 'rgba(34,197,94,.4)' : 'var(--border, #333)';
+  return '<button type="button" onclick="abrirFotosItem(' + idx + ')" title="Adjuntar fotos a este ítem" '
+    + 'style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;'
+    + 'background:' + bg + ';border:1px solid ' + bd + ';color:' + col + ';cursor:pointer">📷' + (n ? (' ' + n) : ' +') + '</button>';
+}
+function abrirFotosItem(idx){
+  var inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+  inp.onchange = function(){
+    var files = Array.from(inp.files || []);
+    if(!files.length) return;
+    if(!items[idx].fotosPend) items[idx].fotosPend = [];
+    var pend = files.length;
+    files.forEach(function(file){
+      var reader = new FileReader();
+      reader.onload = function(){
+        items[idx].fotosPend.push({ name: file.name, type: file.type, dataUrl: reader.result });
+        pend--;
+        if(pend === 0){ renderItems(); showToast(files.length + ' foto(s) lista(s) para el ítem ' + (idx+1) + '. Se suben al guardar la CCP.', 'ok'); }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+  inp.click();
+}
+// Sube a Drive las fotos pendientes de todos los ítems (llamado tras guardar la CCP)
+async function _subirFotosCCP(numComp, compId){
+  var fotos = [];
+  items.forEach(function(item, idx){
+    (item.fotosPend || []).forEach(function(f){
+      fotos.push({ name: f.name, type: f.type, dataUrl: f.dataUrl, itemsIdx: [idx] });
+    });
+  });
+  if(!fotos.length) return;
+  showToast('⏳ Subiendo ' + fotos.length + ' foto(s) a Drive...', 'ok');
+  try{
+    await fetch(MAIL_WEBAPP_URL, {
+      method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ tipo:'CCP_FOTOS', num_comp:numComp, comp_id:compId||null, fotos:fotos })
+    });
+    // marcar como subidas (se limpian los pendientes; se releen al recargar la CCP)
+    items.forEach(function(item){
+      if(item.fotosPend && item.fotosPend.length){
+        item.fotosMap = (item.fotosMap||[]).concat(item.fotosPend.map(function(f){return {name:f.name};}));
+        item.fotosPend = [];
+      }
+    });
+    renderItems();
+    showToast('✅ Fotos enviadas a Drive (carpeta COMPARATIVO/' + numComp + ')', 'ok');
+  }catch(e){ console.warn('subirFotosCCP', e); showToast('No se pudieron subir las fotos', 'error'); }
+}
+
 function renderItems() {
   var tbody = document.getElementById('itemsBody');
   var html = '';
@@ -1847,6 +1910,7 @@ function renderItems() {
       '<td><input type="number" value="' + escHtml(item.qty) + '" placeholder="0" min="0" style="max-width:70px" data-field="qty" data-idx="' + idx + '"/></td>' +
       '<td><select data-field="unit" data-idx="' + idx + '">' + unitOpts + '</select></td>' +
       '<td><input type="text" value="' + escHtml(item.spec) + '" placeholder="Marca, specs..." data-field="spec" data-idx="' + idx + '"/></td>' +
+      '<td style="text-align:center">' + _ccpFotoBadge(item, idx) + '</td>' +
       '<td><button class="btn-del item-del-btn" data-idx="' + idx + '">✕</button></td>' +
       '</tr>';
   });
@@ -3376,6 +3440,11 @@ function _compEsEditor(){ return document.body.classList.contains('comp-mode-edi
 
 async function cargarComparativaDesdeRow(c){
   try { items = c.items ? (typeof c.items==='string'?JSON.parse(c.items):c.items) : []; } catch(e){ items=[]; }
+  // Fotos por ítem guardadas en Drive (fotos_map: { "0":[{name,url}], ... })
+  try {
+    var fmap = c.fotos_map ? (typeof c.fotos_map==='string'?JSON.parse(c.fotos_map):c.fotos_map) : null;
+    if(fmap){ items.forEach(function(it,i){ var arr=fmap[i]||fmap[String(i)]; if(arr&&arr.length) it.fotosMap=arr; }); }
+  } catch(e){}
   try { providers = c.proveedores ? (typeof c.proveedores==='string'?JSON.parse(c.proveedores):c.proveedores) : []; } catch(e){ providers=[]; }
   try { analysisResult = c.analisis ? (typeof c.analisis==='string'?JSON.parse(c.analisis):c.analisis) : null; } catch(e){ analysisResult=null; }
   _currentCompNum = c.num_comp || null;

@@ -5912,6 +5912,7 @@ function limpiarTodo() { pedirPinLimpiar(); }
 const _SB_URL = 'https://qivvewvgqlsptydftlhx.supabase.co';
 const _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
 const MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxgLMhi31Xc5YEcHANuq9CiJsjh4Y-wh7SIqaUsUjZ7MnG7gc2pEDU80bAQubSA5RiP/exec';
+try{ window.MAIL_WEBAPP_URL = MAIL_WEBAPP_URL; }catch(e){}
 
 async function sbInsert(tabla, obj) {
   try {
@@ -11270,6 +11271,15 @@ window.addEventListener('orientationchange', () => {
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
         <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">📁 Ver carpetas en Drive</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Muestra las carpetas creadas: SC, Comparativo y Proyectos, con sus subcarpetas y archivos</div>
+        </div>
+        <button onclick="window.open(MAIL_WEBAPP_URL+'?a=carpetas','_blank')" style="padding:7px 14px;border-radius:7px;border:1.5px solid var(--border2);background:var(--s3);color:var(--text);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+          Ver carpetas
+        </button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px">
+        <div>
           <div style="font-size:13px;font-weight:600;color:var(--text)">🔧 Reparar ítems PA</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">Recupera ítems de PA desde Supabase JSONB</div>
         </div>
@@ -11841,8 +11851,9 @@ function renderPlanos(){
   const list=document.getElementById('listPlanos');
   const arr=current.planos||[];
   list.innerHTML=arr.map((f,i)=>{
-    const ext=extOf(f.file);const embed=f.data?`<span class="tag-embed si">Guardado</span>`:`<span class="tag-embed ref">Referencia</span>`;
-    const dl=f.data?`<a class="btn btn-sec btn-xs" href="${f.data}" download="${_proyEsc(f.file)}">⬇ Abrir</a>`:'';
+    const ext=extOf(f.file);
+    const embed=f.url?`<span class="tag-embed si">En Drive</span>`:(f.data?`<span class="tag-embed si">Guardado</span>`:`<span class="tag-embed ref">${_proyEsc(f.nota||'Referencia')}</span>`);
+    const dl=f.url?`<a class="btn btn-sec btn-xs" href="${f.url}" target="_blank" rel="noopener">↗ Abrir</a>`:(f.data?`<a class="btn btn-sec btn-xs" href="${f.data}" download="${_proyEsc(f.file)}">⬇ Abrir</a>`:'');
     return `<div class="file-item">
       <div class="file-ico ${icoClass(ext)}">${ext.toUpperCase().slice(0,3)||'?'}</div>
       <div class="file-meta"><div class="fn">${_proyEsc(f.file)} ${embed}</div><div class="fs">${fmtBytes(f.size)} · ${_proyEsc(f.nota||'')}</div></div>
@@ -11851,16 +11862,41 @@ function renderPlanos(){
   }).join('')||'<div class="muted" style="padding:10px">Sin planos cargados aún.</div>';
 }
 function handlePlanos(files){
-  [...files].forEach(f=>{
-    const ext=extOf(f.name);const rec={id:uid(),file:f.name,size:f.size,nota:'',data:null};
-    if(f.size<=MAX_EMBED&&EMBED_EXT.includes(ext)){
-      const rd=new FileReader();rd.onload=e=>{rec.data=e.target.result;save();renderPlanos()};rd.readAsDataURL(f);rec.nota='Incrustado';
-    }else{
-      rec.nota=(['dwg','dxf','rvt','skp'].includes(ext)?'Archivo de diseño (referencia)':'Archivo pesado (referencia)');
-    }
-    current.planos=current.planos||[];current.planos.push(rec);save();renderPlanos();
+  if(!current){ toast('Abrí un proyecto primero'); return; }
+  const arr=[...files];
+  arr.forEach(f=>{
+    const ext=extOf(f.name);
+    const rec={id:uid(),file:f.name,size:f.size,nota:'Subiendo a Drive...',data:null,url:null};
+    current.planos=current.planos||[]; current.planos.push(rec);
+    renderPlanos();
+    const rd=new FileReader();
+    rd.onload=async e=>{
+      try{
+        const url=await _subirPlanoDrive(current.num, current.id, f.name, f.type, e.target.result);
+        if(url){ rec.url=url; rec.nota='Guardado en Drive'; }
+        else   { rec.nota='No se pudo subir (reintentá)'; }
+      }catch(err){ rec.nota='Error al subir'; console.warn('plano',err); }
+      save(); renderPlanos();
+    };
+    rd.readAsDataURL(f);
   });
-  toast('Archivo(s) agregado(s)');
+  toast(arr.length+' archivo(s) — subiendo a Drive...');
+}
+// Sube un plano al Apps Script (carpeta PROYECTOS/PR-aaaa-xxxx) y devuelve el link de Drive
+async function _subirPlanoDrive(num, proyId, name, type, dataUrl){
+  const MAIL=(typeof MAIL_WEBAPP_URL!=='undefined')?MAIL_WEBAPP_URL:(window.MAIL_WEBAPP_URL||'');
+  if(!MAIL) return null;
+  try{
+    // no-cors no devuelve body; para obtener el link usamos un POST normal (el Apps Script sí responde JSON en doPost con return)
+    const r=await fetch(MAIL,{ method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ tipo:'PROY_ARCHIVOS', num:num, proy_id:proyId, archivos:[{name:name,type:type,dataUrl:dataUrl}] }) });
+    if(r.ok){ const j=await r.json(); if(j&&j.archivos&&j.archivos[0]) return j.archivos[0].url; }
+  }catch(e){
+    // si CORS bloquea la respuesta, reintentar en modo no-cors (se sube igual, sin link inmediato)
+    try{ await fetch(MAIL,{ method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ tipo:'PROY_ARCHIVOS', num:num, proy_id:proyId, archivos:[{name:name,type:type,dataUrl:dataUrl}] }) }); }catch(e2){}
+  }
+  return null;
 }
 function delPlano(i){current.planos.splice(i,1);save();renderPlanos()}
 
