@@ -1834,6 +1834,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="pg-title">PANEL DE CONTROL DE <span>COMPRAS</span></div>
     <div class="pg-sub">Solicitudes de materiales, repuestos e insumos operativos</div>
   </div>
+  <div class="card sp" style="padding:12px 18px;margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">📆 Filtrar período:</span>
+    <span id="pp-periodo-slot" style="display:contents"></span>
+    <span id="pp-periodo-info" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+  </div>
   <!-- Stats principales -->
   <div class="stats">
     <div class="stat" style="--sc:var(--or)">
@@ -1977,6 +1982,8 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
         <option value="estado">📊 Estado</option>
         <option value="num-desc">🔢 N° SC (mayor a menor)</option>
       </select>
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-left:6px">Período:</span>
+      <span id="ph-periodo-slot" style="display:contents"></span>
       <div style="flex:1"></div>
       <span style="font-size:11px;color:var(--muted)">Usá los badges ↑ Inicio / ↓ Fin al desplazarte</span>
     </div>
@@ -2060,6 +2067,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
         <option>LOGISTICA</option><option>RRHH</option><option>CALIDAD</option>
         <option>PRESIDENCIA</option><option>COCINA BASE</option><option>CAMPAMENTOS</option>
       </select>
+      <span id="po-periodo-slot" style="display:contents"></span>
       <select id="op-orden" onchange="renderHistorialPedidos()" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-family:var(--ff);font-size:12px;outline:none">
         <option value="fecha-desc">📅 Fecha (mayor a menor)</option>
         <option value="fecha-asc">📅 Fecha (menor a mayor)</option>
@@ -3415,16 +3423,16 @@ async function showView(id, btn) {
   document.querySelectorAll('.sidebar-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   // Await fresh data before rendering
+  _initPeriodoSlots();
   if (id === 'panel')       { await recargarSCsDesdeLS(); renderPanel(); }
   if (id === 'historial')    { await recargarSCsDesdeLS(); renderHistorial(); renderHistorialPedidos(); }
   if (id === 'kanban')       { await recargarSCsDesdeLS(); renderKanban(); }
   if (id === 'historial-op')   {
     await recargarSCsDesdeLS();
     await cargarOPs();
-    renderHistorialPedidos();
     // Also keep historial SC in sync
     renderHistorial();
-    if (typeof renderHistorialOP === 'function') renderHistorialOP();
+    renderHistorialPedidos();   // ← render final: llena op-table-body con los PC (scs[])
   }
   if (id === 'comparativas')   { await cargarTCOverrides(); renderComparativas(); }
   if (id === 'ahorro')         renderAhorro();
@@ -4254,6 +4262,84 @@ function formatFecha(d) {
   return `${day}/${m}/${y}`;
 }
 
+// ══════════════════════════════════════════════════
+// FILTRO POR PERÍODO (reutilizable: Panel, Historial SC, Historial Pedidos)
+// Prefijo distinto por vista: 'pp' (panel), 'ph' (historial SC), 'po' (pedidos)
+// ══════════════════════════════════════════════════
+const _MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+// Devuelve el HTML del control de filtro para un prefijo dado
+function _periodoFiltroHTML(pref, onchange){
+  const yNow = new Date().getFullYear();
+  let years = '';
+  for(let y=yNow+1; y>=2024; y--) years += '<option value="'+y+'">'+y+'</option>';
+  let meses = '';
+  _MESES.forEach((m,i)=>{ meses += '<option value="'+(i+1)+'">'+m+'</option>'; });
+  const st = 'background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:12px;font-family:var(--ff);outline:none';
+  return ''
+    + '<select id="'+pref+'-modo" onchange="_periodoModoChange(\''+pref+'\');'+onchange+'" style="'+st+'">'
+    +   '<option value="todos">📆 Todo el período</option>'
+    +   '<option value="anio">Por año</option>'
+    +   '<option value="mes">Por mes</option>'
+    +   '<option value="rango">Período determinado</option>'
+    + '</select>'
+    + '<select id="'+pref+'-anio" onchange="'+onchange+'" style="'+st+';display:none">'+years+'</select>'
+    + '<select id="'+pref+'-mesAnio" onchange="'+onchange+'" style="'+st+';display:none">'+years+'</select>'
+    + '<select id="'+pref+'-mes" onchange="'+onchange+'" style="'+st+';display:none">'+meses+'</select>'
+    + '<input type="date" id="'+pref+'-desde" onchange="'+onchange+'" title="Desde" style="'+st+';display:none">'
+    + '<input type="date" id="'+pref+'-hasta" onchange="'+onchange+'" title="Hasta" style="'+st+';display:none">';
+}
+// Muestra/oculta los campos según el modo elegido
+function _periodoModoChange(pref){
+  const modo = document.getElementById(pref+'-modo')?.value || 'todos';
+  const show = (id,v)=>{ const el=document.getElementById(pref+'-'+id); if(el) el.style.display = v?'':'none'; };
+  show('anio',    modo==='anio');
+  show('mesAnio', modo==='mes');
+  show('mes',     modo==='mes');
+  show('desde',   modo==='rango');
+  show('hasta',   modo==='rango');
+}
+// Rellena los slots de filtro de período una sola vez por vista
+function _initPeriodoSlots(){
+  const slots = [
+    ['pp-periodo-slot', 'pp', 'renderPanel()'],
+    ['ph-periodo-slot', 'ph', 'renderHistorial()'],
+    ['po-periodo-slot', 'po', 'renderHistorialPedidos()']
+  ];
+  slots.forEach(([slotId, pref, cb])=>{
+    const slot = document.getElementById(slotId);
+    if(slot && !slot.dataset.ready){
+      slot.innerHTML = _periodoFiltroHTML(pref, cb);
+      slot.dataset.ready = '1';
+    }
+  });
+}
+
+// ¿La fecha (YYYY-MM-DD) entra en el período elegido para ese prefijo?
+function _periodoMatch(fecha, pref){
+  const modo = document.getElementById(pref+'-modo')?.value || 'todos';
+  if(modo==='todos') return true;
+  if(!fecha) return false;
+  const f = String(fecha).slice(0,10);          // normalizar a YYYY-MM-DD
+  const y = f.slice(0,4), m = f.slice(5,7);
+  if(modo==='anio'){
+    const yy = document.getElementById(pref+'-anio')?.value;
+    return y === String(yy);
+  }
+  if(modo==='mes'){
+    const yy = document.getElementById(pref+'-mesAnio')?.value;
+    const mm = String(document.getElementById(pref+'-mes')?.value||'').padStart(2,'0');
+    return y === String(yy) && m === mm;
+  }
+  if(modo==='rango'){
+    const d = document.getElementById(pref+'-desde')?.value;
+    const h = document.getElementById(pref+'-hasta')?.value;
+    if(d && f < d) return false;
+    if(h && f > h) return false;
+    return true;
+  }
+  return true;
+}
+
 function renderFilaSC(sc, i, tableId) {
   const areaLabel = sc.subarea
     ? (sc.area === 'MANTENIMIENTO' ? `MANT. › ${sc.subarea}` : `${sc.area} › ${sc.subarea}`)
@@ -4283,10 +4369,14 @@ function renderFilaSC(sc, i, tableId) {
 
 function renderPanel() {
   _purgeTombstonesSC();
-  const total  = scs.length;
-  const pend   = scs.filter(s=>s.estado==='PENDIENTE').length;
-  const urg    = scs.filter(s=>s.criticidad==='CRITICA'||s.criticidad==='URGENTE').length;
-  const comp   = scs.filter(s=>s.estado==='COMPLETADA').length;
+  // Subconjunto filtrado por período (Panel usa este subconjunto para stats y tabla)
+  const scsP = scs.filter(s => _periodoMatch(s.fecha||s.creado||'', 'pp'));
+  const _info = document.getElementById('pp-periodo-info');
+  if(_info){ const modo=document.getElementById('pp-modo')?.value||'todos'; _info.textContent = modo==='todos' ? '' : (scsP.length+' de '+scs.length+' SC en el período'); }
+  const total  = scsP.length;
+  const pend   = scsP.filter(s=>s.estado==='PENDIENTE').length;
+  const urg    = scsP.filter(s=>s.criticidad==='CRITICA'||s.criticidad==='URGENTE').length;
+  const comp   = scsP.filter(s=>s.estado==='COMPLETADA').length;
   setEl('st-total',total); setEl('st-pend',pend);
   setEl('st-urg',urg);     setEl('st-comp',comp);
 
@@ -4302,7 +4392,7 @@ function renderPanel() {
     return 'SIN CLASIF.';
   };
   const crits = {CRITICA:0,URGENTE:0,ALTA:0,MEDIA:0,BAJA:0,'SIN CLASIF.':0};
-  scs.filter(s => s.estado!=='COMPLETADA' && s.estado!=='CANCELADA')
+  scsP.filter(s => s.estado!=='COMPLETADA' && s.estado!=='CANCELADA')
      .forEach(s => { crits[_normCrit(s.criticidad)]++; });
   if (!crits['SIN CLASIF.']) delete crits['SIN CLASIF.'];   // no mostrar el bucket si está vacío
   const critColors = {CRITICA:'var(--red)',URGENTE:'#E85D26',ALTA:'var(--yellow)',MEDIA:'#22c55e',BAJA:'var(--muted)','SIN CLASIF.':'#6b7280'};
@@ -4321,7 +4411,7 @@ function renderPanel() {
 
   // Área bars — pendientes por área
   const areas = {};
-  scs.filter(s=>s.estado!=='COMPLETADA' && s.estado!=='CANCELADA').forEach(s=>{
+  scsP.filter(s=>s.estado!=='COMPLETADA' && s.estado!=='CANCELADA').forEach(s=>{
     const a=s.area||'Sin área'; areas[a]=(areas[a]||0)+1;
   });
   const sortedAreas = Object.entries(areas).sort((a,b)=>b[1]-a[1]).slice(0,6);
@@ -4341,7 +4431,7 @@ function renderPanel() {
 
   // Tabla: pendientes + urgentes
   const CRIT_COLORS = { CRITICA:'badge-red', URGENTE:'badge-orange', ALTA:'badge-yellow', MEDIA:'badge-green', BAJA:'badge-gray' };
-  const tableScs = scs.filter(s=>s.estado==='PENDIENTE'||s.estado==='EN PROCESO')
+  const tableScs = scsP.filter(s=>s.estado==='PENDIENTE'||s.estado==='EN PROCESO')
     .sort((a,b)=>{
       const ord = {CRITICA:0,URGENTE:1,ALTA:2,MEDIA:3,BAJA:4};
       return (ord[a.criticidad]??5)-(ord[b.criticidad]??5);
@@ -4417,6 +4507,7 @@ function renderHistorial() {
   if (fCrit) data = data.filter(s => s.criticidad === fCrit);
   if (fEst) data = data.filter(s => s.estado === fEst);
   if (fBus) data = data.filter(s => (s.num + s.solicitante + s.os + s.osDesc + s.email).toLowerCase().includes(fBus));
+  data = data.filter(s => _periodoMatch(s.fecha||s.creado||'', 'ph'));
   // Show count and filter warning
   const totalEl = document.getElementById('hist-total-count');
   if (totalEl) {
@@ -8160,6 +8251,12 @@ function verOP(idx) {
 }
 
 function renderHistorialOP() {
+  // La vista actual de Historial Pedidos usa renderHistorialPedidos() sobre scs[].
+  // Si los elementos legacy de OP no existen, delegamos para no pisar la tabla.
+  if (!document.getElementById('op-st-total')) {
+    if (typeof renderHistorialPedidos === 'function') renderHistorialPedidos();
+    return;
+  }
   // Update stats
   const conSC = ops.filter(o => o.resultado === 'CON SC').length;
   const paniol = ops.filter(o => o.resultado === 'PANIOL').length;
@@ -9885,6 +9982,7 @@ function renderHistorialPedidos() {
   if (buscar) data = data.filter(s =>
     ((s.numOP||s.numSC||'') + (s.area||'') + (s.solicitante||'') + (s.items||'')).toLowerCase().includes(buscar)
   );
+  data = data.filter(s => _periodoMatch(s.fecha||s.creado||'', 'po'));
 
   // Show count
   const opCountEl = document.getElementById('op-total-count');
