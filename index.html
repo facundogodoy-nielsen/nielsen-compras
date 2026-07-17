@@ -1866,14 +1866,14 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:20px">
     <!-- Por criticidad -->
     <div class="card sp">
-      <div class="card-title">🔴 Prioridad por Criticidad</div>
+      <div class="card-title">🔴 Solicitudes por Criticidad</div>
       <div id="panel-crit-bars">
         <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Cargando...</div>
       </div>
     </div>
     <!-- Por área -->
     <div class="card sp">
-      <div class="card-title">📊 SC por Área — Pendientes</div>
+      <div class="card-title">📊 Solicitudes por Área</div>
       <div id="panel-area-bars">
         <div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Cargando...</div>
       </div>
@@ -2111,6 +2111,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="pg-title">PANEL DE CONTROL DE <span>ABASTECIMIENTO</span></div>
     <div class="pg-sub">Resumen ejecutivo de Pedidos de Abastecimiento</div>
   </div>
+  <div class="card sp" style="padding:12px 18px;margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">📆 Filtrar período:</span>
+    <span id="ppa-periodo-slot" style="display:contents"></span>
+    <span id="ppa-periodo-info" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+  </div>
   <!-- Stats row (igual a panel SC) -->
   <div class="stats">
     <div class="stat" style="--sc:var(--or)">
@@ -2166,23 +2171,19 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
         <option value="ENTREGADO">Entregado</option>
         <option value="CANCELADO">Cancelado</option>
       </select>
-      <select id="fpa-camp" onchange="renderHistorialPA()" style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px;font-family:var(--ff);outline:none">
-        <option value="">Todos los campamentos</option>
-        <option value="LA BREA">La Brea</option>
-        <option value="LAS PAILAS">Las Pailas</option>
-        <option value="LA CHOLA">La Chola</option>
-        <option value="BATIDERO">Batidero / Vicuña</option>
-      </select>
+      <input type="hidden" id="fpa-camp" value="">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">📆 Período:</span>
+      <span id="pha-periodo-slot" style="display:contents"></span>
       <input type="text" id="fpa-buscar" onkeyup="renderHistorialPA()" placeholder="Buscar por N° PA, solicitante..."
         style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px;font-family:var(--ff);outline:none;flex:1;min-width:180px">
     </div>
   </div>
-  <!-- Stats PA -->
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px" id="pa-stats-row">
-    <div class="stat" style="--sc:var(--or)"><div class="stat-lbl">Total PA</div><div class="stat-val" id="pa-st-total">0</div><div class="stat-sub">Pedidos recibidos</div></div>
-    <div class="stat" style="--sc:var(--yellow)"><div class="stat-lbl">Pendientes</div><div class="stat-val" id="pa-st-pend">0</div><div class="stat-sub">Sin procesar</div></div>
-    <div class="stat" style="--sc:var(--accent2)"><div class="stat-lbl">En Proceso</div><div class="stat-val" id="pa-st-proc">0</div><div class="stat-sub">En preparación</div></div>
-    <div class="stat" style="--sc:var(--green)"><div class="stat-lbl">Entregados</div><div class="stat-val" id="pa-st-ok">0</div><div class="stat-sub">PA cerrados</div></div>
+  <!-- Filtro por campamento (reemplaza los cuadros de stats) -->
+  <div class="card sp" style="padding:12px 18px;margin-bottom:22px" id="pa-camp-chips-box">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-right:4px">🏕️ Campamento:</span>
+      <div id="pa-camp-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
   </div>
   <!-- Tabla PA -->
   <div class="card">
@@ -4303,7 +4304,9 @@ function _initPeriodoSlots(){
   const slots = [
     ['pp-periodo-slot', 'pp', 'renderPanel()'],
     ['ph-periodo-slot', 'ph', 'renderHistorial()'],
-    ['po-periodo-slot', 'po', 'renderHistorialPedidos()']
+    ['po-periodo-slot', 'po', 'renderHistorialPedidos()'],
+    ['ppa-periodo-slot', 'ppa', 'renderPanelPA()'],
+    ['pha-periodo-slot', 'pha', 'renderHistorialPA()']
   ];
   slots.forEach(([slotId, pref, cb])=>{
     const slot = document.getElementById(slotId);
@@ -4392,8 +4395,7 @@ function renderPanel() {
     return 'SIN CLASIF.';
   };
   const crits = {CRITICA:0,URGENTE:0,ALTA:0,MEDIA:0,BAJA:0,'SIN CLASIF.':0};
-  scsP.filter(s => s.estado!=='COMPLETADA' && s.estado!=='CANCELADA')
-     .forEach(s => { crits[_normCrit(s.criticidad)]++; });
+  scsP.forEach(s => { crits[_normCrit(s.criticidad)]++; });   // todas las SC del período
   if (!crits['SIN CLASIF.']) delete crits['SIN CLASIF.'];   // no mostrar el bucket si está vacío
   const critColors = {CRITICA:'var(--red)',URGENTE:'#E85D26',ALTA:'var(--yellow)',MEDIA:'#22c55e',BAJA:'var(--muted)','SIN CLASIF.':'#6b7280'};
   const critMax = Math.max(...Object.values(crits),1);
@@ -4411,10 +4413,8 @@ function renderPanel() {
 
   // Área bars — pendientes por área
   const areas = {};
-  scsP.filter(s=>s.estado!=='COMPLETADA' && s.estado!=='CANCELADA').forEach(s=>{
-    const a=s.area||'Sin área'; areas[a]=(areas[a]||0)+1;
-  });
-  const sortedAreas = Object.entries(areas).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  scsP.forEach(s=>{ const a=s.area||'Sin área'; areas[a]=(areas[a]||0)+1; });   // todas las SC del período
+  const sortedAreas = Object.entries(areas).sort((a,b)=>b[1]-a[1]);
   const areaMax = sortedAreas.length ? sortedAreas[0][1] : 1;
   const areaEl = document.getElementById('panel-area-bars');
   if(areaEl) areaEl.innerHTML = sortedAreas.length ? sortedAreas.map(([a,n])=>`
@@ -6231,6 +6231,7 @@ function showViewPA(id, btn) {
   const el=document.getElementById('view-'+id); if(el) el.classList.add('active');
   document.querySelectorAll('.sidebar-btn').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
+  _initPeriodoSlots();
   if(id==='historial-pa') renderHistorialPA();
   if(id==='panel-pa') renderPanelPA();
   if(id==='kanban-pa') renderKanbanPA();
@@ -8610,11 +8611,16 @@ function _buildPanelPA() {
   const cont = document.getElementById('panel-pa-body');
   if (!cont) return;
 
-  const total  = paData.length;
-  const pend   = paData.filter(p => calcEstadoPA(p) === 'pendiente').length;
-  const parci  = paData.filter(p => calcEstadoPA(p) === 'partial').length;
-  const full   = paData.filter(p => calcEstadoPA(p) === 'full').length;
-  const none   = paData.filter(p => calcEstadoPA(p) === 'none').length;
+  // Subconjunto filtrado por período
+  const _paP = paData.filter(p => _periodoMatch(p.fecha||p.creado||'', 'ppa'));
+  const _info=document.getElementById('ppa-periodo-info');
+  if(_info){ const modo=document.getElementById('ppa-modo')?.value||'todos'; _info.textContent = modo==='todos'?'':(_paP.length+' de '+paData.length+' PA en el período'); }
+
+  const total  = _paP.length;
+  const pend   = _paP.filter(p => calcEstadoPA(p) === 'pendiente').length;
+  const parci  = _paP.filter(p => calcEstadoPA(p) === 'partial').length;
+  const full   = _paP.filter(p => calcEstadoPA(p) === 'full').length;
+  const none   = _paP.filter(p => calcEstadoPA(p) === 'none').length;
 
   // Fill stat cards (new IDs matching the HTML above)
   setEl('pa-st-total2', total);
@@ -8624,7 +8630,7 @@ function _buildPanelPA() {
 
   // By campamento
   const camps = {};
-  paData.forEach(pa => {
+  _paP.forEach(pa => {
     const c = pa.campamento || 'Sin asignar';
     if (!camps[c]) camps[c] = { total:0, ok:0 };
     camps[c].total++;
@@ -8804,6 +8810,35 @@ function _buildKanbanPA() {
   }).join('')+'</div>';
 }
 
+// Chips de campamento en el Historial de PA (reemplazan los cuadros de stats)
+function _paSetCamp(val){
+  const el=document.getElementById('fpa-camp'); if(el) el.value=val;
+  renderHistorialPA();
+}
+function _renderPACampChips(){
+  const box=document.getElementById('pa-camp-chips'); if(!box) return;
+  const actual=(document.getElementById('fpa-camp')?.value||'').toUpperCase();
+  // contar por campamento (normalizado)
+  const conteo={};
+  paData.forEach(p=>{ const c=(p.campamento||'Sin asignar').toUpperCase().trim(); conteo[c]=(conteo[c]||0)+1; });
+  const camps=Object.keys(conteo).sort((a,b)=>conteo[b]-conteo[a]);
+  const chip=(label,val,n,active)=>{
+    const bg=active?'var(--or)':'var(--s3)';
+    const col=active?'#fff':'var(--text)';
+    const bd=active?'var(--or)':'var(--border2)';
+    return '<button onclick="_paSetCamp(\''+val.replace(/'/g,"\\'")+'\')" '
+      +'style="display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:999px;font-size:12px;font-weight:700;'
+      +'background:'+bg+';color:'+col+';border:1px solid '+bd+';cursor:pointer;font-family:var(--ff)">'
+      +label+'<span style="background:rgba(0,0,0,.18);padding:1px 7px;border-radius:999px;font-size:11px">'+n+'</span></button>';
+  };
+  let html=chip('Todos','',paData.length, actual==='');
+  camps.forEach(c=>{
+    const label=c.charAt(0)+c.slice(1).toLowerCase();
+    html+=chip(label, c, conteo[c], actual===c);
+  });
+  box.innerHTML=html;
+}
+
 async function renderHistorialPA() {
   // 1. Intentar Supabase primero
   const rows = await sbSelect('pedidos_abastecimiento');
@@ -8872,16 +8907,9 @@ async function renderHistorialPA() {
 
   _purgeTombstonesPA();   // a prueba de balas: nunca mostrar/recuperar PA borrados
 
-  // Stats
-  const total = paData.length;
-  const pend  = paData.filter(p => p.estado === 'PENDIENTE').length;
-  const proc  = paData.filter(p => p.estado === 'EN PROCESO').length;
-  const ok    = paData.filter(p => p.estado === 'ENTREGADO').length;
-  setEl('pa-st-total', total);
-  setEl('pa-st-pend', pend);
-  setEl('pa-st-proc', proc);
-  setEl('pa-st-ok', ok);
-  setEl('sb-pa-total', total);
+  // Chips de campamento (reemplazan los cuadros de stats) — se construyen desde los datos
+  _renderPACampChips();
+  setEl('sb-pa-total', paData.length);
 
   let data = [...paData];
   const fe = document.getElementById('fpa-estado')?.value || '';
@@ -8890,6 +8918,7 @@ async function renderHistorialPA() {
   if (fe) data = data.filter(p => p.estado === fe);
   if (fc) data = data.filter(p => (p.campamento || '').toUpperCase().includes(fc));
   if (fb) data = data.filter(p => ((p.numPA||'') + (p.solicitante||'') + (p.campamento||'')).toLowerCase().includes(fb));
+  data = data.filter(p => _periodoMatch(p.fecha||p.creado||'', 'pha'));
 
   const tb = document.getElementById('pa-table-body');
   if (!tb) return;
