@@ -1224,10 +1224,10 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 #view-proyectos .tabs,#view-proyectos .rubro-tabs,#view-proyectos .cal-head{border-color:var(--border)!important}
 #view-proyectos .empty{color:var(--muted)!important}
 /* estados badge — más contraste sobre fondo oscuro */
-#view-proyectos .estado.planificacion{background:rgba(62,124,177,.18);color:#8fc0e8}
-#view-proyectos .estado.compras{background:rgba(232,97,26,.18);color:#f3a26f}
-#view-proyectos .estado.ejecucion{background:rgba(60,157,110,.18);color:#7fd0a6}
-#view-proyectos .estado.finalizado{background:var(--s3);color:var(--muted)}
+#view-proyectos .estado.planificacion{background:#3e7cb1!important;color:#fff!important}
+#view-proyectos .estado.compras{background:#E8611A!important;color:#fff!important}
+#view-proyectos .estado.ejecucion{background:#2f9e6b!important;color:#fff!important}
+#view-proyectos .estado.finalizado{background:#6b7280!important;color:#fff!important}
 
 /* ===== DETALLE DEL PROYECTO — paneles, tablas, calendario, gantt ===== */
 /* Paneles grandes (Materiales, Cotizaciones, Presupuesto global, Planos, Gantt, Calendario) */
@@ -1369,15 +1369,15 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 
 #view-proyectos .card-total{font-weight:800;color:var(--naranja-osc);font-size:14px}
 
-#view-proyectos .estado{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;letter-spacing:.3px}
+#view-proyectos .estado{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;letter-spacing:.3px;box-shadow:0 1px 4px rgba(0,0,0,.25);text-transform:uppercase}
 
-#view-proyectos .estado.planificacion{background:rgba(62,124,177,.18);color:#8fc0e8}
+#view-proyectos .estado.planificacion{background:#3e7cb1!important;color:#fff!important}
 
-#view-proyectos .estado.compras{background:rgba(232,97,26,.18);color:#f3a26f}
+#view-proyectos .estado.compras{background:#E8611A!important;color:#fff!important}
 
-#view-proyectos .estado.ejecucion{background:rgba(60,157,110,.18);color:#7fd0a6}
+#view-proyectos .estado.ejecucion{background:#2f9e6b!important;color:#fff!important}
 
-#view-proyectos .estado.finalizado{background:var(--s3);color:var(--muted)}
+#view-proyectos .estado.finalizado{background:#6b7280!important;color:#fff!important}
 
 
 #view-proyectos .empty{text-align:center;padding:70px 20px;color:var(--gris-medio)}
@@ -12343,9 +12343,12 @@ function renderSCAsociadas(){
   // SC que se asociaron desde el Formulario SC (campo proyecto_asociado == N° del proyecto)
   const all=_scsCC();
   const desdeForm=all.filter(sc=>String(sc.proyectoAsociado||sc.proyecto_asociado||'')===String(current.num)).map(sc=>String(_scNum(sc)));
-  const arr=Array.from(new Set([...manual,...desdeForm]));
+  let arr=Array.from(new Set([...manual,...desdeForm]));
   if(!arr.length){ box.innerHTML='<div style="color:var(--muted);font-size:12px;padding:6px 2px">Sin solicitudes asociadas. Usá «＋ Asociar SC» para vincular una o más, o tildá «Asociar a proyecto» al crear una SC.</div>'; return; }
-  box.innerHTML=arr.map(numSC=>{
+  // Ordenar por fecha de la SC (mayor a menor)
+  const _fechaSC=(num)=>{ const sc=all.find(x=>String(_scNum(x))===String(num)); return sc?String(sc.fecha||sc.creado||''):''; };
+  arr.sort((a,b)=>{ const fa=_fechaSC(a), fb=_fechaSC(b); if(fa&&fb) return fb.localeCompare(fa); if(fb) return 1; if(fa) return -1; return String(b).localeCompare(String(a)); });
+  const _filas=arr.map(numSC=>{
     const sc=all.find(x=>String(_scNum(x))===String(numSC));
     const asunto=sc?_scAsunto(sc):'';
     const sol=sc?(sc.solicitante||''):'';
@@ -12358,6 +12361,15 @@ function renderSCAsociadas(){
       +(auto?'':'<button class="btn btn-ghost btn-xs" onclick="PROY.quitarSC(\''+encodeURIComponent(numSC)+'\')" title="Quitar asociación">✕</button>')
       +'</div>';
   }).join('');
+  // Mostrar hasta 4 con barra de deslizamiento (cada fila ~46px)
+  const _maxVis=4, _rowH=46;
+  const _scroll = arr.length>_maxVis
+    ? 'max-height:'+(_maxVis*_rowH)+'px;overflow-y:auto;padding-right:6px'
+    : '';
+  const _hint = arr.length>_maxVis
+    ? '<div style="font-size:10px;color:var(--muted);margin-top:6px;text-align:right">'+arr.length+' solicitudes · deslizá para ver todas</div>'
+    : '';
+  box.innerHTML='<div style="'+_scroll+'">'+_filas+'</div>'+_hint;
 }
 function toggleSCPicker(){
   const b=document.getElementById('scPickerBox'); if(!b) return;
