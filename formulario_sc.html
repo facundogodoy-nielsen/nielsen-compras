@@ -2620,40 +2620,97 @@ async function sbDelete(tabla, col, val) {
 // ENVÍO DE EMAIL — EmailJS
 // Configuración en Ajustes del Centro de Control
 // ══════════════════════════════════════════════════════════
-// Sube fotos y presupuestos de a UNO, con confirmación real (evita el payload gigante de no-cors)
+// ══ Subida a Supabase Storage (reemplaza Google Drive) ══
+const _SB_BUCKET = 'nielsen-archivos';
+// Convierte un dataURL (base64) a Blob para subir el binario tal cual
+function _dataUrlToBlob(dataUrl){
+  const [head, b64] = String(dataUrl).split(',');
+  const mime = (head.match(/data:([^;]+)/) || [,'application/octet-stream'])[1];
+  const bin = atob(b64 || '');
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+// Limpia un nombre para usarlo como ruta en Storage
+function _slugArchivo(name){
+  const dot = name.lastIndexOf('.');
+  const ext = dot>=0 ? name.slice(dot) : '';
+  const base = (dot>=0 ? name.slice(0,dot) : name).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'').slice(0,60) || 'archivo';
+  return base + ext.toLowerCase();
+}
+// Sube un archivo a Storage y devuelve su URL pública (o null)
+async function _storageUpload(path, dataUrl){
+  try{
+    const blob = _dataUrlToBlob(dataUrl);
+    const clean = path.split('/').map(seg => encodeURIComponent(seg)).join('/');
+    const r = await fetch(_SB_URL + '/storage/v1/object/' + _SB_BUCKET + '/' + clean, {
+      method:'POST',
+      headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, 'x-upsert':'true', 'Content-Type': blob.type || 'application/octet-stream' },
+      body: blob
+    });
+    if(!r.ok){ console.warn('storage upload', r.status, await r.text().catch(()=>'')); return null; }
+    return _SB_URL + '/storage/v1/object/public/' + _SB_BUCKET + '/' + clean;
+  }catch(e){ console.warn('storage upload err', e); return null; }
+}
+
+// Sube fotos y presupuestos de la SC a Storage y guarda los mapas ítem→archivos en Supabase
 async function _subirAdjuntosSC(numSC, presupuestos, fotos){
-  const todos = []
-    .concat((presupuestos||[]).map(p => ({ ...p, kind:'presupuesto' })))
-    .concat((fotos||[]).map(f => ({ ...f, kind:'foto' })));
-  if(!todos.length) return;
-  let ok = 0, fail = 0;
-  for(let i=0; i<todos.length; i++){
-    const a = todos[i];
-    if(typeof toast === 'function') toast('⏳ Subiendo adjunto ' + (i+1) + ' de ' + todos.length + '...');
-    const subido = await _subirUnAdjunto(numSC, a);
-    if(subido) ok++; else fail++;
+  const grupos = [
+    { arr: fotos||[],        sub:'fotos',         col:'fotos_map'  },
+    { arr: presupuestos||[], sub:'presupuestos',  col:'presup_map' }
+  ];
+  const total = (fotos||[]).length + (presupuestos||[]).length;
+  if(!total) return;
+  let ok=0, fail=0, done=0;
+  const mapas = { fotos_map:{}, presup_map:{} };
+  for(const g of grupos){
+    for(const a of g.arr){
+      done++;
+      if(typeof toast==='function') toast('⏳ Subiendo adjunto '+done+' de '+total+'...');
+      const path = 'sc/'+numSC+'/'+g.sub+'/'+Date.now()+'_'+_slugArchivo(a.name);
+      const url = await _storageUpload(path, a.dataUrl);
+      if(url){
+        ok++;
+        const idxs = (a.itemsIdx && a.itemsIdx.length) ? a.itemsIdx : [0];
+        idxs.forEach(ix=>{ const k=String(ix); if(!mapas[g.col][k]) mapas[g.col][k]=[]; mapas[g.col][k].push({name:a.name, url:url}); });
+      } else fail++;
+    }
   }
-  if(typeof toast === 'function'){
-    if(!fail) toast('✅ ' + ok + ' adjunto(s) guardado(s) en Drive');
-    else toast('⚠️ ' + ok + ' guardado(s), ' + fail + ' con error. Podés reintentar desde el Centro de Control.', true);
+  // Guardar los mapas en la fila de la SC (fusionando con lo que ya haya)
+  await _guardarMapasSC(numSC, mapas);
+  if(typeof toast==='function'){
+    if(!fail) toast('✅ '+ok+' adjunto(s) guardado(s)');
+    else toast('⚠️ '+ok+' guardado(s), '+fail+' con error. Reintentá desde el Centro de Control.', true);
   }
 }
-async function _subirUnAdjunto(numSC, a){
-  const body = JSON.stringify({
-    tipo: 'SC_ADJUNTO', num_sc: numSC, kind: a.kind,
-    name: a.name, ftype: a.type || '', dataUrl: a.dataUrl,
-    item: a.item || '', itemsIdx: a.itemsIdx || []
-  });
-  // Intento 1: POST normal para poder LEER la respuesta (confirma que se guardó)
-  try{
-    const r = await fetch(MAIL_WEBAPP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
-    if(r.ok){ const j = await r.json().catch(()=>null); if(j && j.ok) return true; }
-  }catch(e){ /* CORS puede bloquear la lectura; caemos al reintento no-cors */ }
-  // Intento 2: no-cors (se sube igual aunque no podamos leer la respuesta)
-  try{
-    await fetch(MAIL_WEBAPP_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
-    return true;
-  }catch(e){ return false; }
+// Fusiona y persiste los mapas de adjuntos en la SC (con reintento por la carrera con el INSERT)
+async function _guardarMapasSC(numSC, mapas){
+  for(let intento=0; intento<4; intento++){
+    let row=null;
+    try{
+      const r=await fetch(_SB_URL+'/rest/v1/solicitudes_compra?num_sc=eq.'+encodeURIComponent(numSC)+'&select=fotos_map,presup_map',
+        { headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY}, cache:'no-store' });
+      if(r.ok){ const j=await r.json(); row = j&&j[0] ? j[0] : null; }
+    }catch(e){}
+    if(row===null){ await new Promise(res=>setTimeout(res,1200)); continue; }  // fila aún no existe
+    const merge=(existente, nuevo)=>{
+      let m={}; try{ m = existente ? (typeof existente==='string'?JSON.parse(existente):existente) : {}; }catch(e){ m={}; }
+      Object.keys(nuevo||{}).forEach(k=>{ if(!m[k]) m[k]=[]; m[k]=m[k].concat(nuevo[k]); });
+      return m;
+    };
+    const body={};
+    if(Object.keys(mapas.fotos_map).length)  body.fotos_map  = merge(row.fotos_map,  mapas.fotos_map);
+    if(Object.keys(mapas.presup_map).length) body.presup_map = merge(row.presup_map, mapas.presup_map);
+    if(!Object.keys(body).length) return true;
+    try{
+      const r=await fetch(_SB_URL+'/rest/v1/solicitudes_compra?num_sc=eq.'+encodeURIComponent(numSC),
+        { method:'PATCH', headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=minimal'}, body:JSON.stringify(body) });
+      if(r.ok) return true;
+    }catch(e){}
+    await new Promise(res=>setTimeout(res,1000));
+  }
+  return false;
 }
 
 async function _enviarEmailSC(numSC, numOP) {

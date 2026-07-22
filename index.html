@@ -12011,18 +12011,22 @@ function handlePlanos(files){
 }
 // Sube un plano al Apps Script (carpeta PROYECTOS/PR-aaaa-xxxx) y devuelve el link de Drive
 async function _subirPlanoDrive(num, proyId, name, type, dataUrl){
-  const MAIL=(typeof MAIL_WEBAPP_URL!=='undefined')?MAIL_WEBAPP_URL:(window.MAIL_WEBAPP_URL||'');
-  if(!MAIL) return null;
+  // Subir a Supabase Storage: proyectos/<num>/...
   try{
-    // no-cors no devuelve body; para obtener el link usamos un POST normal (el Apps Script sí responde JSON en doPost con return)
-    const r=await fetch(MAIL,{ method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ tipo:'PROY_ARCHIVOS', num:num, proy_id:proyId, archivos:[{name:name,type:type,dataUrl:dataUrl}] }) });
-    if(r.ok){ const j=await r.json(); if(j&&j.archivos&&j.archivos[0]) return j.archivos[0].url; }
-  }catch(e){
-    // si CORS bloquea la respuesta, reintentar en modo no-cors (se sube igual, sin link inmediato)
-    try{ await fetch(MAIL,{ method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ tipo:'PROY_ARCHIVOS', num:num, proy_id:proyId, archivos:[{name:name,type:type,dataUrl:dataUrl}] }) }); }catch(e2){}
-  }
+    const _bucket='nielsen-archivos';
+    const _slug=(nm)=>{ const dot=nm.lastIndexOf('.'); const ext=dot>=0?nm.slice(dot):''; const base=(dot>=0?nm.slice(0,dot):nm).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'').slice(0,60)||'archivo'; return base+ext.toLowerCase(); };
+    const parts=String(dataUrl).split(','); const b64=parts[1]||''; const mime=(parts[0].match(/data:([^;]+)/)||[null,type||'application/octet-stream'])[1];
+    const bin=atob(b64); const bytes=new Uint8Array(bin.length); for(let j=0;j<bin.length;j++) bytes[j]=bin.charCodeAt(j);
+    const blob=new Blob([bytes],{type:mime});
+    const path=('proyectos/'+num+'/'+Date.now()+'_'+_slug(name)).split('/').map(seg=>encodeURIComponent(seg)).join('/');
+    const r=await fetch(_SB_URL+'/storage/v1/object/'+_bucket+'/'+path,{
+      method:'POST',
+      headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,'x-upsert':'true','Content-Type':blob.type||'application/octet-stream'},
+      body:blob
+    });
+    if(r.ok) return _SB_URL+'/storage/v1/object/public/'+_bucket+'/'+path;
+    console.warn('storage plano', r.status);
+  }catch(e){ console.warn('subir plano storage', e); }
   return null;
 }
 function delPlano(i){current.planos.splice(i,1);save();renderPlanos()}

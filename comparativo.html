@@ -928,6 +928,34 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
 var _SB_URL = 'https://qivvewvgqlsptydftlhx.supabase.co';
 var _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
 var MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxgLMhi31Xc5YEcHANuq9CiJsjh4Y-wh7SIqaUsUjZ7MnG7gc2pEDU80bAQubSA5RiP/exec';
+// ══ Supabase Storage ══
+var _SB_BUCKET = 'nielsen-archivos';
+function _dataUrlToBlob(dataUrl){
+  var parts = String(dataUrl).split(','); var head = parts[0], b64 = parts[1] || '';
+  var mime = (head.match(/data:([^;]+)/) || [null,'application/octet-stream'])[1];
+  var bin = atob(b64); var bytes = new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+function _slugArchivo(name){
+  var dot = name.lastIndexOf('.'); var ext = dot>=0 ? name.slice(dot) : '';
+  var base = (dot>=0 ? name.slice(0,dot) : name).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'').slice(0,60) || 'archivo';
+  return base + ext.toLowerCase();
+}
+async function _storageUpload(path, dataUrl){
+  try{
+    var blob = _dataUrlToBlob(dataUrl);
+    var clean = path.split('/').map(function(seg){ return encodeURIComponent(seg); }).join('/');
+    var r = await fetch(_SB_URL + '/storage/v1/object/' + _SB_BUCKET + '/' + clean, {
+      method:'POST',
+      headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, 'x-upsert':'true', 'Content-Type': blob.type || 'application/octet-stream' },
+      body: blob
+    });
+    if(!r.ok){ console.warn('storage upload', r.status); return null; }
+    return _SB_URL + '/storage/v1/object/public/' + _SB_BUCKET + '/' + clean;
+  }catch(e){ console.warn('storage upload err', e); return null; }
+}
 
 async function sbComparativaInsert(data) {
   try {
@@ -1870,30 +1898,49 @@ function abrirFotosItem(idx){
 }
 // Sube a Drive las fotos pendientes de todos los ítems (llamado tras guardar la CCP)
 async function _subirFotosCCP(numComp, compId){
-  var fotos = [];
+  // Subir a Supabase Storage: comparativo/<numComp>/... y guardar fotos_map en comparativas
+  var pend = [];
   items.forEach(function(item, idx){
-    (item.fotosPend || []).forEach(function(f){
-      fotos.push({ name: f.name, type: f.type, dataUrl: f.dataUrl, itemsIdx: [idx] });
-    });
+    (item.fotosPend || []).forEach(function(f){ pend.push({ name:f.name, dataUrl:f.dataUrl, idx:idx }); });
   });
-  if(!fotos.length) return;
-  showToast('⏳ Subiendo ' + fotos.length + ' foto(s) a Drive...', 'ok');
+  if(!pend.length) return;
+  showToast('⏳ Subiendo ' + pend.length + ' foto(s)...', 'ok');
+  var nuevoMap = {};
+  var ok=0, fail=0;
+  for(var i=0;i<pend.length;i++){
+    var a = pend[i];
+    var path = 'comparativo/'+numComp+'/'+Date.now()+'_'+_slugArchivo(a.name);
+    var url = await _storageUpload(path, a.dataUrl);
+    if(url){ ok++; var k=String(a.idx); if(!nuevoMap[k]) nuevoMap[k]=[]; nuevoMap[k].push({name:a.name, url:url}); }
+    else fail++;
+  }
+  // Fusionar en item.fotosMap (para el badge) y persistir en comparativas.fotos_map
+  Object.keys(nuevoMap).forEach(function(k){
+    var idx = parseInt(k,10);
+    items[idx].fotosMap = (items[idx].fotosMap||[]).concat(nuevoMap[k]);
+    items[idx].fotosPend = [];
+  });
+  // limpiar cualquier pendiente que haya quedado
+  items.forEach(function(it){ it.fotosPend = []; });
+  await _guardarFotosMapCCP(numComp, compId);
+  renderItems();
+  if(!fail) showToast('✅ '+ok+' foto(s) guardada(s)', 'ok');
+  else showToast('⚠️ '+ok+' guardada(s), '+fail+' con error', 'error');
+}
+// Persiste el mapa ítem→fotos completo en la fila de la comparativa
+async function _guardarFotosMapCCP(numComp, compId){
+  var mapa = {};
+  items.forEach(function(item, idx){
+    if(item.fotosMap && item.fotosMap.length) mapa[String(idx)] = item.fotosMap;
+  });
+  var sel = compId ? ('id=eq.'+encodeURIComponent(compId)) : ('num_comp=eq.'+encodeURIComponent(numComp));
   try{
-    await fetch(MAIL_WEBAPP_URL, {
-      method:'POST', mode:'no-cors',
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({ tipo:'CCP_FOTOS', num_comp:numComp, comp_id:compId||null, fotos:fotos })
+    await fetch(_SB_URL+'/rest/v1/comparativas?'+sel, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=minimal'},
+      body: JSON.stringify({ fotos_map: mapa })
     });
-    // marcar como subidas (se limpian los pendientes; se releen al recargar la CCP)
-    items.forEach(function(item){
-      if(item.fotosPend && item.fotosPend.length){
-        item.fotosMap = (item.fotosMap||[]).concat(item.fotosPend.map(function(f){return {name:f.name};}));
-        item.fotosPend = [];
-      }
-    });
-    renderItems();
-    showToast('✅ Fotos enviadas a Drive (carpeta COMPARATIVO/' + numComp + ')', 'ok');
-  }catch(e){ console.warn('subirFotosCCP', e); showToast('No se pudieron subir las fotos', 'error'); }
+  }catch(e){ console.warn('guardar fotos_map CCP', e); }
 }
 
 function renderItems() {
