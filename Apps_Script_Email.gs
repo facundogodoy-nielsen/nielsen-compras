@@ -229,6 +229,9 @@ function doPost(e) {
     // Planos/archivos de un Proyecto → Drive «PROYECTOS/PR-aaaa-xxxx»
     if (p.tipo === 'PROY_ARCHIVOS') { return _guardarProyArchivos(p); }
 
+    // Un adjunto de SC (foto o presupuesto), subida individual con confirmación
+    if (p.tipo === 'SC_ADJUNTO') { return _guardarUnAdjuntoSC(p); }
+
     // Aviso de cambio de N° PC (desde el Centro de Control) — sin archivos
     if (p.tipo === 'PC_UPDATE') {
       var asuntoPC = 'N° PC asignado a tu SC ' + (p.num_sc || '') + ' — Nielsen';
@@ -941,4 +944,68 @@ function _verCarpetas() {
     + '<div style="padding:16px 22px">' + html + '</div>'
     + '<div style="background:#f9fafb;padding:12px 22px;border-top:1px solid #eee;color:#9ca3af;font-size:11px">Cada solicitud, comparativa y proyecto guarda sus archivos en su propia subcarpeta. — Nielsen Logística y Expediciones S.A.</div>'
     + '</div></body></html>';
+}
+
+// ═════════════════════════════════════════════════════════════
+// SC — un adjunto individual (foto o presupuesto) con confirmación
+// payload: { tipo:'SC_ADJUNTO', num_sc, kind:'foto'|'presupuesto', name, ftype, dataUrl, itemsIdx:[..] }
+// Guarda en Drive (FOTOS MUESTRAS SC / PRESUPUESTOS SC → subcarpeta N° SC) y
+// actualiza el mapa (fotos_map / presup_map) en Supabase, reintentando por la carrera con el INSERT.
+// ═════════════════════════════════════════════════════════════
+function _guardarUnAdjuntoSC(p) {
+  var res = { ok: false };
+  try {
+    var numSC = String(p.num_sc || '').trim();
+    if (!numSC) { res.error = 'sin num_sc'; return _json(res); }
+    var blob = _blobFromDataUrl(p.dataUrl, p.name);
+    if (!blob) { res.error = 'dataUrl inválido'; return _json(res); }
+
+    var root = DriveApp.getRootFolder();
+    var esFoto = (p.kind === 'foto');
+    var parent = _folderByName(root, esFoto ? 'FOTOS MUESTRAS SC' : 'PRESUPUESTOS SC');
+    var carpeta = _folderByName(parent, numSC);
+    try { carpeta.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+
+    var file = carpeta.createFile(blob);
+    try { file.setName(_prefijoItem(p.itemsIdx) + p.name); } catch (e) {}
+    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+    var url = file.getUrl();
+
+    // Actualizar el mapa correspondiente en Supabase (fusionando con lo que ya haya)
+    var col = esFoto ? 'fotos_map' : 'presup_map';
+    var urlCol = esFoto ? 'drive_fotos_url' : 'drive_presup_url';
+    _mergeAdjuntoEnSC(numSC, col, urlCol, carpeta.getUrl(), p.itemsIdx, p.name, url);
+
+    res.ok = true; res.url = url; res.folder = carpeta.getUrl();
+  } catch (e) { res.error = String(e); }
+  return _json(res);
+}
+function _json(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+// Fusiona un archivo nuevo en el mapa ítem→[{name,url}] de la SC (lee, agrega, reescribe)
+function _mergeAdjuntoEnSC(numSC, col, urlCol, folderUrl, itemsIdx, name, url) {
+  for (var intento = 0; intento < 4; intento++) {
+    var row = null;
+    try {
+      var j = _sbGet('solicitudes_compra?num_sc=eq.' + encodeURIComponent(numSC) + '&select=' + col + ',' + urlCol);
+      row = (j && j[0]) ? j[0] : null;
+    } catch (e) { row = null; }
+    if (row === null) { Utilities.sleep(1200); continue; }   // la fila aún no existe (carrera con el INSERT)
+
+    var mapa = {};
+    try { mapa = row[col] ? (typeof row[col] === 'string' ? JSON.parse(row[col]) : row[col]) : {}; } catch (e) { mapa = {}; }
+    var idxs = (itemsIdx && itemsIdx.length) ? itemsIdx : [0];
+    idxs.forEach(function (ix) {
+      var k = String(ix);
+      if (!mapa[k]) mapa[k] = [];
+      mapa[k].push({ name: name, url: url });
+    });
+
+    var body = {}; body[col] = mapa; body[urlCol] = folderUrl;
+    if (_sbPatchSC(numSC, body)) return true;
+    // por si la columna del mapa no existe: al menos guardar la carpeta
+    var b2 = {}; b2[urlCol] = folderUrl; _sbPatchSC(numSC, b2);
+    return false;
+  }
+  return false;
 }

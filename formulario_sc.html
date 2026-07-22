@@ -1858,10 +1858,14 @@ async function enviar() {
 async function showSuccess(numSC, numOP) {
   // ── Guardar PRIMERO en Supabase (con reintentos) y verificar ANTES de confirmar ──
   const guardadoOk = await _guardarSCenCC(numSC, numOP);   // Supabase + localStorage
-  // Esperar el despacho: lleva las fotos/presupuestos (base64) y se cortaría al cambiar de pantalla
+  // 1) Correo de confirmación SIN archivos (liviano, no se corta)
+  await _enviarEmailSC(numSC, numOP);
+  // 2) Subir fotos y presupuestos por separado, uno por uno, con confirmación real
   const _hayAdjuntos = (presupuestos||[]).some(x=>x.data) || (fotosMuestra||[]).some(x=>x.data);
-  if (_hayAdjuntos && typeof toast === 'function') toast('⏳ Subiendo adjuntos a Drive...');
-  await _enviarEmailSC(numSC, numOP);                       // confirmación al solicitante
+  if (_hayAdjuntos) {
+    try { await _subirAdjuntosSC(numSC, presupuestosPayload, fotosPayload); }
+    catch(e){ console.warn('subir adjuntos', e); }
+  }
 
   document.querySelectorAll('.panel').forEach(p => p.style.display = 'none');
   document.getElementById('success').style.display = 'block';
@@ -2616,6 +2620,42 @@ async function sbDelete(tabla, col, val) {
 // ENVÍO DE EMAIL — EmailJS
 // Configuración en Ajustes del Centro de Control
 // ══════════════════════════════════════════════════════════
+// Sube fotos y presupuestos de a UNO, con confirmación real (evita el payload gigante de no-cors)
+async function _subirAdjuntosSC(numSC, presupuestos, fotos){
+  const todos = []
+    .concat((presupuestos||[]).map(p => ({ ...p, kind:'presupuesto' })))
+    .concat((fotos||[]).map(f => ({ ...f, kind:'foto' })));
+  if(!todos.length) return;
+  let ok = 0, fail = 0;
+  for(let i=0; i<todos.length; i++){
+    const a = todos[i];
+    if(typeof toast === 'function') toast('⏳ Subiendo adjunto ' + (i+1) + ' de ' + todos.length + '...');
+    const subido = await _subirUnAdjunto(numSC, a);
+    if(subido) ok++; else fail++;
+  }
+  if(typeof toast === 'function'){
+    if(!fail) toast('✅ ' + ok + ' adjunto(s) guardado(s) en Drive');
+    else toast('⚠️ ' + ok + ' guardado(s), ' + fail + ' con error. Podés reintentar desde el Centro de Control.', true);
+  }
+}
+async function _subirUnAdjunto(numSC, a){
+  const body = JSON.stringify({
+    tipo: 'SC_ADJUNTO', num_sc: numSC, kind: a.kind,
+    name: a.name, ftype: a.type || '', dataUrl: a.dataUrl,
+    item: a.item || '', itemsIdx: a.itemsIdx || []
+  });
+  // Intento 1: POST normal para poder LEER la respuesta (confirma que se guardó)
+  try{
+    const r = await fetch(MAIL_WEBAPP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
+    if(r.ok){ const j = await r.json().catch(()=>null); if(j && j.ok) return true; }
+  }catch(e){ /* CORS puede bloquear la lectura; caemos al reintento no-cors */ }
+  // Intento 2: no-cors (se sube igual aunque no podamos leer la respuesta)
+  try{
+    await fetch(MAIL_WEBAPP_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body });
+    return true;
+  }catch(e){ return false; }
+}
+
 async function _enviarEmailSC(numSC, numOP) {
   if (!MAIL_WEBAPP_URL) {
     if (typeof toast === 'function') toast('⚠️ Falta configurar la URL de correos (MAIL_WEBAPP_URL)', true);
@@ -2662,8 +2702,8 @@ async function _enviarEmailSC(numSC, numOP) {
     items:        itemsTxt,
     obs:          obs || '—',
     vale_num:     valeNumActual || '—',
-    presupuestos: presupuestosPayload,
-    fotos:        fotosPayload,
+    n_fotos:      (fotosPayload||[]).length,
+    n_presup:     (presupuestosPayload||[]).length,
     link_historial: 'https://nielsen-compras.vercel.app/#historial'
   };
 
