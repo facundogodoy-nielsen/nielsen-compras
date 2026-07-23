@@ -251,14 +251,35 @@ function cargarEnNavegador(){
   _leerDestino().then(function(row){
     var st = row.data;
     var ver = (parseInt(st._ver || 0) || 0);
-    localStorage.setItem('nielsen_inventario', JSON.stringify(st));
-    localStorage.setItem('nielsen_inventario_ver', String(ver));
-    localStorage.setItem('nielsen_inventario_ts', Date.now().toString());
-    el('o5').innerHTML = '<span class="ok big">✅ Inventario cargado en este navegador</span>'
-      + '<div style="margin-top:8px">' + _mini(st) + '</div>'
-      + '<div style="margin-top:10px;font-size:13px">Abrí ahora <strong>Pañol → Central de Depósitos</strong>: vas a ver el inventario real.</div>';
+    var guardado = true;
+    try{
+      localStorage.setItem('nielsen_inventario', JSON.stringify(st));
+      localStorage.setItem('nielsen_inventario_ver', String(ver));
+      localStorage.setItem('nielsen_inventario_ts', Date.now().toString());
+    }catch(e){
+      // El inventario supera el espacio del navegador (~5 MB). No es problema:
+      // la Central de Depositos lo lee directo de la nube. Limpiamos para no interferir.
+      guardado = false;
+      try{
+        for(var i2 = localStorage.length - 1; i2 >= 0; i2--){
+          var k2 = localStorage.key(i2);
+          if(k2 && k2.indexOf('nielsen_inventario') === 0) localStorage.removeItem(k2);
+        }
+      }catch(e2){}
+    }
+    if(guardado){
+      el('o5').innerHTML = '<span class="ok big">\u2705 Inventario cargado en este navegador</span>'
+        + '<div style="margin-top:8px">' + _mini(st) + '</div>'
+        + '<div style="margin-top:10px;font-size:13px">Abr\u00ed ahora <strong>Pa\u00f1ol \u2192 Central de Dep\u00f3sitos</strong>.</div>';
+    } else {
+      el('o5').innerHTML = '<span class="ok big">\u2705 Todo listo \u2014 se lee desde la nube</span>'
+        + '<div style="margin-top:8px">' + _mini(st) + '</div>'
+        + '<div style="margin-top:10px;font-size:13px;color:var(--muted)">Tu inventario es m\u00e1s grande que el espacio que guarda el navegador, '
+        + 'as\u00ed que la Central de Dep\u00f3sitos trabaja directamente contra la nube. Funciona igual: limpi\u00e9 la memoria local para que no interfiera.</div>'
+        + '<div style="margin-top:8px;font-size:13px">Abr\u00ed ahora <strong>Pa\u00f1ol \u2192 Central de Dep\u00f3sitos</strong>.</div>';
+    }
   }).catch(function(e){
-    el('o5').innerHTML = '<span class="err">❌ ' + e.message + '</span>';
+    el('o5').innerHTML = '<span class="err">\u274c ' + e.message + '</span>';
   }).finally(function(){ el('b6').disabled = false; });
 }
 

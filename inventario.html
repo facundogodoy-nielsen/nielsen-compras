@@ -2342,7 +2342,7 @@ function initData() {
     // Sincronizar el contador de versión local con el state
     var verGuardada = parseInt(localStorage.getItem('nielsen_inventario_ver') || '0') || 0;
     if (!state._ver || state._ver < verGuardada) state._ver = verGuardada;
-    if (state._ver > verGuardada) localStorage.setItem('nielsen_inventario_ver', String(state._ver));
+    if (state._ver > verGuardada) _lsSet('nielsen_inventario_ver', String(state._ver));
     // Migrate: ensure sub-states exist for older saves
     if (!state.ropa)              state.ropa              = { prendas:[], personal:[], entregas:[] };
     if (!state.ropa.prendas)      state.ropa.prendas      = [];
@@ -2435,7 +2435,29 @@ function initData() {
   state._semilla = true;
 }
 
-function _saveLocal() { localStorage.setItem('nielsen_inventario', JSON.stringify(state)); }
+var _lsSinEspacio = false;   // el inventario no entra en la memoria del navegador
+// Escritura segura: nunca lanza error. Si no hay espacio, seguimos contra la nube.
+function _lsSet(key, val) {
+  try { localStorage.setItem(key, val); return true; }
+  catch (e) {
+    if (key === 'nielsen_inventario') {
+      if (!_lsSinEspacio) {
+        _lsSinEspacio = true;
+        console.warn('Sin espacio local: el inventario trabaja directo contra la nube.');
+        try { toast('El inventario es grande: se trabaja directo con la nube', 'info'); } catch(e2) {}
+      }
+      // Liberar respaldos viejos para intentar dejar lugar la próxima vez
+      try {
+        for (var i = localStorage.length - 1; i >= 0; i--) {
+          var k = localStorage.key(i);
+          if (k && k.indexOf('nielsen_inventario_backup_') === 0) localStorage.removeItem(k);
+        }
+      } catch(e3) {}
+    }
+    return false;
+  }
+}
+function _saveLocal() { return _lsSet('nielsen_inventario', JSON.stringify(state)); }
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -2553,9 +2575,9 @@ function supabasePull(onDone) {
       // Si son iguales o local es mayor, NO se toca lo local (evita pisar datos nuevos).
       if (remoteVer > localVer || _localSinDatosReales()) {
         state = remoteData;
-        localStorage.setItem('nielsen_inventario', JSON.stringify(state));
-        localStorage.setItem('nielsen_inventario_ver', String(remoteVer));
-        localStorage.setItem('nielsen_inventario_ts', Date.now().toString());
+        _lsSet('nielsen_inventario', JSON.stringify(state));   // si no entra, seguimos igual
+        _lsSet('nielsen_inventario_ver', String(remoteVer));
+        _lsSet('nielsen_inventario_ts', Date.now().toString());
         supabaseSetStatus('synced');
         if (onDone) onDone(true);
       } else {
@@ -2629,8 +2651,8 @@ function save() {
   state._ver = ver;
   if (state._semilla) delete state._semilla;   // ya no son datos de ejemplo
   _saveLocal();
-  localStorage.setItem('nielsen_inventario_ver', String(ver));
-  localStorage.setItem('nielsen_inventario_ts', Date.now().toString());
+  _lsSet('nielsen_inventario_ver', String(ver));
+  _lsSet('nielsen_inventario_ts', Date.now().toString());
   try { supabasePush(); } catch(e) { console.warn('supabasePush error:', e); }
 }
 
@@ -5843,14 +5865,14 @@ function importarRespaldo(input) {
     try {
       // Copia de seguridad de lo actual antes de reemplazar
       var actual = localStorage.getItem('nielsen_inventario');
-      if (actual) localStorage.setItem('nielsen_inventario_backup_' + Date.now(), actual);
+      if (actual) _lsSet('nielsen_inventario_backup_' + Date.now(), actual);
 
       // Bumpear versión MUY por encima para que este respaldo gane sobre la nube
       var verAlta = (parseInt(localStorage.getItem('nielsen_inventario_ver') || '0') || 0) + 1000;
       parsed._ver = verAlta;
-      localStorage.setItem('nielsen_inventario', JSON.stringify(parsed));
-      localStorage.setItem('nielsen_inventario_ver', String(verAlta));
-      localStorage.setItem('nielsen_inventario_ts', Date.now().toString());
+      _lsSet('nielsen_inventario', JSON.stringify(parsed));
+      _lsSet('nielsen_inventario_ver', String(verAlta));
+      _lsSet('nielsen_inventario_ts', Date.now().toString());
 
       // Recargar el estado en memoria y re-renderizar
       state = parsed;
