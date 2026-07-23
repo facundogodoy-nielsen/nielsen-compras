@@ -2504,6 +2504,21 @@ function supabasePush() {
 var _sbLastError = null;
 
 // ── Pull state from Supabase ──────────────────────────────────────
+// ¿Lo que hay en memoria es semilla/vacío? Entonces la nube SIEMPRE gana.
+function _localSinDatosReales() {
+  try {
+    if (!state) return true;
+    if (state._semilla) return true;
+    var nArt = (state.articulos || []).length;
+    var nDep = (state.depositos || []).length;
+    if (!nArt && !nDep) return true;
+    // Semilla clásica: 12 artículos de ejemplo con ids a1..a12 y 6 depósitos d1..d6
+    var idsDemo = (state.articulos || []).every(function(a){ return /^a([1-9]|1[0-2])$/.test(a.id || ''); });
+    if (nArt <= 12 && nDep <= 6 && idsDemo) return true;
+  } catch (e) {}
+  return false;
+}
+
 function supabasePull(onDone) {
   if (!_sbSyncEnabled) { if (onDone) onDone(false); return; }
   fetch(SUPABASE_URL + '/rest/v1/inventario?id=eq.' + encodeURIComponent(SUPABASE_ROW_ID) + '&select=data,updated_at', {
@@ -2536,7 +2551,7 @@ function supabasePull(onDone) {
       var localVer   = parseInt(localStorage.getItem('nielsen_inventario_ver') || '0') || 0;
       // Solo reemplazar lo local si la NUBE tiene una versión ESTRICTAMENTE mayor.
       // Si son iguales o local es mayor, NO se toca lo local (evita pisar datos nuevos).
-      if (remoteVer > localVer) {
+      if (remoteVer > localVer || _localSinDatosReales()) {
         state = remoteData;
         localStorage.setItem('nielsen_inventario', JSON.stringify(state));
         localStorage.setItem('nielsen_inventario_ver', String(remoteVer));
