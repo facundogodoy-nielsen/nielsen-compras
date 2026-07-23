@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Migrar Inventario — Nielsen</title>
+<style>
+  :root{--or:#E8611A;--navy:#13161E;--s1:#161310;--s2:#1f1b16;--s3:#2a251e;
+        --text:#ece7e1;--muted:#9a938a;--border:#3a332b;--green:#22c55e;--red:#ef4444;--yellow:#eab308;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--s1);color:var(--text);font-family:"Segoe UI",Arial,Helvetica,sans-serif;padding:26px 16px}
+  .wrap{max-width:720px;margin:0 auto}
+  .hdr{background:var(--navy);border-radius:12px 12px 0 0;padding:20px 24px}
+  .hdr .k{color:var(--or);font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase}
+  .hdr h1{margin:4px 0 0;font-size:20px;color:#fff}
+  .card{background:var(--s2);border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;padding:22px 24px}
+  .step{border:1px solid var(--border);background:var(--s1);border-radius:10px;padding:16px 18px;margin-bottom:16px}
+  .step h2{margin:0 0 6px;font-size:14px;color:var(--or);text-transform:uppercase;letter-spacing:1px}
+  .step p{margin:0 0 12px;font-size:13px;color:var(--muted);line-height:1.6}
+  button{background:var(--or);color:#fff;border:none;border-radius:8px;padding:11px 20px;
+         font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  button.sec{background:var(--s3);color:var(--text);border:1px solid var(--border)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .out{margin-top:12px;font-size:13px;line-height:1.7}
+  .ok{color:var(--green)} .err{color:var(--red)} .warn{color:var(--yellow)}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+  td{padding:6px 8px;border-bottom:1px solid var(--border)}
+  td:last-child{text-align:right;font-weight:700;color:var(--or)}
+  .big{font-size:15px;font-weight:800}
+  input[type=file]{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div class="k">Nielsen — Herramienta de migración</div>
+    <h1>Pasar el Inventario a la base del Centro de Control</h1>
+  </div>
+  <div class="card">
+
+    <div class="step">
+      <h2>Paso 1 · Leer los datos actuales</h2>
+      <p>Busca el inventario en su base original. Revisá el resumen y confirmá que sean <strong>tus datos reales</strong> antes de continuar.</p>
+      <button onclick="leerOrigen()" id="b1">🔍 Leer inventario original</button>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <p style="margin-bottom:8px">¿El resumen aparece vacío o incompleto? Usá un respaldo exportado desde el inventario (botón «Exportar respaldo»):</p>
+        <input type="file" id="fileJson" accept=".json,application/json" onchange="leerArchivo(event)">
+      </div>
+      <div class="out" id="o1"></div>
+    </div>
+
+    <div class="step">
+      <h2>Paso 2 · Copiar a la base del Centro de Control</h2>
+      <p>Escribe esos mismos datos en la base de la suite. No borra nada del origen: el inventario original queda intacto como respaldo.</p>
+      <button onclick="migrar()" id="b2" disabled>📤 Copiar a la base de la suite</button>
+      <div class="out" id="o2"></div>
+    </div>
+
+    <div class="step">
+      <h2>Paso 3 · Verificar</h2>
+      <p>Vuelve a leer desde la base de destino para confirmar que llegó todo.</p>
+      <button class="sec" onclick="verificar()" id="b3" disabled>✅ Verificar destino</button>
+      <div class="out" id="o3"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Origen: base propia del inventario ──
+var ORIG_URL = 'https://mjkyehhakbeqbldmnthb.supabase.co';
+var ORIG_KEY = 'sb_publishable_sn4ybvVOMAzHc_8x5NvCzg_z6ybZKCy';
+// ── Destino: base de la suite (Centro de Control) ──
+var DEST_URL = 'https://qivvewvgqlsptydftlhx.supabase.co';
+var DEST_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+var ROW_ID   = 'nielsen-inventario-v1';
+
+var datos = null;   // estado leído, listo para migrar
+
+function el(id){ return document.getElementById(id); }
+
+function resumen(st){
+  var arts = (st.articulos||[]).length;
+  var deps = (st.depositos||[]).length;
+  var movs = (st.movimientos||[]).length;
+  var resv = (st.reservas||[]).length;
+  var ropa = (st.ropa && st.ropa.prendas || []).length;
+  var herr = (st.herramientas && st.herramientas.items || []).length;
+  var insu = (st.insumos && st.insumos.items || []).length;
+  var vehi = (st.vehiculos && st.vehiculos.items || []).length;
+  var total = arts+deps+movs+resv+ropa+herr+insu+vehi;
+  var filas = [
+    ['📦 Artículos', arts], ['🏬 Depósitos', deps], ['🔁 Movimientos', movs],
+    ['🛒 Reservas', resv], ['👕 Prendas (ropa/EPP)', ropa],
+    ['🔧 Herramientas', herr], ['🧴 Insumos', insu], ['🚚 Vehículos', vehi]
+  ];
+  var html = '<table>' + filas.map(function(f){
+    return '<tr><td>'+f[0]+'</td><td>'+f[1]+'</td></tr>';
+  }).join('') + '</table>';
+  html += '<div style="margin-top:10px;font-size:12px;color:var(--muted)">Versión interna: '+(st._ver||0)+'</div>';
+  if (total === 0) {
+    html += '<div class="warn" style="margin-top:10px">⚠️ No se encontró contenido. NO conviene migrar esto. Probá con un respaldo exportado desde el inventario original.</div>';
+  }
+  return { html: html, total: total };
+}
+
+function leerOrigen(){
+  el('b1').disabled = true;
+  el('o1').innerHTML = 'Leyendo...';
+  fetch(ORIG_URL + '/rest/v1/inventario?id=eq.' + encodeURIComponent(ROW_ID) + '&select=data,updated_at', {
+    headers:{ apikey: ORIG_KEY, Authorization: 'Bearer ' + ORIG_KEY }, cache:'no-store'
+  })
+  .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  .then(function(rows){
+    if(!rows || !rows.length || !rows[0].data) throw new Error('La base original no devolvió datos');
+    datos = rows[0].data;
+    var r = resumen(datos);
+    el('o1').innerHTML = '<span class="ok big">✅ Datos encontrados</span>' + r.html
+      + '<div style="margin-top:8px;font-size:12px;color:var(--muted)">Última actualización en origen: ' + (rows[0].updated_at||'—') + '</div>';
+    el('b2').disabled = (r.total === 0);
+  })
+  .catch(function(e){
+    el('o1').innerHTML = '<span class="err">❌ No se pudo leer: ' + e.message + '</span>'
+      + '<div style="margin-top:8px;font-size:12px;color:var(--muted)">Probá con un respaldo exportado (abajo).</div>';
+  })
+  .finally(function(){ el('b1').disabled = false; });
+}
+
+function leerArchivo(ev){
+  var f = ev.target.files && ev.target.files[0];
+  if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    try{
+      var j = JSON.parse(rd.result);
+      // El respaldo puede venir como el state directo o envuelto
+      var st = j.state || j.data || j;
+      datos = st;
+      var r = resumen(datos);
+      el('o1').innerHTML = '<span class="ok big">✅ Respaldo leído (' + f.name + ')</span>' + r.html;
+      el('b2').disabled = (r.total === 0);
+    }catch(e){
+      el('o1').innerHTML = '<span class="err">❌ El archivo no es un respaldo válido</span>';
+    }
+  };
+  rd.readAsText(f);
+}
+
+function migrar(){
+  if(!datos){ return; }
+  el('b2').disabled = true;
+  el('o2').innerHTML = 'Copiando...';
+  // Subir la versión interna para que, al abrir el inventario, la nube gane sobre cualquier dato local vacío
+  var copia = JSON.parse(JSON.stringify(datos));
+  copia._ver = (parseInt(copia._ver || 0) || 0) + 5000;
+  fetch(DEST_URL + '/rest/v1/inventario?on_conflict=id', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', apikey: DEST_KEY, Authorization:'Bearer ' + DEST_KEY,
+              Prefer:'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ id: ROW_ID, data: copia, updated_at: new Date().toISOString() })
+  })
+  .then(function(r){
+    if(!r.ok) return r.text().then(function(t){ throw new Error('HTTP ' + r.status + ' — ' + t.slice(0,160)); });
+    el('o2').innerHTML = '<span class="ok big">✅ Copiado a la base del Centro de Control</span>'
+      + '<div style="margin-top:6px;font-size:12px;color:var(--muted)">El inventario original quedó intacto como respaldo.</div>';
+    el('b3').disabled = false;
+  })
+  .catch(function(e){
+    el('o2').innerHTML = '<span class="err">❌ ' + e.message + '</span>'
+      + '<div style="margin-top:6px;font-size:12px;color:var(--muted)">Si dice que la tabla no existe, corré antes <strong>SUPABASE_inventario.sql</strong> en la base de la suite.</div>';
+    el('b2').disabled = false;
+  });
+}
+
+function verificar(){
+  el('b3').disabled = true;
+  el('o3').innerHTML = 'Verificando...';
+  fetch(DEST_URL + '/rest/v1/inventario?id=eq.' + encodeURIComponent(ROW_ID) + '&select=data,updated_at', {
+    headers:{ apikey: DEST_KEY, Authorization:'Bearer ' + DEST_KEY }, cache:'no-store'
+  })
+  .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  .then(function(rows){
+    if(!rows || !rows.length || !rows[0].data) throw new Error('El destino está vacío');
+    var r = resumen(rows[0].data);
+    el('o3').innerHTML = '<span class="ok big">✅ Verificado en el destino</span>' + r.html
+      + '<div style="margin-top:10px;font-size:13px">Ya podés subir la nueva versión de la suite y abrir <strong>Pañol → Central de Depósitos</strong>.</div>';
+  })
+  .catch(function(e){ el('o3').innerHTML = '<span class="err">❌ ' + e.message + '</span>'; })
+  .finally(function(){ el('b3').disabled = false; });
+}
+</script>
+</body>
+</html>

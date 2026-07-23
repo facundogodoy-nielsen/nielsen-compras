@@ -2112,8 +2112,8 @@ function abrirInventario() {
 // RESERVA DIRECTA DEL STOCK GLOBAL (Nielsen Inventario)
 // Lee/escribe el Supabase del inventario (base propia, distinta a la de la suite)
 // ══════════════════════════════════════════════════
-const INV_SB_URL  = 'https://mjkyehhakbeqbldmnthb.supabase.co';
-const INV_SB_KEY  = 'sb_publishable_sn4ybvVOMAzHc_8x5NvCzg_z6ybZKCy';
+const INV_SB_URL  = 'https://qivvewvgqlsptydftlhx.supabase.co';   // misma base que la suite (inventario unificado)
+const INV_SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
 const INV_ROW_ID  = 'nielsen-inventario-v1';
 let _invState = null;      // estado completo del inventario (última lectura)
 let _invItems = [];        // lista unificada de ítems con stock
