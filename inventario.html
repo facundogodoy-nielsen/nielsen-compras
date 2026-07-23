@@ -2388,8 +2388,13 @@ function toTitleCase(str) {
 // ============================================================
 function initData() {
   const saved = localStorage.getItem('nielsen_inventario');
-  if (saved) {
-    state = JSON.parse(saved);
+  // Si el navegador no pudo cachear el inventario (es grande) pero YA tenemos
+  // datos reales en memoria —recién bajados de la nube— seguimos con esos.
+  // Sin esto, se volvían a cargar los datos de ejemplo y se perdía lo descargado.
+  const enMemoria = !saved && state && !state._semilla &&
+                    ((((state.articulos || []).length) > 0) || (((state.depositos || []).length) > 0));
+  if (saved || enMemoria) {
+    if (saved) state = JSON.parse(saved);
     // Sincronizar el contador de versión local con el state
     var verGuardada = parseInt(localStorage.getItem('nielsen_inventario_ver') || '0') || 0;
     if (!state._ver || state._ver < verGuardada) state._ver = verGuardada;
@@ -6863,6 +6868,28 @@ if (typeof supabasePull === 'function' && _sbSyncEnabled) {
   _sbBootDone = true;
   supabaseSetStatus('disabled');
 }
+
+// ── Actualización automática al volver a la pestaña ──
+// Útil con varios usuarios: si otro cargó algo, lo ves al volver.
+// Respeta la comparación de versiones, así que nunca pisa tus cambios locales.
+var _ultimoRefresco = Date.now();
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) return;
+  if (!_sbSyncEnabled || !_sbBootDone) return;
+  if (Date.now() - _ultimoRefresco < 30000) return;   // como mucho, cada 30 segundos
+  _ultimoRefresco = Date.now();
+  supabaseSetStatus('syncing');
+  supabasePull(function(gotRemote) {
+    if (gotRemote) {
+      var activo = document.querySelector('.panel.active');
+      if (activo) { try { renderPanel(activo.id.replace('panel-','')); } catch(e){} }
+      try { renderDashboard(); } catch(e){}
+      try { renderSidebar(); } catch(e){}
+      try { actualizarReservasBadge(); } catch(e){}
+    }
+  });
+});
+
 renderDashboard();
 try { actualizarReservasBadge(); } catch(e){}
 
