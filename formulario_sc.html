@@ -766,6 +766,23 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
     </div>
   </div>
 
+  <!-- Card 1b: Reserva directa del Stock Global -->
+  <div class="card">
+    <div class="card-title">🛒 Reservar del Stock Global</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.55">
+      Buscá artículos en el inventario y reservá directamente desde acá.
+      La reserva queda <strong>pendiente de aprobación del pañolero</strong> y se registra en la Central de Depósitos con el N° de esta SC.
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <button class="btn btn-sm" type="button" onclick="invCargarStock()" id="inv-cargar-btn"
+        style="background:var(--s3);border:1.5px solid var(--border);color:var(--text);white-space:nowrap">🔄 Cargar stock</button>
+      <input type="text" id="inv-buscar" oninput="invRenderLista()" placeholder="Buscar artículo, herramienta, insumo..."
+        style="flex:1;min-width:180px;padding:9px 12px;background:var(--s3);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--ff);font-size:13px;outline:none;text-transform:none">
+    </div>
+    <div id="inv-lista" style="display:none;max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>
+    <div id="inv-carrito" style="margin-top:10px"></div>
+  </div>
+
   <!-- Card 2: Verificación ítem por ítem -->
   <div class="card">
     <div class="card-title">✅ Disponibilidad en Depósito</div>
@@ -1860,6 +1877,16 @@ async function showSuccess(numSC, numOP) {
   const guardadoOk = await _guardarSCenCC(numSC, numOP);   // Supabase + localStorage
   // 1) Correo de confirmación SIN archivos (liviano, no se corta)
   await _enviarEmailSC(numSC, numOP);
+  // 1b) Registrar reservas de pañol en la Central de Depósitos (si hay)
+  if (invReservas.length) {
+    if (typeof toast === 'function') toast('🛒 Registrando ' + invReservas.length + ' reserva(s) de pañol...');
+    const nombreSol = document.getElementById('sol-nombre')?.value || '';
+    const rr = await invRegistrarReservas(numSC, nombreSol);
+    if (typeof toast === 'function') {
+      if (rr.ok) toast('✅ ' + rr.n + ' reserva(s) registradas en la Central de Depósitos');
+      else toast('⚠️ No se pudieron registrar las reservas en el inventario. Hacelas desde la Central de Depósitos.', true);
+    }
+  }
   // 2) Subir fotos y presupuestos por separado, uno por uno, con confirmación real
   const _hayAdjuntos = (presupuestos||[]).some(x=>x.data) || (fotosMuestra||[]).some(x=>x.data);
   if (_hayAdjuntos) {
@@ -2079,6 +2106,139 @@ function abrirInventario() {
   if (urlObj) { urlObj.hash = 'stock-global'; url = urlObj.href; }
   else { url = url.replace(/#.*$/,'') + '#stock-global'; }
   window.open(url, '_blank');
+}
+
+// ══════════════════════════════════════════════════
+// RESERVA DIRECTA DEL STOCK GLOBAL (Nielsen Inventario)
+// Lee/escribe el Supabase del inventario (base propia, distinta a la de la suite)
+// ══════════════════════════════════════════════════
+const INV_SB_URL  = 'https://mjkyehhakbeqbldmnthb.supabase.co';
+const INV_SB_KEY  = 'sb_publishable_sn4ybvVOMAzHc_8x5NvCzg_z6ybZKCy';
+const INV_ROW_ID  = 'nielsen-inventario-v1';
+let _invState = null;      // estado completo del inventario (última lectura)
+let _invItems = [];        // lista unificada de ítems con stock
+let invReservas = [];      // carrito local: reservas a registrar al enviar la SC
+
+async function _invFetchState(){
+  const r = await fetch(INV_SB_URL + '/rest/v1/inventario?id=eq.' + encodeURIComponent(INV_ROW_ID) + '&select=data',
+    { headers: { apikey: INV_SB_KEY, Authorization: 'Bearer ' + INV_SB_KEY }, cache: 'no-store' });
+  if(!r.ok) throw new Error('http ' + r.status);
+  const j = await r.json();
+  if(!j || !j[0] || !j[0].data) throw new Error('inventario vacío');
+  return j[0].data;
+}
+// Réplica de la lista unificada del Stock Global (artículos + ropa/EPP + herramientas + insumos)
+function _invListaUnificada(st){
+  const items = [];
+  const actMap = {};   // reservas activas por itemKey
+  (st.reservas||[]).forEach(r=>{ if(r.estado==='pendiente'||r.estado==='aprobada'){ actMap[r.itemKey]=(actMap[r.itemKey]||0)+(r.cantidad||0); } });
+  (st.articulos||[]).forEach(a=>{
+    let total=0; Object.values(a.stock||{}).forEach(v=>total+=(v||0));
+    items.push({ key:'art:'+a.id, seccion:'📦 Artículo', nombre:a.nombre, unidad:a.unidad||'u', total, reservado:actMap['art:'+a.id]||0 });
+  });
+  ((st.ropa&&st.ropa.prendas)||[]).forEach(p=>{
+    let total=0; Object.values(p.tallas||{}).forEach(td=>total+=((td&&td.stock)||0));
+    const grupo=(p.grupo||'indumentaria');
+    items.push({ key:grupo+':'+p.id, seccion:(grupo==='epp'?'🦺 EPP':'👕 Indumentaria'), nombre:p.nombre, unidad:'u', total, reservado:actMap[grupo+':'+p.id]||0 });
+  });
+  ((st.herramientas&&st.herramientas.items)||[]).forEach(h=>{
+    let total=0; Object.values(h.stock||{}).forEach(v=>total+=(v||0));
+    if(!total && typeof h.cantidad==='number') total=h.cantidad;
+    items.push({ key:'herr:'+h.id, seccion:'🔧 Herramienta', nombre:h.nombre, unidad:h.unidad||'u', total, reservado:actMap['herr:'+h.id]||0 });
+  });
+  ((st.insumos&&st.insumos.items)||[]).forEach(i2=>{
+    let total=0; Object.values(i2.stock||{}).forEach(v=>total+=(v||0));
+    if(!total && typeof i2.cantidad==='number') total=i2.cantidad;
+    items.push({ key:'ins:'+i2.id, seccion:'🧴 Insumo', nombre:i2.nombre, unidad:i2.unidad||'u', total, reservado:actMap['ins:'+i2.id]||0 });
+  });
+  return items.filter(x=>x.nombre);
+}
+async function invCargarStock(){
+  const btn=document.getElementById('inv-cargar-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Cargando...'; }
+  try{
+    _invState = await _invFetchState();
+    _invItems = _invListaUnificada(_invState);
+    invRenderLista();
+    if(typeof toast==='function') toast('✅ Stock cargado: '+_invItems.length+' ítems');
+  }catch(e){
+    console.warn('inv stock', e);
+    if(typeof toast==='function') toast('⚠️ No se pudo cargar el inventario', true);
+  }
+  if(btn){ btn.disabled=false; btn.textContent='🔄 Cargar stock'; }
+}
+function invRenderLista(){
+  const box=document.getElementById('inv-lista'); if(!box) return;
+  if(!_invItems.length){ box.style.display='none'; return; }
+  const q=(document.getElementById('inv-buscar')?.value||'').toLowerCase().trim();
+  let list=_invItems;
+  if(q) list=list.filter(x=>(x.nombre+' '+x.seccion).toLowerCase().includes(q));
+  list=list.slice(0,60);
+  box.style.display='block';
+  if(!list.length){ box.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">Sin resultados</div>'; return; }
+  box.innerHTML=list.map(x=>{
+    const disp=Math.max(0,(x.total||0)-(x.reservado||0));
+    const yaEnCarrito=invReservas.find(r=>r.itemKey===x.key);
+    const badge=disp>0?'<span style="color:#22c55e;font-weight:700">'+disp+' '+x.unidad+'</span>':'<span style="color:#ef4444;font-weight:700">Sin stock</span>';
+    const accion=disp>0
+      ? (yaEnCarrito
+          ? '<span style="font-size:11px;color:#22c55e;font-weight:700">✓ En reserva ('+yaEnCarrito.cantidad+')</span>'
+          : '<span style="display:inline-flex;gap:6px;align-items:center"><input type="number" min="1" max="'+disp+'" value="1" id="invq-'+x.key.replace(/[^a-zA-Z0-9]/g,'_')+'" style="width:58px;padding:5px 7px;background:var(--s3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;text-align:center">'
+            +'<button type="button" class="btn btn-sm" onclick="invAgregarReserva(\''+x.key+'\')" style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#22c55e;font-size:11px;padding:5px 10px">🛒 Reservar</button></span>')
+      : '';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border)">'
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+x.nombre+'</div>'
+      +'<div style="font-size:10px;color:var(--muted)">'+x.seccion+' · Disponible: '+badge+(x.reservado?(' <span style="color:var(--muted)">('+x.reservado+' ya reservados)</span>'):'')+'</div></div>'
+      +accion+'</div>';
+  }).join('');
+}
+function invAgregarReserva(key){
+  const it=_invItems.find(x=>x.key===key); if(!it) return;
+  const inp=document.getElementById('invq-'+key.replace(/[^a-zA-Z0-9]/g,'_'));
+  const cant=Math.max(1, parseInt(inp?.value||'1')||1);
+  const disp=Math.max(0,(it.total||0)-(it.reservado||0));
+  if(cant>disp){ if(typeof toast==='function') toast('Solo hay '+disp+' disponibles', true); return; }
+  invReservas.push({ itemKey:it.key, nombre:it.nombre, cantidad:cant, unidad:it.unidad });
+  invRenderLista(); invRenderCarrito();
+}
+function invQuitarReserva(idx){ invReservas.splice(idx,1); invRenderLista(); invRenderCarrito(); }
+function invRenderCarrito(){
+  const box=document.getElementById('inv-carrito'); if(!box) return;
+  if(!invReservas.length){ box.innerHTML=''; return; }
+  box.innerHTML='<div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:10px 12px">'
+    +'<div style="font-size:11px;font-weight:700;color:#22c55e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🛒 Reservas a registrar ('+invReservas.length+')</div>'
+    +invReservas.map((r,i)=>'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(34,197,94,.15)">'
+      +'<span style="flex:1;font-size:12px;color:var(--text)">'+r.nombre+'</span>'
+      +'<span style="font-size:12px;font-weight:700;color:#22c55e">'+r.cantidad+' '+r.unidad+'</span>'
+      +'<button type="button" onclick="invQuitarReserva('+i+')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">✕</button></div>').join('')
+    +'<div style="font-size:10px;color:var(--muted);margin-top:8px">Se registran en la Central de Depósitos al enviar la SC, con el N° de solicitud, pendientes de aprobación del pañolero.</div></div>';
+}
+// Registra las reservas del carrito en el inventario (al enviar la SC)
+async function invRegistrarReservas(numSC, solicitante){
+  if(!invReservas.length) return { ok:true, n:0 };
+  try{
+    // Leer el estado MÁS fresco posible justo antes de escribir (minimiza pisadas)
+    const st = await _invFetchState();
+    if(!st.reservas) st.reservas = [];
+    const ahora = new Date();
+    const fechaStr = ahora.toLocaleDateString('es-AR') + ' ' + ahora.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    invReservas.forEach(r=>{
+      st.reservas.push({
+        id: Date.now().toString(36) + Math.random().toString(36).substr(2,4),
+        itemKey: r.itemKey, nombre: r.nombre, cantidad: r.cantidad, unidad: r.unidad,
+        solicitante: solicitante || 'Formulario SC', scNumero: numSC,
+        motivo: 'Reserva generada desde Formulario SC ' + numSC,
+        estado: 'pendiente', fecha: fechaStr, fechaResol: null, resolPor: '', obsResol: ''
+      });
+    });
+    const r2 = await fetch(INV_SB_URL + '/rest/v1/inventario?on_conflict=id', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', apikey:INV_SB_KEY, Authorization:'Bearer '+INV_SB_KEY, Prefer:'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ id: INV_ROW_ID, data: st, updated_at: new Date().toISOString() })
+    });
+    if(!r2.ok) throw new Error('http '+r2.status);
+    return { ok:true, n:invReservas.length };
+  }catch(e){ console.warn('registrar reservas inv', e); return { ok:false, n:invReservas.length }; }
 }
 
 // ══════════════════════════════════════════════════
@@ -2893,6 +3053,7 @@ async function _guardarSCenCC(numSC, numOP) {
       obs,
       panolero,
       proyecto_asociado: proyectoAsoc || null,
+      reservas_inv: invReservas.length ? invReservas.map(r => ({ nombre: r.nombre, cantidad: r.cantidad, unidad: r.unidad })) : null,
       vale_num:     valeNumActual || '',
       estado:       'PENDIENTE',
       origen:       'FORMULARIO_SC'

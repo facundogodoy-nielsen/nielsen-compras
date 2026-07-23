@@ -1695,6 +1695,24 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
+  <!-- PAÑOL -->
+  <div class="sidebar-section" data-sid="panol">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Pañol</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
+    <button class="sidebar-btn-cta pa" onclick="window.open('inventario','_blank')">
+      <span class="sb-icon">📦</span> Central de Depósitos
+      <span class="cta-arrow">↗</span>
+    </button>
+  </div></div><!-- /inner /body -->
+  </div><!-- /section -->
+  <div class="sidebar-divider"></div>
   <div class="sidebar-divider"></div>
   <!-- PROVEEDORES -->
   <div class="sidebar-section" data-sid="proveedores">
@@ -3330,6 +3348,11 @@ function tick() {
     order.forEach((sid,i)=>{
       const sec = sections.find(s=>s.dataset.sid===sid);
       if(sec){ aside.appendChild(sec); if(i<order.length-1){ const d=document.createElement('div');d.className='sidebar-divider';aside.appendChild(d); } }
+    });
+    // Secciones nuevas que no estaban en el orden guardado: agregarlas al final
+    sections.filter(s=>!order.includes(s.dataset.sid)).forEach(sec=>{
+      const d=document.createElement('div');d.className='sidebar-divider';aside.appendChild(d);
+      aside.appendChild(sec);
     });
   }
 })();
@@ -5511,6 +5534,7 @@ function verSC(idx) {
       <div style="grid-column:1/-1"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Descripción OS</div>${sc.osDesc}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Responsable OS</div>${sc.osResp}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Pañolero consultado</div>${sc.panolero} (${sc.panolerFecha ? sc.panolerFecha.replace('T',' ') : '—'})</div>
+      ${sc.reservasInv && sc.reservasInv.length ? `<div style="grid-column:1/-1"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">🛒 Reservas de Pañol (Central de Depósitos)</div><div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:8px 12px">${sc.reservasInv.map(r=>`<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:12px"><span>${_escPA(r.nombre)}</span><strong style="color:#22c55e">${r.cantidad} ${_escPA(r.unidad||'u')}</strong></div>`).join('')}<div style="font-size:10px;color:var(--muted);margin-top:4px">Pendientes de aprobación del pañolero en la Central de Depósitos</div></div></div>` : ''}
     </div>
     <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;border-top:1px solid var(--border);padding-top:12px">Materiales / Artículos Solicitados</div>
 
@@ -9876,6 +9900,7 @@ async function recargarSCsDesdeLS() {
       obs:        r.obs || '',
       panolero:   r.panolero || '',
       proyectoAsociado: r.proyecto_asociado || '',
+      reservasInv: r.reservas_inv ? (typeof r.reservas_inv==='string' ? JSON.parse(r.reservas_inv) : r.reservas_inv) : null,
       valeNum:    r.vale_num || '',
       estado:     r.estado || 'PENDIENTE',
       origen:     r.origen || '',
