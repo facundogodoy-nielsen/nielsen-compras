@@ -2430,7 +2430,9 @@ function initData() {
     { id:genId(), tipo:'egreso', fecha:now(), artId:'a3', depId:'d4', cantidad:10, motivo:'Consumo / Uso', operador:'Jorge P.' },
     { id:genId(), tipo:'ingreso', fecha:now(), artId:'a11', depId:'d1', cantidad:1, motivo:'Compra', operador:'Carlos M.', ref:'REM-002' },
   ];
-  save();
+  // Datos de ejemplo: quedan SOLO en memoria. No se guardan ni se suben,
+  // así nunca pisan el inventario real que está en la nube.
+  state._semilla = true;
 }
 
 function _saveLocal() { localStorage.setItem('nielsen_inventario', JSON.stringify(state)); }
@@ -2451,10 +2453,13 @@ const SUPABASE_ROW_ID   = 'nielsen-inventario-v1';  // single row key
 var _sbSyncEnabled = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 var _sbSyncPending = false;
 var _sbSyncTimer   = null;
+var _sbBootDone    = false;   // no subir nada hasta terminar la lectura inicial de la nube
 
 // ── Push state to Supabase ────────────────────────────────────────
 function supabasePush() {
   if (!_sbSyncEnabled) return;
+  if (!_sbBootDone) return;              // arranque: todavía no leímos la nube
+  if (state && state._semilla) return;   // datos de ejemplo: nunca se suben
   // Debounce: wait 1.2s after last save before pushing
   if (_sbSyncTimer) clearTimeout(_sbSyncTimer);
   supabaseSetStatus('syncing');
@@ -2607,6 +2612,7 @@ function save() {
   // Incrementar versión local en cada guardado (más confiable que el reloj)
   var ver = (parseInt(localStorage.getItem('nielsen_inventario_ver') || '0') || 0) + 1;
   state._ver = ver;
+  if (state._semilla) delete state._semilla;   // ya no son datos de ejemplo
   _saveLocal();
   localStorage.setItem('nielsen_inventario_ver', String(ver));
   localStorage.setItem('nielsen_inventario_ts', Date.now().toString());
@@ -6647,6 +6653,7 @@ renderSidebar();
 if (typeof supabasePull === 'function' && _sbSyncEnabled) {
   supabaseSetStatus('syncing');
   supabasePull(function(gotRemote) {
+    _sbBootDone = true;                  // desde acá sí se puede subir
     if (gotRemote) {
       // Remote era más nuevo: re-aplicar migraciones y re-render
       initData();
@@ -6657,12 +6664,13 @@ if (typeof supabasePull === 'function' && _sbSyncEnabled) {
     } else {
       // Local es igual o más nuevo: subir lo local para no perder nada
       supabaseSetStatus(SUPABASE_URL ? 'synced' : 'disabled');
-      if (state && state.depositos) {
+      if (state && state.depositos && !state._semilla) {
         try { supabasePush(); } catch(e) {}
       }
     }
   });
 } else {
+  _sbBootDone = true;
   supabaseSetStatus('disabled');
 }
 renderDashboard();

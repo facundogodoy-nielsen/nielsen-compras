@@ -63,6 +63,14 @@
       <div class="out" id="o3"></div>
     </div>
 
+    <div class="step">
+      <h2>Paso 4 · Limpiar la memoria de este navegador</h2>
+      <p>Borra los datos de ejemplo que este navegador pueda tener guardados, para que la Central de Depósitos
+         arranque limpia y baje el inventario real desde la nube. <strong>No toca la nube</strong>: solo este navegador.</p>
+      <button class="sec" onclick="limpiarLocal()" id="b4">🧹 Limpiar memoria local</button>
+      <div class="out" id="o4"></div>
+    </div>
+
   </div>
 </div>
 
@@ -170,6 +178,21 @@ function migrar(){
       + '<div style="margin-top:6px;font-size:12px;color:var(--muted)">Si dice que la tabla no existe, corré antes <strong>SUPABASE_inventario.sql</strong> en la base de la suite.</div>';
     el('b2').disabled = false;
   });
+}
+
+function limpiarLocal(){
+  try{
+    var borradas = [];
+    for(var i = localStorage.length - 1; i >= 0; i--){
+      var k = localStorage.key(i);
+      if(k && k.indexOf('nielsen_inventario') === 0){ localStorage.removeItem(k); borradas.push(k); }
+    }
+    el('o4').innerHTML = '<span class="ok big">✅ Memoria local limpia</span>'
+      + '<div style="margin-top:6px;font-size:12px;color:var(--muted)">Claves borradas: ' + (borradas.length || 0)
+      + '. Ahora abrí <strong>Pañol → Central de Depósitos</strong>: va a bajar el inventario real desde la nube.</div>';
+  }catch(e){
+    el('o4').innerHTML = '<span class="err">❌ No se pudo limpiar: ' + e.message + '</span>';
+  }
 }
 
 function verificar(){
