@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-<title>Nielsen Logística — Control de Inventario</title>
+<title>Nielsen Logística — Central de Depósitos</title>
 <!-- QR + Barcode libraries -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
@@ -452,9 +452,38 @@
 
   /* Barcode badge on article table */
   .has-barcode { color:var(--accent); font-size:14px; cursor:help; }
+
+/* ══════════ SPLASH / APERTURA ══════════ */
+#splash-screen{position:fixed;inset:0;z-index:99999;background:#13161E;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:0;transition:opacity .6s ease}
+#splash-screen.fade-out{opacity:0;pointer-events:none}
+.splash-logo{height:90px;width:auto;margin-bottom:32px;animation:splashPop .5s ease both;
+  mix-blend-mode:lighten;background:transparent}
+.splash-title{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:clamp(22px,5vw,36px);
+  font-weight:800;letter-spacing:5px;text-transform:uppercase;color:#E85D26;text-align:center;
+  animation:splashSlide .5s .15s ease both;margin-bottom:10px}
+.splash-sub{font-family:'Barlow',Arial,sans-serif;font-size:clamp(10px,2vw,13px);letter-spacing:2px;
+  text-transform:uppercase;color:rgba(255,255,255,.45);text-align:center;animation:splashSlide .5s .25s ease both}
+.splash-line{width:60px;height:2px;background:#E85D26;margin:20px auto 18px;animation:splashLine .6s .1s ease both}
+@keyframes splashPop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+@keyframes splashSlide{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes splashLine{from{width:0}to{width:60px}}
 </style>
 </head>
 <body>
+<div id="splash-screen">
+  <img src="data:image/jpeg;base64,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" alt="Nielsen Logística" class="splash-logo">
+  <div class="splash-title">Central de Depósitos</div>
+  <div class="splash-line"></div>
+  <div class="splash-sub">Pañol &nbsp;//&nbsp; Nielsen Logística y Expediciones S.A.</div>
+</div>
+<script>
+  setTimeout(function(){
+    var s=document.getElementById('splash-screen');
+    if(s){ s.classList.add('fade-out'); setTimeout(function(){ s.style.display='none'; },650); }
+  },2200);
+</script>
+
 
 <!-- HEADER -->
 
@@ -532,7 +561,7 @@
     <div class="logo-text-block">
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;
                   letter-spacing:1px;color:#ff8c42;text-transform:uppercase;line-height:1">
-        Control de Inventario
+        Central de Depósitos
       </div>
       <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#4a6070;margin-top:2px">
         Nielsen Logística y Expediciones S.A.
@@ -1486,6 +1515,28 @@
       <div class="form-group">
         <label class="form-label">Descripción / Observaciones</label>
         <textarea class="form-control" id="artDescripcion" rows="2" placeholder="Descripción opcional..."></textarea>
+      </div>
+
+      <!-- ── FOTO DEL ARTÍCULO (se guarda en Supabase Storage) ── -->
+      <div style="border-top:1px solid var(--border);margin:14px 0 12px;padding-top:14px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+             color:var(--accent);margin-bottom:10px">📷 Foto del artículo</div>
+        <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+          <img id="artFotoPrev" src="" alt="" style="display:none;width:110px;height:110px;object-fit:cover;
+               border-radius:8px;border:1px solid var(--border)">
+          <div style="flex:1;min-width:190px">
+            <input type="file" id="artFotoInput" accept="image/*" onchange="artFotoElegir(this)"
+                   class="form-control" style="padding:8px">
+            <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+              <span id="artFotoEstado" style="font-size:11px;color:var(--text3)">Sin foto</span>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="artFotoQuitar()"
+                      style="font-size:11px;padding:4px 10px">Quitar</button>
+            </div>
+            <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5">
+              La imagen se guarda en la nube (Supabase Storage) y el inventario conserva solo el enlace.
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ── CÓDIGO DE BARRAS / QR ── -->
@@ -2458,6 +2509,91 @@ function _lsSet(key, val) {
   }
 }
 function _saveLocal() { return _lsSet('nielsen_inventario', JSON.stringify(state)); }
+
+// ══════════════════════════════════════════════════════════════
+// IMÁGENES → SUPABASE STORAGE
+// Las fotos NO se guardan dentro del inventario: se suben al bucket
+// y en el inventario queda solo el enlace. Así el sistema se mantiene liviano.
+// ══════════════════════════════════════════════════════════════
+var SB_BUCKET = 'nielsen-archivos';
+function _slugArch(name) {
+  var dot = name.lastIndexOf('.');
+  var ext = dot >= 0 ? name.slice(dot) : '';
+  var base = (dot >= 0 ? name.slice(0, dot) : name).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 50) || 'foto';
+  return base + (ext || '.jpg').toLowerCase();
+}
+// Redimensiona la imagen antes de subir (ahorra espacio y acelera la carga)
+function _achicarImagen(file, maxLado, cb) {
+  try {
+    var rd = new FileReader();
+    rd.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var w = img.width, h = img.height;
+        var esc = Math.min(1, maxLado / Math.max(w, h));
+        var cw = Math.round(w * esc), ch = Math.round(h * esc);
+        var cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+        cv.getContext('2d').drawImage(img, 0, 0, cw, ch);
+        cv.toBlob(function(b) { cb(b || file); }, 'image/jpeg', 0.82);
+      };
+      img.onerror = function() { cb(file); };
+      img.src = e.target.result;
+    };
+    rd.onerror = function() { cb(file); };
+    rd.readAsDataURL(file);
+  } catch (e) { cb(file); }
+}
+// Sube un archivo al bucket y devuelve la URL pública (o null)
+function _storageSubir(path, blob, cb) {
+  var clean = path.split('/').map(function(p) { return encodeURIComponent(p); }).join('/');
+  fetch(SUPABASE_URL + '/storage/v1/object/' + SB_BUCKET + '/' + clean, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'x-upsert': 'true',
+      'Content-Type': (blob && blob.type) || 'image/jpeg'
+    },
+    body: blob
+  })
+  .then(function(r) {
+    if (!r.ok) { console.warn('storage', r.status); cb(null); return; }
+    cb(SUPABASE_URL + '/storage/v1/object/public/' + SB_BUCKET + '/' + clean);
+  })
+  .catch(function(e) { console.warn('storage', e); cb(null); });
+}
+// Foto del artículo: achica → sube a Storage → guarda solo el enlace
+var _artFotoUrl = null;
+function artFotoElegir(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var prev = document.getElementById('artFotoPrev');
+  var est  = document.getElementById('artFotoEstado');
+  if (est) est.textContent = 'Subiendo foto...';
+  _achicarImagen(file, 1000, function(blob) {
+    var path = 'inventario/articulos/' + Date.now() + '_' + _slugArch(file.name);
+    _storageSubir(path, blob, function(url) {
+      if (url) {
+        _artFotoUrl = url;
+        if (prev) { prev.src = url; prev.style.display = 'block'; }
+        if (est) est.textContent = 'Foto guardada';
+        toast('Foto subida', 'success');
+      } else {
+        if (est) est.textContent = 'No se pudo subir la foto';
+        toast('No se pudo subir la foto', 'error');
+      }
+      input.value = '';
+    });
+  });
+}
+function artFotoQuitar() {
+  _artFotoUrl = null;
+  var prev = document.getElementById('artFotoPrev');
+  var est  = document.getElementById('artFotoEstado');
+  if (prev) { prev.src = ''; prev.style.display = 'none'; }
+  if (est) est.textContent = 'Sin foto';
+}
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -4009,8 +4145,13 @@ function renderArticulos() {
       </td>
       <td><span class="stock-dot dot-${getStockStatus(a)}"></span></td>
       <td>
-        <strong>${a.nombre}</strong>${codigoChip}
-        <div style="font-size:11px;color:var(--text3)">${deps}</div>
+        <div style="display:flex;align-items:center;gap:9px">
+          ${a.foto ? `<img src="${a.foto}" alt="" loading="lazy" onclick="event.stopPropagation();window.open('${a.foto}','_blank')" title="Ver foto" style="width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;flex:none">` : ''}
+          <div style="min-width:0">
+            <strong>${a.nombre}</strong>${codigoChip}
+            <div style="font-size:11px;color:var(--text3)">${deps}</div>
+          </div>
+        </div>
       </td>
       <td><span class="badge badge-gray">${a.categoria || '—'}</span></td>
       <td style="font-size:12px;color:var(--text2)">${Object.keys(a.stock||{}).filter(k=>(a.stock[k]||0)>0).map(k=>depNombreById(k)).join(', ') || '—'}</td>
@@ -4048,6 +4189,7 @@ function openModalArticulo() {
   document.getElementById('artBtnVerCodigo').style.display = 'none';
   var tipoSel = document.getElementById('artTipoClasif'); if (tipoSel) tipoSel.value = 'stock';
   document.getElementById('modalArtTitulo').textContent = 'Nuevo Artículo';
+  artFotoQuitar();
   poblarSelectDepositos('artDeposito');
   openModal('modalArticulo');
 }
@@ -4055,6 +4197,15 @@ function openModalArticulo() {
 function editarArticulo(id) {
   const a = state.articulos.find(x => x.id === id);
   document.getElementById('artEditId').value = a.id;
+  // Foto guardada en Storage (si tiene)
+  artFotoQuitar();
+  if (a.foto) {
+    _artFotoUrl = a.foto;
+    var _p = document.getElementById('artFotoPrev');
+    var _e = document.getElementById('artFotoEstado');
+    if (_p) { _p.src = a.foto; _p.style.display = 'block'; }
+    if (_e) _e.textContent = 'Foto guardada';
+  }
   document.getElementById('artNombre').value = a.nombre;
   document.getElementById('artCategoria').value = a.categoria || '';
   document.getElementById('artUnidad').value = a.unidad || 'unidad';
@@ -4102,6 +4253,7 @@ function guardarArticulo() {
       max: parseInt(document.getElementById('artMax').value)||100,
       descripcion: document.getElementById('artDescripcion').value,
       codigo: codigo || null, codigoTipo,
+      foto: _artFotoUrl || null,
     };
     state.stockTipos['art:' + id] = tipoClasif;
     toast('Artículo actualizado', 'success');
@@ -4118,6 +4270,7 @@ function guardarArticulo() {
       max: parseInt(document.getElementById('artMax').value)||100,
       descripcion: document.getElementById('artDescripcion').value,
       codigo: codigo || null, codigoTipo,
+      foto: _artFotoUrl || null,
     });
     state.stockTipos['art:' + nuevoId] = tipoClasif;
     if (depId && cantidad > 0) {
