@@ -1660,10 +1660,6 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('kanban', this)">
       <span class="sb-icon">🗂</span> Vista Kanban
     </button>
-    <button class="sidebar-btn-cta" onclick="window.open('recorridos','_blank')" style="margin-top:8px">
-      <span class="sb-icon">🗺️</span> Control de Recorridos
-      <span class="cta-arrow">↗</span>
-    </button>
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
@@ -1712,6 +1708,24 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
     <button class="sidebar-btn-cta pa" onclick="window.open('inventario','_blank')">
       <span class="sb-icon">📦</span> Central de Depósitos
+      <span class="cta-arrow">↗</span>
+    </button>
+  </div></div><!-- /inner /body -->
+  </div><!-- /section -->
+  <div class="sidebar-divider"></div>
+  <!-- AUXILIAR COMPRAS -->
+  <div class="sidebar-section" data-sid="auxiliar">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()" 
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))" 
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Auxiliar Compras</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
+    <button class="sidebar-btn-cta" onclick="window.open('recorridos','_blank')">
+      <span class="sb-icon">🗺️</span> Control de Recorridos
       <span class="cta-arrow">↗</span>
     </button>
   </div></div><!-- /inner /body -->
