@@ -306,7 +306,10 @@
   <!-- ===================== PROVEEDORES ===================== -->
   <section id="tab-proveedores" style="display:none">
     <div class="card">
-      <h2>🏭 Proveedores <button class="btn sm" id="btn-add-prov" style="margin-left:auto">+ Nuevo proveedor</button></h2>
+      <h2>🏭 Proveedores
+        <button class="btn sm" id="btn-import-cc" style="margin-left:auto;background:#2f9e6b">⬇️ Importar desde Base de Datos</button>
+        <button class="btn sm" id="btn-add-prov">+ Nuevo proveedor</button>
+      </h2>
       <div class="body">
         <div class="picker-hint" id="hint-picker" style="display:none">📍 Modo selección: hacé clic en el mapa de la pestaña "Recorrido" para fijar la ubicación, o cargá lat/long manualmente.</div>
         <table id="tabla-prov">
@@ -907,6 +910,51 @@ function renderHistorial(){
 function delRec(id){ if(confirm('¿Eliminar recorrido?')){ DB.historial=DB.historial.filter(r=>r.id!==id); save(); renderHistorial(); } }
 
 /* ============================ CRUD TABLAS ============================ */
+// ══ Importar proveedores desde la Base de Datos del Centro de Control ══
+// Lee la tabla «proveedores» (mismo Supabase) y los suma a la lista de Recorridos.
+async function importarProveedoresCC(){
+  const btn = document.getElementById('btn-import-cc');
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Importando...'; }
+  try{
+    const r = await fetch(REC_SB_URL + '/rest/v1/proveedores?select=nombre,rubro,direccion,cuit,email,tel,contacto&order=nombre.asc',
+      { headers:{ apikey:REC_SB_KEY, Authorization:'Bearer '+REC_SB_KEY }, cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    if(!rows || !rows.length){ alert('La Base de Datos de proveedores está vacía.'); return; }
+
+    // Índice de los que ya existen (por nombre normalizado) para no duplicar
+    const norm = x => (x||'').toString().trim().toLowerCase();
+    const yaHay = new Set(DB.proveedores.map(p => norm(p.nombre)));
+    let nuevos = 0, repetidos = 0;
+    rows.forEach(row => {
+      const nombre = (row.nombre||'').trim();
+      if(!nombre){ return; }
+      if(yaHay.has(norm(nombre))){ repetidos++; return; }
+      DB.proveedores.push({
+        id: uid(),
+        nombre: nombre,
+        rubro: row.rubro || '',
+        dir: row.direccion || '',
+        lat: null, lng: null,            // sin ubicar: se marca luego en el mapa
+        hm1:'', hm2:'', ht1:'', ht2:'',  // horarios: se completan en Recorridos
+        cuit: row.cuit || '', email: row.email || '', tel: row.tel || '', contacto: row.contacto || ''
+      });
+      yaHay.add(norm(nombre));
+      nuevos++;
+    });
+
+    if(nuevos > 0){ save(); renderProv(); renderAgenda(); fillSelects(); }
+    alert('Importación terminada:\n\n• ' + nuevos + ' proveedor(es) nuevo(s) agregado(s)'
+      + '\n• ' + repetidos + ' ya existían (omitidos)'
+      + (nuevos>0 ? '\n\nLos nuevos quedan SIN ubicación: marcá su posición en el mapa (botón 📍 de cada fila) o cargá lat/long a mano.' : ''));
+  }catch(e){
+    console.warn('importar proveedores CC', e);
+    alert('No se pudo importar desde la Base de Datos. Verificá la conexión.');
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '⬇️ Importar desde Base de Datos'; }
+  }
+}
+
 function renderProv(){
   const tb=document.querySelector('#tabla-prov tbody');
   tb.innerHTML=DB.proveedores.map(p=>`<tr>
@@ -1040,6 +1088,7 @@ document.getElementById('btn-compartir').onclick=compartirRecorrido;
 document.getElementById('share-copy').onclick=copiarShare;
 document.getElementById('btn-limpiar').onclick=limpiarRecorrido;
 document.getElementById('btn-add-prov').onclick=()=>editProv(null);
+document.getElementById('btn-import-cc').onclick=importarProveedoresCC;
 document.getElementById('btn-add-veh').onclick=()=>editVeh(null);
 document.getElementById('btn-add-cho').onclick=()=>editCho(null);
 
