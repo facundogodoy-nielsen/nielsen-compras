@@ -186,7 +186,7 @@
                 <input type="time" id="hora-salida">
               </div>
               <div>
-                <label>Punto de partida</label>
+                <label>Punto de partida <button class="btn ghost sm" onclick="editBase()" style="padding:1px 8px;font-size:11px;margin-left:4px" title="Editar el Depósito Nielsen">✎ Editar</button></label>
                 <select id="sel-base"></select>
               </div>
             </div>
@@ -547,6 +547,13 @@ function addStopFromMap(latlng){
 }
 let pickTarget = null; // proveedor esperando coordenada
 function onMapClick(e){
+  if(pickTarget==='__BASE__'){
+    DB.base.lat=+e.latlng.lat.toFixed(5); DB.base.lng=+e.latlng.lng.toFixed(5);
+    save(); fillSelects(); rebuildRutaBase(); drawMap();
+    pickTarget=null; document.getElementById('hint-picker').style.display='none';
+    document.getElementById('map-info').textContent='Depósito Nielsen fijado: '+DB.base.lat+', '+DB.base.lng;
+    return;
+  }
   if(pickTarget){
     const p = DB.proveedores.find(x=>x.id===pickTarget);
     if(p){ p.lat=+e.latlng.lat.toFixed(5); p.lng=+e.latlng.lng.toFixed(5); save(); renderProv(); }
@@ -594,7 +601,7 @@ const FACTOR_CALLE = 1.3;
 function toMin(t){ if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+m; }
 function minToHHMM(m){ m=Math.round(((m%1440)+1440)%1440); const h=Math.floor(m/60), mm=m%60; return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
 function rangosHorario(o){ const r=[]; if(o.hm1&&o.hm2) r.push([toMin(o.hm1),toMin(o.hm2)]); if(o.ht1&&o.ht2) r.push([toMin(o.ht1),toMin(o.ht2)]); return r; }
-function horarioTxt(o){ const a=(o.hm1&&o.hm2)?`${o.hm1}–${o.hm2}`:''; const b=(o.ht1&&o.ht2)?`${o.ht1}–${o.ht2}`:''; return (a&&b)?a+' / '+b:(a||b||''); }
+function horarioTxt(o){ if(o.corrido){ return (o.hm1&&o.hm2)?`${o.hm1}–${o.hm2} (corrido)`:''; } const a=(o.hm1&&o.hm2)?`${o.hm1}–${o.hm2}`:''; const b=(o.ht1&&o.ht2)?`${o.ht1}–${o.ht2}`:''; return (a&&b)?a+' / '+b:(a||b||''); }
 function abiertoEn(o,min){ const rs=rangosHorario(o); if(rs.length===0||min==null) return null; return rs.some(([s,e])=>min>=s&&min<=e); }
 /* ETA por parada según hora de salida; devuelve array paralelo a ruta con minutos de llegada */
 function etasRuta(){
@@ -969,6 +976,37 @@ function renderProv(){
   renderListaAgregar(document.getElementById('buscar-prov').value);
 }
 function pickCoord(id){ pickTarget=id; document.getElementById('hint-picker').style.display='block'; switchTab('recorrido'); alert('Hacé clic en el mapa para fijar la ubicación de este proveedor.'); }
+// ══ Editar el Depósito Nielsen (punto de partida): nombre, dirección, ubicación ══
+function editBase(){
+  const b = DB.base || {nombre:'Depósito Nielsen', dir:'', lat:'', lng:''};
+  openModal('Editar Depósito Nielsen', `
+    <label>Nombre del depósito</label><input type="text" id="b-nom" value="${b.nombre||''}">
+    <label>Dirección</label><input type="text" id="b-dir" value="${b.dir||''}">
+    <div class="row" style="margin-top:8px">
+      <div><label>Latitud</label><input type="number" step="0.00001" id="b-lat" value="${b.lat??''}"></div>
+      <div><label>Longitud</label><input type="number" step="0.00001" id="b-lng" value="${b.lng??''}"></div>
+    </div>
+    <button class="btn sm" onclick="pickBaseCoord()" style="margin-top:10px;background:#2f9e6b">📍 Fijar en el mapa</button>
+    <div class="muted" style="margin-top:6px">Tocá "Fijar en el mapa" y luego hacé clic en la ubicación correcta del depósito, o cargá lat/long a mano.</div>`,
+  ()=>{
+    const nom=mval('b-nom'), dir=mval('b-dir'), lat=mval('b-lat'), lng=mval('b-lng');
+    if(!nom){ alert('Poné un nombre'); return; }
+    if(!lat || !lng){ alert('Falta la ubicación. Fijala en el mapa o cargá lat/long.'); return; }
+    DB.base = { nombre:nom, dir:dir, lat:+lat, lng:+lng };
+    save(); fillSelects(); rebuildRutaBase(); drawMap(); renderAgenda(); closeModal();
+  });
+}
+function pickBaseCoord(){
+  // Guardar lo tipeado en el modal antes de ir al mapa (para no perderlo)
+  const nom=mval('b-nom'), dir=mval('b-dir');
+  if(nom) DB.base.nombre=nom;
+  if(dir!==undefined) DB.base.dir=dir;
+  pickTarget='__BASE__';
+  document.getElementById('hint-picker').style.display='block';
+  closeModal();
+  switchTab('recorrido');
+  alert('Hacé clic en el mapa para fijar la ubicación del Depósito Nielsen.');
+}
 function renderVeh(){
   const tb=document.querySelector('#tabla-veh tbody');
   tb.innerHTML=DB.vehiculos.map(v=>`<tr>
@@ -998,28 +1036,60 @@ function mval(id){ return document.getElementById(id).value.trim(); }
 
 function editProv(id){
   const p=id?DB.proveedores.find(x=>x.id===id):{nombre:'',rubro:'',dir:'',lat:'',lng:'',hm1:'',hm2:'',ht1:'',ht2:''};
+  const esCorrido = !!p.corrido;
   openModal(id?'Editar proveedor':'Nuevo proveedor', `
     <label>Nombre</label><input type="text" id="m-nom" value="${p.nombre}">
-    <label>Rubro</label><input type="text" id="m-rub" value="${p.rubro}">
+    <label>Rubro</label><input type="text" id="m-rub" value="${p.rub||p.rubro||''}">
     <label>Dirección</label><input type="text" id="m-dir" value="${p.dir||''}">
-    <label>Horario de atención — Mañana</label>
-    <div class="row"><div><input type="time" id="m-hm1" value="${p.hm1||''}"></div><div><input type="time" id="m-hm2" value="${p.hm2||''}"></div></div>
-    <label>Horario de atención — Tarde</label>
-    <div class="row"><div><input type="time" id="m-ht1" value="${p.ht1||''}"></div><div><input type="time" id="m-ht2" value="${p.ht2||''}"></div></div>
-    <div class="muted" style="margin-top:4px">Dejá la tarde vacía si es horario corrido o solo mañana.</div>
+
+    <label style="display:flex;align-items:center;gap:9px;margin-top:12px;cursor:pointer;font-weight:600">
+      <input type="checkbox" id="m-corrido" ${esCorrido?'checked':''} onchange="_toggleCorrido()" style="width:17px;height:17px;flex:none;cursor:pointer">
+      🕘 Atiende en horario corrido
+    </label>
+
+    <div id="box-partido" style="${esCorrido?'display:none':''}">
+      <label>Horario de atención — Mañana</label>
+      <div class="row"><div><input type="time" id="m-hm1" value="${p.hm1||''}"></div><div><input type="time" id="m-hm2" value="${p.hm2||''}"></div></div>
+      <label>Horario de atención — Tarde</label>
+      <div class="row"><div><input type="time" id="m-ht1" value="${p.ht1||''}"></div><div><input type="time" id="m-ht2" value="${p.ht2||''}"></div></div>
+      <div class="muted" style="margin-top:4px">Dejá la tarde vacía si solo atiende de mañana.</div>
+    </div>
+
+    <div id="box-corrido" style="${esCorrido?'':'display:none'}">
+      <label>Horario de atención — De corrido</label>
+      <div class="row"><div><input type="time" id="m-hc1" value="${esCorrido?(p.hm1||''):''}" placeholder="Apertura"></div><div><input type="time" id="m-hc2" value="${esCorrido?(p.ht2||p.hm2||''):''}" placeholder="Cierre"></div></div>
+      <div class="muted" style="margin-top:4px">Apertura y cierre, sin cortar al mediodía.</div>
+    </div>
+
     <div class="row" style="margin-top:8px"><div><label>Latitud</label><input type="number" step="0.00001" id="m-lat" value="${p.lat??''}"></div>
     <div><label>Longitud</label><input type="number" step="0.00001" id="m-lng" value="${p.lng??''}"></div></div>
     <div class="muted" style="margin-top:6px">Tip: dejá lat/long vacío y usá "📍 Mapa" para fijar haciendo clic.</div>`,
   ()=>{
+    const corrido = document.getElementById('m-corrido')?.checked;
+    let hm1,hm2,ht1,ht2;
+    if(corrido){
+      // De corrido: se guarda en mañana (apertura→cierre) y la tarde queda vacía
+      hm1=mval('m-hc1'); hm2=mval('m-hc2'); ht1=''; ht2='';
+    } else {
+      hm1=mval('m-hm1'); hm2=mval('m-hm2'); ht1=mval('m-ht1'); ht2=mval('m-ht2');
+    }
     const o={nombre:mval('m-nom'),rubro:mval('m-rub'),dir:mval('m-dir'),
-      hm1:mval('m-hm1'),hm2:mval('m-hm2'),ht1:mval('m-ht1'),ht2:mval('m-ht2'),
+      corrido:!!corrido, hm1,hm2,ht1,ht2,
       lat:mval('m-lat')?+mval('m-lat'):null, lng:mval('m-lng')?+mval('m-lng'):null};
     if(!o.nombre){ alert('Poné un nombre'); return; }
     if(id) Object.assign(p,o); else DB.proveedores.push({id:uid(),...o});
     // reflejar horario en paradas ya agregadas
-    ruta.forEach(s=>{ if(s.id===(id||'')){ s.hm1=o.hm1;s.hm2=o.hm2;s.ht1=o.ht1;s.ht2=o.ht2; } });
+    ruta.forEach(s=>{ if(s.id===(id||'')){ s.corrido=o.corrido;s.hm1=o.hm1;s.hm2=o.hm2;s.ht1=o.ht1;s.ht2=o.ht2; } });
     save(); renderProv(); renderAgenda(); closeModal();
   });
+}
+// Alterna entre horario partido (mañana/tarde) y corrido
+function _toggleCorrido(){
+  const on = document.getElementById('m-corrido')?.checked;
+  const bp = document.getElementById('box-partido');
+  const bc = document.getElementById('box-corrido');
+  if(bp) bp.style.display = on ? 'none' : '';
+  if(bc) bc.style.display = on ? '' : 'none';
 }
 function delProv(id){ if(confirm('¿Eliminar proveedor?')){ DB.proveedores=DB.proveedores.filter(x=>x.id!==id); ruta=ruta.filter(s=>s.id!==id); save(); renderProv(); renderAgenda(); drawMap(); updateEstimado(); } }
 
