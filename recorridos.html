@@ -234,8 +234,11 @@
               <div class="cfg-inline">Vel. media <input type="number" id="cfg-vel" value="28" min="5" max="90"> km/h</div>
               <div class="cfg-inline">Min/parada <input type="number" id="cfg-parada" value="12" min="0" max="120"></div>
               <div class="cfg-inline">$ Gasoil/L <input type="number" id="cfg-precio" value="1200" min="0"></div>
-              <div class="cfg-inline" style="flex:1;min-width:260px">🗺️ API key ruteo por calles
-                <input type="text" id="cfg-ors" placeholder="Pegá tu clave de OpenRouteService" style="width:230px" onchange="guardarORSKey()">
+              <div class="cfg-inline" style="flex:1;min-width:280px">🗺️ API key ruteo por calles
+                <input type="text" id="cfg-ors" placeholder="(sin configurar)" style="width:200px" readonly
+                  onchange="guardarORSKey()">
+                <button type="button" id="cfg-ors-lock" onclick="_orsToggleLock()" title="Proteger / desbloquear la clave"
+                  style="background:var(--s3,#2a251e);border:1px solid var(--border,#3a332b);color:var(--text,#ece7e1);border-radius:6px;padding:4px 9px;cursor:pointer;font-size:12px">🔒</button>
               </div>
             </div>
 
@@ -642,14 +645,69 @@ let _rutaRealFirma = '';     // firma de las paradas para saber si hay que recal
 // La clave se toma de la config (guardada en la nube) o del valor por código
 function _orsKey(){ return (DB.cfg && DB.cfg.orsKey) ? String(DB.cfg.orsKey).trim() : ORS_API_KEY_DEFAULT.trim(); }
 function _orsDisponible(){ const k=_orsKey(); return typeof k==='string' && k.length > 20; }
+// ── Protección de la API key con PIN 1102 ──
+const _ORS_PIN = '1102';
+let _orsDesbloqueada = false;
+// Muestra la clave enmascarada (solo el final) cuando está bloqueada
+function _orsMascara(k){
+  if(!k) return '';
+  if(k.length<=8) return '••••••';
+  return '••••••••' + k.slice(-6);
+}
+// Refleja el estado (bloqueado/desbloqueado) en el input y el botón
+function _orsRenderCampo(){
+  const inp=document.getElementById('cfg-ors');
+  const btn=document.getElementById('cfg-ors-lock');
+  if(!inp) return;
+  const k=(DB.cfg&&DB.cfg.orsKey)?DB.cfg.orsKey:'';
+  if(_orsDesbloqueada){
+    inp.value=k; inp.readOnly=false; inp.type='text';
+    inp.style.opacity='1';
+    if(btn){ btn.textContent='🔓'; btn.title='Bloquear la clave'; }
+  } else {
+    inp.value=_orsMascara(k); inp.readOnly=true; inp.type='text';
+    inp.style.opacity=k?'.75':'1';
+    if(btn){ btn.textContent='🔒'; btn.title='Desbloquear para editar (PIN)'; }
+  }
+}
+function _orsToggleLock(){
+  if(_orsDesbloqueada){
+    // Volver a bloquear
+    _orsDesbloqueada=false;
+    _orsRenderCampo();
+    return;
+  }
+  // Pedir PIN para desbloquear
+  const pin=prompt('🔒 La clave de ruteo está protegida.\nIngresá el PIN para poder modificarla:');
+  if(pin===null) return;
+  if(pin.trim()!==_ORS_PIN){ alert('❌ PIN incorrecto. La clave sigue protegida.'); return; }
+  _orsDesbloqueada=true;
+  _orsRenderCampo();
+  const inp=document.getElementById('cfg-ors');
+  if(inp){ inp.focus(); }
+}
 function guardarORSKey(){
-  const v = (document.getElementById('cfg-ors').value||'').trim();
+  // Solo se puede guardar si está desbloqueada (evita borrados/cambios por error)
+  if(!_orsDesbloqueada){ _orsRenderCampo(); return; }
+  const nueva=(document.getElementById('cfg-ors').value||'').trim();
+  const anterior=(DB.cfg&&DB.cfg.orsKey)?DB.cfg.orsKey:'';
+  // Si se está borrando o vaciando una clave que existía, confirmar con PIN de nuevo
+  if(anterior && nueva.length<20){
+    const pin=prompt('⚠️ Vas a borrar o acortar la clave de ruteo.\nIngresá el PIN para confirmar:');
+    if(pin===null || pin.trim()!==_ORS_PIN){
+      alert('Cancelado. La clave no se modificó.');
+      _orsRenderCampo();
+      return;
+    }
+  }
   if(!DB.cfg) DB.cfg = {};
-  DB.cfg.orsKey = v;
+  DB.cfg.orsKey = nueva;
   _rutaRealCoords=null; _rutaRealKm=null; _rutaRealMin=null;
   save();
   drawMap(); updateEstimado();
-  alert(v.length>20 ? '✅ Clave guardada. El ruteo por calles ya está activo.' : 'Clave vacía o muy corta: se usará ruta aproximada (línea recta).');
+  _orsDesbloqueada=false;   // re-proteger tras guardar
+  _orsRenderCampo();
+  alert(nueva.length>20 ? '✅ Clave guardada y protegida. El ruteo por calles está activo.' : 'Clave vacía o muy corta: se usará ruta aproximada (línea recta).');
 }
 
 // Pide a ORS la ruta real que pasa por todas las paradas en orden.
@@ -1385,7 +1443,7 @@ document.getElementById('fecha').value = new Date().toISOString().slice(0,10);
 document.getElementById('cfg-vel').value=DB.cfg?.vel??28;
 document.getElementById('cfg-parada').value=DB.cfg?.parada??12;
 document.getElementById('cfg-precio').value=DB.cfg?.precio??1200;
-document.getElementById('cfg-ors').value=DB.cfg?.orsKey||'';
+_orsRenderCampo();
 
 ['cfg-vel','cfg-parada','cfg-precio'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{
   DB.cfg={...DB.cfg, vel:+document.getElementById('cfg-vel').value,parada:+document.getElementById('cfg-parada').value,precio:+document.getElementById('cfg-precio').value};
@@ -1418,7 +1476,7 @@ initMap();
   if(_g('cfg-vel')) _g('cfg-vel').value=DB.cfg?.vel??28;
   if(_g('cfg-parada')) _g('cfg-parada').value=DB.cfg?.parada??12;
   if(_g('cfg-precio')) _g('cfg-precio').value=DB.cfg?.precio??1200;
-  if(_g('cfg-ors')) _g('cfg-ors').value=DB.cfg?.orsKey||'';
+  _orsRenderCampo();
   // Restaurar el recorrido en edición guardado (con sus SC/adjuntos por parada)
   if(Array.isArray(DB.rutaActual) && DB.rutaActual.length){ ruta = DB.rutaActual; }
   fillSelects();
