@@ -446,6 +446,7 @@ async function cargarDesdeNube(){
   }
 }
 function save(){
+  if(typeof ruta!=='undefined' && DB) DB.rutaActual = ruta;   // conservar el recorrido en edición (con SC/adjuntos)
   if(_recSaveTimer) clearTimeout(_recSaveTimer);
   _recSetStatus('⏳ Guardando...', 'var(--muted)');
   _recSaveTimer = setTimeout(_recPush, 500);
@@ -788,9 +789,9 @@ function addParada(pid){
   const p=DB.proveedores.find(x=>x.id===pid); if(!p) return;
   if(ruta.some(s=>s.id===pid)) return;
   ruta.push({id:p.id, tipo:'prov', nombre:p.nombre, dir:p.dir, lat:p.lat, lng:p.lng, arribo:'', hm1:p.hm1,hm2:p.hm2,ht1:p.ht1,ht2:p.ht2});
-  renderAgenda(); drawMap(); updateEstimado();
+  save(); renderAgenda(); drawMap(); updateEstimado();
 }
-function delParada(pid){ ruta=ruta.filter(s=>s.id!==pid); renderAgenda(); drawMap(); updateEstimado(); }
+function delParada(pid){ ruta=ruta.filter(s=>s.id!==pid); save(); renderAgenda(); drawMap(); updateEstimado(); }
 function moveParada(i,dir){
   const j=i+dir;
   const provIdx = ruta.map((s,k)=>s.tipo==='prov'?k:-1).filter(k=>k>=0);
@@ -798,7 +799,7 @@ function moveParada(i,dir){
   const a=ruta[i]; if(!a||a.tipo!=='prov') return;
   if(j<0||j>=ruta.length) return;
   const b=ruta[j]; if(!b||b.tipo!=='prov') return;
-  ruta[i]=b; ruta[j]=a; renderAgenda(); drawMap(); updateEstimado();
+  ruta[i]=b; ruta[j]=a; save(); renderAgenda(); drawMap(); updateEstimado();
 }
 function optimizar(){
   const provs=ruta.filter(s=>s.tipo==='prov' && s.lat!=null);
@@ -841,6 +842,14 @@ function renderAgenda(){
         else etaBadge=`<span class="pill warn">llega ~${minToHHMM(eta)}</span>`;
       }
       if(ht||etaBadge) hLine=`<div class="leg" style="color:var(--muted);margin-top:3px">🕒 ${ht||'sin horario'} ${etaBadge}</div>`;
+      // Resumen de SC asignada / ítems a buscar / adjuntos
+      if(s.scNum || (s.scItems&&s.scItems.length)){
+        const its=(s.scItems||[]);
+        hLine+=`<div class="leg" style="margin-top:3px;color:#f0a35e">📋 ${s.scNum?('SC '+s.scNum):'Ítems'}: ${its.length?its.map(x=>_escRec(x)).join(', '):'(sin ítems seleccionados)'}</div>`;
+      }
+      if(s.adjuntos&&s.adjuntos.length){
+        hLine+=`<div class="leg" style="margin-top:3px">📎 ${s.adjuntos.map(a=>`<a href="${a.url}" target="_blank" style="color:#7cc4ff;text-decoration:underline">${_escRec(a.nombre)}</a>`).join(' · ')}</div>`;
+      }
     }
     const li=document.createElement('li');
     const arriboInput = s.tipo==='prov'
@@ -855,14 +864,15 @@ function renderAgenda(){
         ${arriboInput}
       </div>
       <div class="acts">
-        ${s.tipo==='prov'?`<button class="btn gray sm" onclick="moveParada(${i},-1)">▲</button>
+        ${s.tipo==='prov'?`<button class="btn ghost sm" onclick="abrirParadaDetalle('${s.id}')" title="Asignar SC o adjuntar documentos" style="position:relative">📎${(s.scItems&&s.scItems.length)||(s.adjuntos&&s.adjuntos.length)?`<span style="position:absolute;top:-5px;right:-5px;background:#E8611A;color:#fff;border-radius:50%;width:15px;height:15px;font-size:9px;line-height:15px;text-align:center">${((s.scItems&&s.scItems.length)||0)+((s.adjuntos&&s.adjuntos.length)||0)}</span>`:''}</button>
+        <button class="btn gray sm" onclick="moveParada(${i},-1)">▲</button>
         <button class="btn gray sm" onclick="moveParada(${i},1)">▼</button>
         <button class="btn danger sm" onclick="delParada('${s.id}')">✕</button>`:''}
       </div>`;
     ul.appendChild(li);
   });
 }
-function setArribo(id,val){ const s=ruta.find(x=>x.id===id); if(s) s.arribo=val; updateComparacion(); }
+function setArribo(id,val){ const s=ruta.find(x=>x.id===id); if(s) s.arribo=val; save(); updateComparacion(); }
 
 /* ============================ LISTAS DE SELECCIÓN ============================ */
 function fillSelects(){
@@ -1057,6 +1067,161 @@ function renderProv(){
   renderListaAgregar(document.getElementById('buscar-prov').value);
 }
 function pickCoord(id){ pickTarget=id; document.getElementById('hint-picker').style.display='block'; switchTab('recorrido'); alert('Hacé clic en el mapa para fijar la ubicación de este proveedor.'); }
+
+// ══════════════════════════════════════════════════════════════
+// PARADA: asignar Solicitud de Compra (del Historial CC) + adjuntar documentos
+// Todo se guarda dentro de la parada (DB → Supabase). Archivos → Storage.
+// ══════════════════════════════════════════════════════════════
+function _escRec(t){ return (t==null?'':String(t)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+let _scCache = null;   // SC traídas del historial (para no re-pedir en cada apertura)
+
+async function _cargarSCs(){
+  try{
+    const r = await fetch(REC_SB_URL + '/rest/v1/solicitudes_compra?select=num_sc,items,area,solicitante,fecha,estado,motivo&order=fecha.desc', {
+      headers:{ apikey:REC_SB_KEY, Authorization:'Bearer '+REC_SB_KEY }, cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    _scCache = await r.json();
+    return _scCache;
+  }catch(e){ console.warn('cargar SCs', e); return null; }
+}
+function _paradaById(id){ return ruta.find(s=>s.id===id); }
+
+async function abrirParadaDetalle(pid){
+  const s=_paradaById(pid); if(!s) return;
+  if(!s.adjuntos) s.adjuntos=[];
+  if(!s.scItems) s.scItems=[];
+  openModal('📎 '+s.nombre, `
+    <div style="display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--border,#333)">
+      <button class="btn sm" id="pd-tab-sc" onclick="_pdTab('sc')" style="background:var(--or,#E8611A)">📋 Solicitud de Compra</button>
+      <button class="btn sm" id="pd-tab-adj" onclick="_pdTab('adj')" style="background:var(--s3,#2a251e)">📎 Documentos adjuntos</button>
+    </div>
+    <div id="pd-sc"></div>
+    <div id="pd-adj" style="display:none"></div>
+  `, null);
+  _pdParadaId=pid;
+  _pdTab('sc');
+  renderParadaAdj();
+}
+let _pdParadaId=null;
+function _pdTab(t){
+  document.getElementById('pd-sc').style.display = t==='sc'?'':'none';
+  document.getElementById('pd-adj').style.display = t==='adj'?'':'none';
+  document.getElementById('pd-tab-sc').style.background = t==='sc'?'var(--or,#E8611A)':'var(--s3,#2a251e)';
+  document.getElementById('pd-tab-adj').style.background = t==='adj'?'var(--or,#E8611A)':'var(--s3,#2a251e)';
+  if(t==='sc') renderParadaSC();
+}
+
+async function renderParadaSC(){
+  const box=document.getElementById('pd-sc'); if(!box) return;
+  const s=_paradaById(_pdParadaId); if(!s) return;
+  box.innerHTML='<div class="muted" style="padding:10px">Cargando solicitudes...</div>';
+  const scs = _scCache || await _cargarSCs();
+  if(!scs){ box.innerHTML='<div class="muted" style="padding:10px;color:#eab308">No se pudo conectar con el Historial de SC.</div>'; return; }
+
+  const selNum = s.scNum || '';
+  const opts = '<option value="">— Sin SC asignada —</option>' +
+    scs.map(x=>`<option value="${_escRec(x.num_sc)}" ${x.num_sc===selNum?'selected':''}>${_escRec(x.num_sc)} · ${_escRec((x.area||'').slice(0,22))} · ${_escRec((x.fecha||'').slice(0,10))}</option>`).join('');
+
+  let itemsHtml='';
+  const scSel = scs.find(x=>x.num_sc===selNum);
+  if(scSel){
+    const lineas=(scSel.items||'').split('\n').map(l=>l.trim()).filter(l=>l&&l!=='-');
+    if(lineas.length){
+      itemsHtml=`<div style="margin-top:12px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or,#E8611A);margin-bottom:8px">Ítems a buscar en este proveedor</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Tildá los ítems de esta SC que vas a cotizar/comprar acá.</div>
+        <div style="border:1px solid var(--border,#333);border-radius:8px;overflow:hidden">`;
+      lineas.forEach((l,idx)=>{
+        const checked=(s.scItems||[]).includes(l);
+        itemsHtml+=`<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border,#333);cursor:pointer">
+          <input type="checkbox" ${checked?'checked':''} onchange="_toggleScItem('${_escRec(l).replace(/'/g,"\\\\'")}',this.checked)" style="width:16px;height:16px;flex:none">
+          <span style="flex:1;font-size:13px">${_escRec(l)}</span></label>`;
+      });
+      itemsHtml+='</div></div>';
+    } else {
+      itemsHtml='<div class="muted" style="margin-top:12px;font-size:12px">Esta SC no tiene ítems detallados en el listado.</div>';
+    }
+  }
+
+  box.innerHTML=`
+    <label style="font-size:12px;color:var(--muted)">Asignar solicitud del Historial de SC</label>
+    <select id="pd-sc-sel" onchange="_asignarSC(this.value)" style="width:100%;margin-top:6px">${opts}</select>
+    ${scSel&&scSel.motivo?`<div style="margin-top:8px;font-size:12px;color:var(--muted)"><b>Motivo:</b> ${_escRec(scSel.motivo)}</div>`:''}
+    ${itemsHtml}
+    <div style="margin-top:14px;text-align:right"><button class="btn" onclick="_guardarParada()" style="background:#2f9e6b">✔ Guardar</button></div>`;
+}
+function _asignarSC(num){
+  const s=_paradaById(_pdParadaId); if(!s) return;
+  s.scNum=num||'';
+  if(!num) s.scItems=[];
+  renderParadaSC();
+}
+function _toggleScItem(item, on){
+  const s=_paradaById(_pdParadaId); if(!s) return;
+  if(!s.scItems) s.scItems=[];
+  if(on){ if(!s.scItems.includes(item)) s.scItems.push(item); }
+  else { s.scItems=s.scItems.filter(x=>x!==item); }
+}
+function _guardarParada(){
+  save(); renderAgenda(); drawMap(); closeModal();
+  if(typeof toast==='undefined'){} else toast&&toast('Guardado');
+}
+
+// ── Adjuntos (PDF / imágenes) → Supabase Storage ──
+const REC_BUCKET='nielsen-archivos';
+function renderParadaAdj(){
+  const box=document.getElementById('pd-adj'); if(!box) return;
+  const s=_paradaById(_pdParadaId); if(!s) return;
+  if(!s.adjuntos) s.adjuntos=[];
+  const lista = s.adjuntos.length ? s.adjuntos.map((a,i)=>{
+    const esImg=/\.(jpe?g|png|gif|webp)$/i.test(a.nombre||'')||/image\//.test(a.tipo||'');
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border,#333)">
+      <span style="font-size:20px">${esImg?'🖼️':'📄'}</span>
+      <a href="${a.url}" target="_blank" style="flex:1;font-size:13px;color:#7cc4ff;text-decoration:underline;word-break:break-all">${_escRec(a.nombre)}</a>
+      <button class="btn danger sm" onclick="_delAdj(${i})">✕</button>
+    </div>`;
+  }).join('') : '<div class="muted" style="padding:12px;font-size:12px">Sin documentos adjuntos.</div>';
+  box.innerHTML=`
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Adjuntá presupuestos, remitos o facturas (PDF, JPG, PNG...). Se guardan en la nube y podés abrirlos tocando el nombre.</div>
+    <input type="file" id="pd-file" accept=".pdf,image/*" onchange="_subirAdj(this)" style="font-size:12px;margin-bottom:6px">
+    <div id="pd-file-estado" style="font-size:11px;color:var(--muted);margin-bottom:10px"></div>
+    <div style="border:1px solid var(--border,#333);border-radius:8px;overflow:hidden">${lista}</div>
+    <div style="margin-top:14px;text-align:right"><button class="btn" onclick="_guardarParada()" style="background:#2f9e6b">✔ Guardar</button></div>`;
+}
+function _slugRec(name){
+  const dot=name.lastIndexOf('.'); const ext=dot>=0?name.slice(dot):'';
+  const base=(dot>=0?name.slice(0,dot):name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'').slice(0,50)||'archivo';
+  return base+(ext||'').toLowerCase();
+}
+async function _subirAdj(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const s=_paradaById(_pdParadaId); if(!s) return;
+  const est=document.getElementById('pd-file-estado');
+  if(est) est.textContent='Subiendo '+file.name+'...';
+  try{
+    const path='recorridos/'+(s.id||'parada')+'/'+Date.now()+'_'+_slugRec(file.name);
+    const clean=path.split('/').map(p=>encodeURIComponent(p)).join('/');
+    const r=await fetch(REC_SB_URL+'/storage/v1/object/'+REC_BUCKET+'/'+clean,{
+      method:'POST',
+      headers:{ apikey:REC_SB_KEY, Authorization:'Bearer '+REC_SB_KEY, 'x-upsert':'true', 'Content-Type':file.type||'application/octet-stream' },
+      body:file
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const url=REC_SB_URL+'/storage/v1/object/public/'+REC_BUCKET+'/'+clean;
+    if(!s.adjuntos) s.adjuntos=[];
+    s.adjuntos.push({ nombre:file.name, url, tipo:file.type||'' });
+    save();
+    if(est) est.textContent='';
+    renderParadaAdj();
+  }catch(e){
+    console.warn('subir adjunto', e);
+    if(est) est.textContent='No se pudo subir el archivo.';
+  }
+  input.value='';
+}
+function _delAdj(i){
+  const s=_paradaById(_pdParadaId); if(!s||!s.adjuntos) return;
+  s.adjuntos.splice(i,1); save(); renderParadaAdj(); renderAgenda();
+}
 // ══ Editar el Depósito Nielsen (punto de partida): nombre, dirección, ubicación ══
 function editBase(){
   const b = DB.base || {nombre:'Depósito Nielsen', dir:'', lat:'', lng:''};
@@ -1254,6 +1419,8 @@ initMap();
   if(_g('cfg-parada')) _g('cfg-parada').value=DB.cfg?.parada??12;
   if(_g('cfg-precio')) _g('cfg-precio').value=DB.cfg?.precio??1200;
   if(_g('cfg-ors')) _g('cfg-ors').value=DB.cfg?.orsKey||'';
+  // Restaurar el recorrido en edición guardado (con sus SC/adjuntos por parada)
+  if(Array.isArray(DB.rutaActual) && DB.rutaActual.length){ ruta = DB.rutaActual; }
   fillSelects();
   rebuildRutaBase();
   renderAgenda();
