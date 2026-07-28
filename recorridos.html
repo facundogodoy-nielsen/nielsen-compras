@@ -1047,10 +1047,10 @@ function renderHistorial(){
       const pill = dt==null?'<span class="muted">—</span>' : `<span class="pill ${dt>15?'bad':(dt<-5?'ok':'warn')}">${dt>=0?'+':''}${dt} min</span>`;
       const estBadge = r.estado==='COMPLETADO'
         ? '<span class="pill ok">✔ Completado</span>'
-        : (r.realMin!=null||r.realKm!=null ? '<span class="pill warn">En curso</span>' : '<span class="pill" style="background:#3a3a3a;color:#bbb">Enviado</span>');
+        : ((r.estado==='EN_CURSO'||r.realKm!=null||r.salida||r.kmIni!=null) ? '<span class="pill warn">En curso</span>' : '<span class="pill" style="background:#3a3a3a;color:#bbb">Enviado</span>');
       return `<tr>
         <td>${r.fecha||'-'}</td><td>${r.vehiculo}</td><td>${r.chofer}</td>
-        <td>${r.paradas.length}</td>
+        <td>${r.paradas.length}${(r.paradas||[]).some(p=>p.extra)?' <span title="Incluye proveedores fuera del plan" style="color:#3e7cb1;font-weight:700">+</span>':''}</td>
         <td>${r.estKm} / ${r.realKm??'—'}</td>
         <td>${fmtMin(r.estMin)} / ${r.realMin!=null?fmtMin(r.realMin):'—'}</td>
         <td>${r.estLitros} / ${r.realLitros??'—'}</td>
@@ -1130,10 +1130,13 @@ function _guardarDatosChofer(){
   r.realKm = (r.kmIni!=null && r.kmFin!=null && r.kmFin>=r.kmIni) ? (r.kmFin - r.kmIni) : (r.realKm||null);
   r.realLitros = +g('cd-litros').value || null;
   r.realMin = minutosEntre(r.salida, r.regreso);
-  r.estado = 'COMPLETADO';
+  // Solo se considera COMPLETADO cuando hay hora de regreso cargada.
+  r.estado = r.regreso ? 'COMPLETADO' : 'EN_CURSO';
   r.actualizado = new Date().toISOString();
   save(); renderHistorial(); closeModal();
-  alert('✅ Datos guardados. Quedaron registrados en el recorrido.');
+  alert(r.regreso
+    ? '✅ Recorrido completado. Todos los datos quedaron registrados.'
+    : 'Datos guardados. El recorrido queda EN CURSO hasta que cargues la hora de regreso.');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1155,8 +1158,8 @@ function consultarRecorrido(id){
     }
     return `<div style="padding:10px 0;border-bottom:1px solid var(--border,#333)">
       <div style="display:flex;align-items:center;gap:10px">
-        <span style="width:22px;height:22px;border-radius:50%;background:var(--or,#E8611A);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none">${i+1}</span>
-        <span style="flex:1;font-size:13px;font-weight:600">${_escRec(p.nombre)}</span>
+        <span style="width:22px;height:22px;border-radius:50%;background:${p.extra?'#3e7cb1':'var(--or,#E8611A)'};color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none">${i+1}</span>
+        <span style="flex:1;font-size:13px;font-weight:600">${_escRec(p.nombre)} ${p.extra?'<span class="pill" style="background:#3e7cb1;color:#fff;font-size:10px;margin-left:4px">➕ fuera del plan</span>':''}</span>
         ${p.arribo?`<span class="pill ok">arribo ${p.arribo}</span>`:'<span class="muted" style="font-size:11px">sin arribo</span>'}
       </div>
       ${p.dir?`<div style="font-size:11px;color:var(--muted);margin-left:32px">${_escRec(p.dir)}</div>`:''}
@@ -1188,13 +1191,70 @@ function consultarRecorrido(id){
       ${rend?`<span>Rendimiento: <b>${rend} km/L</b></span>`:''}
     </div>
 
-    <div style="margin-top:16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or,#E8611A)">Proveedores del recorrido (${(r.paradas||[]).length})</div>
+    <div style="margin-top:16px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or,#E8611A)">Proveedores del recorrido (${(r.paradas||[]).length})</span>
+      <button class="btn sm" onclick="agregarProvARecorrido('${r.id}')" style="background:#3e7cb1;margin-left:auto" title="Sumar un proveedor no planificado">➕ Agregar proveedor</button>
+    </div>
     <div style="margin-top:4px">${paradasHtml||'<div class="muted">Sin paradas.</div>'}</div>
 
     <div style="margin-top:16px;text-align:right">
       <button class="btn" onclick="cargarDatosChofer('${r.id}')" style="background:#2f9e6b;margin-right:6px">✏️ Cargar datos</button>
       <button class="btn" onclick="closeModal()" style="background:var(--s3,#2a251e)">Cerrar</button>
     </div>`, null);
+}
+
+// ══ Agregar un proveedor NO planificado a un recorrido ya guardado ══
+// Queda marcado con extra:true ("fuera del plan") porque altera la distancia/tiempo estimados.
+let _apRecId=null;
+function agregarProvARecorrido(recId){
+  const r=DB.historial.find(x=>x.id===recId); if(!r) return;
+  _apRecId=recId;
+  const provs=(DB.proveedores||[]).slice().sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  const opts=provs.map(p=>`<option value="${p.id}">${_escRec(p.nombre)}${p.rubro?(' · '+_escRec(p.rubro)):''}</option>`).join('');
+  openModal('➕ Agregar proveedor al recorrido', `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Sumá un proveedor que se visitó fuera del plan original. Quedará marcado como <b style="color:#3e7cb1">fuera del plan</b>, porque modifica la distancia y el tiempo estimados del recorrido.</div>
+    <label>Proveedor</label>
+    <select id="ap-prov">${opts||'<option value="">(no hay proveedores cargados)</option>'}</select>
+    <div style="margin-top:10px"><label>Hora de arribo (opcional)</label><input type="time" id="ap-arribo"></div>
+    <div style="margin-top:8px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+      <input type="checkbox" id="ap-recalc" checked style="width:16px;height:16px"> Recalcular distancia/tiempo estimados sumando esta parada
+    </label></div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn" onclick="consultarRecorrido('${recId}')" style="background:var(--s3,#2a251e);margin-right:6px">Cancelar</button>
+      <button class="btn" onclick="_confirmarAgregarProv()" style="background:#3e7cb1">➕ Agregar</button>
+    </div>`, null);
+}
+function _confirmarAgregarProv(){
+  const r=DB.historial.find(x=>x.id===_apRecId); if(!r) return;
+  const pid=document.getElementById('ap-prov').value;
+  const p=(DB.proveedores||[]).find(x=>x.id===pid);
+  if(!p){ alert('Elegí un proveedor.'); return; }
+  const arribo=document.getElementById('ap-arribo').value||'';
+  const recalc=document.getElementById('ap-recalc').checked;
+  if(!r.paradas) r.paradas=[];
+  r.paradas.push({
+    id:'extra_'+uid(), nombre:p.nombre, dir:p.dir||'', lat:p.lat, lng:p.lng,
+    arribo, hm1:p.hm1||'',hm2:p.hm2||'',ht1:p.ht1||'',ht2:p.ht2||'',corrido:!!p.corrido,
+    scNum:'', scItems:[], adjuntos:[],
+    extra:true   // ← marca: fuera del plan inicial
+  });
+  // Recalcular estimados sumando el tramo hasta el nuevo proveedor (si tiene ubicación)
+  if(recalc && p.lat!=null){
+    const prev=[...r.paradas].reverse().find(x=>x!==r.paradas[r.paradas.length-1] && x.lat!=null);
+    if(prev){
+      const tramo=haversine([prev.lat,prev.lng],[p.lat,p.lng])*FACTOR_CALLE;
+      const velKmH=(r.cfg&&r.cfg.vel)||28;
+      const minParada=(r.cfg&&r.cfg.parada)||12;
+      r.estKm=+((r.estKm||0)+tramo).toFixed(1);
+      r.estMin=Math.round((r.estMin||0) + (tramo/velKmH*60) + minParada);
+      const consumo=(r.cfg&&r.cfg.consumo)||12;
+      r.estLitros=+(((r.estKm||0)*consumo/100)).toFixed(1);
+    }
+  }
+  r.tieneExtras=true;
+  save(); renderHistorial();
+  consultarRecorrido(_apRecId);
+  if(typeof toast!=='undefined'&&toast) toast('Proveedor agregado (fuera del plan)');
 }
 
 /* ============================ CRUD TABLAS ============================ */
