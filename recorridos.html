@@ -1383,6 +1383,39 @@ function _guardarDatosChofer(){
 // ══════════════════════════════════════════════════════════════
 // CONSULTAR: detalle completo del recorrido (solo lectura)
 // ══════════════════════════════════════════════════════════════
+// Fila del punto de partida (base) en el detalle
+function _filaPartida(r){
+  const b=r.base;
+  const ubic = (b && b.lat!=null) ? `${b.lat}, ${b.lng}` : 'sin ubicación';
+  const nombre = (b && b.nombre) ? b.nombre : 'Depósito Nielsen';
+  return `<div style="padding:10px 0;border-bottom:1px solid var(--border,#333)">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="width:22px;height:22px;border-radius:50%;background:#13161E;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none;border:1px solid var(--or,#E8611A)">🏠</span>
+      <span style="flex:1;font-size:13px;font-weight:600">${_escRec(nombre)} <span class="muted" style="font-weight:400;font-size:11px">· Punto de partida</span></span>
+      <span class="muted" style="font-size:11px">${_escRec(ubic)}</span>
+    </div>
+  </div>`;
+}
+// Fila del punto final en el detalle
+function _filaFinal(r){
+  let f=r.fin, nombre, ubic, sub;
+  if(f && f.lat!=null){
+    nombre=f.nombre||'Punto final'; ubic=`${f.lat}, ${f.lng}`; sub='Punto final';
+  } else if(r.base && r.base.lat!=null){
+    // Sin fin propio: por convención vuelve a la base
+    nombre='↩️ '+(r.base.nombre||'Depósito Nielsen'); ubic=`${r.base.lat}, ${r.base.lng}`; sub='Retorno al punto de partida';
+  } else {
+    return '';  // no hay info de cierre
+  }
+  return `<div style="padding:10px 0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="width:22px;height:22px;border-radius:50%;background:#13161E;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none;border:1px solid #F2B01E">🏁</span>
+      <span style="flex:1;font-size:13px;font-weight:600">${_escRec(nombre)} <span class="muted" style="font-weight:400;font-size:11px">· ${sub}</span></span>
+      <span class="muted" style="font-size:11px">${_escRec(ubic)}</span>
+    </div>
+  </div>`;
+}
+
 function consultarRecorrido(id){
   const r = DB.historial.find(x=>x.id===id); if(!r) return;
   const dt = (r.realMin!=null)? r.realMin - r.estMin : null;
@@ -1436,7 +1469,7 @@ function consultarRecorrido(id){
       <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or,#E8611A)">Proveedores del recorrido (${(r.paradas||[]).length})</span>
       <button class="btn sm" onclick="agregarProvARecorrido('${r.id}')" style="background:#3e7cb1;margin-left:auto" title="Sumar un proveedor no planificado">➕ Agregar proveedor</button>
     </div>
-    <div style="margin-top:4px">${paradasHtml||'<div class="muted">Sin paradas.</div>'}</div>
+    <div style="margin-top:4px">${_filaPartida(r)}${paradasHtml||'<div class="muted">Sin paradas.</div>'}${_filaFinal(r)}</div>
 
     <div style="margin-top:16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or,#E8611A)">🗺️ Recorrido en el mapa</div>
     <div id="mini-map" style="height:260px;border-radius:10px;margin-top:6px;border:1px solid var(--border,#333);background:var(--s2,#1f1b16)"></div>
@@ -1550,6 +1583,10 @@ function _dibujarMiniMapa(r){
   if(r.base && r.base.lat!=null) pts.push({lat:r.base.lat,lng:r.base.lng,nombre:r.base.nombre||'Base',base:true});
   (r.paradas||[]).forEach(p=>{ if(p.lat!=null) pts.push({lat:p.lat,lng:p.lng,nombre:p.nombre,extra:p.extra}); });
   if(r.fin && r.fin.lat!=null) pts.push({lat:r.fin.lat,lng:r.fin.lng,nombre:r.fin.nombre||'Punto final',fin:true});
+  else if(r.base && r.base.lat!=null && (r.paradas||[]).some(p=>p.lat!=null)){
+    // Sin punto final propio: por convención el recorrido vuelve a la base
+    pts.push({lat:r.base.lat,lng:r.base.lng,nombre:'↩️ '+(r.base.nombre||'Retorno'),fin:true});
+  }
   if(!pts.length){ cont.innerHTML='<div class="muted" style="padding:30px;text-align:center">Este recorrido no tiene ubicaciones cargadas.</div>'; return; }
   try{
     const mm=L.map(cont,{scrollWheelZoom:false,attributionControl:false}).setView([pts[0].lat,pts[0].lng],12);
