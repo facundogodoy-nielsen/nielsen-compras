@@ -193,6 +193,20 @@
                 <select id="sel-base"></select>
               </div>
             </div>
+            <div class="row">
+              <div>
+                <label>Punto final</label>
+                <select id="sel-fin" onchange="_finChange()">
+                  <option value="base">↩️ Volver al Depósito Nielsen</option>
+                  <option value="none">Sin retorno (termina en la última parada)</option>
+                  <option value="custom">📍 Otro lugar (fijar en el mapa)</option>
+                </select>
+              </div>
+              <div id="fin-custom-box" style="display:none">
+                <label>Lugar final <button class="btn ghost sm" onclick="pickFinCoord()" style="padding:1px 8px;font-size:11px;margin-left:4px">📍 Fijar</button></label>
+                <input type="text" id="fin-nombre" placeholder="Nombre del lugar final" oninput="_finGuardar()">
+              </div>
+            </div>
 
             <label style="margin-top:14px">Agregar proveedor a la agenda</label>
             <input type="text" id="buscar-prov" placeholder="Buscar proveedor...">
@@ -580,6 +594,14 @@ function addStopFromMap(latlng){
 }
 let pickTarget = null; // proveedor esperando coordenada
 function onMapClick(e){
+  if(pickTarget==='__FIN__'){
+    if(!DB.fin) DB.fin={};
+    DB.fin.lat=+e.latlng.lat.toFixed(5); DB.fin.lng=+e.latlng.lng.toFixed(5); DB.fin.modo='custom';
+    save(); rebuildRutaBase(); renderAgenda(); drawMap(); updateEstimado();
+    pickTarget=null; document.getElementById('hint-picker').style.display='none';
+    document.getElementById('map-info').textContent='Punto final fijado: '+DB.fin.lat+', '+DB.fin.lng;
+    return;
+  }
   if(pickTarget==='__BASE__'){
     DB.base.lat=+e.latlng.lat.toFixed(5); DB.base.lng=+e.latlng.lng.toFixed(5);
     save(); fillSelects(); rebuildRutaBase(); drawMap();
@@ -611,8 +633,9 @@ function drawMap(){
   const paradas=[];
   ruta.forEach((s,i)=>{
     if(s.lat==null) return;
-    const m = L.marker([s.lat,s.lng], {icon:numIcon(s.tipo==='base'?'🏠':i+1), draggable:true}).addTo(markersLayer);
-    m.bindPopup(`<b>${s.tipo==='base'?'🏠':i+1}. ${s.nombre}</b><br>${s.dir||''}`);
+    const _ico = s.tipo==='base'?'🏠':(s.tipo==='fin'?'🏁':i+1);
+    const m = L.marker([s.lat,s.lng], {icon:numIcon(_ico), draggable:s.tipo!=='fin'&&s.tipo!=='base'}).addTo(markersLayer);
+    m.bindPopup(`<b>${_ico}. ${s.nombre}</b><br>${s.dir||''}`);
     m.on('dragend', ev=>{
       const ll=ev.target.getLatLng();
       s.lat=+ll.lat.toFixed(5); s.lng=+ll.lng.toFixed(5);
@@ -864,10 +887,39 @@ function updateComparacion(){
 function rebuildRutaBase(){
   // asegura punto base al inicio si está seleccionado
   const baseSel=document.getElementById('sel-base').value;
-  ruta = ruta.filter(s=>s.tipo!=='base');
+  ruta = ruta.filter(s=>s.tipo!=='base' && s.tipo!=='fin');
   if(baseSel==='base'){
     ruta.unshift({id:'base', tipo:'base', nombre:DB.base.nombre, dir:'Punto de partida', lat:DB.base.lat, lng:DB.base.lng});
   }
+  // Punto final (retorno)
+  const finModo = (document.getElementById('sel-fin')||{}).value || 'base';
+  if(finModo==='base' && DB.base && DB.base.lat!=null){
+    ruta.push({id:'fin', tipo:'fin', nombre:'↩️ '+(DB.base.nombre||'Depósito'), dir:'Retorno al punto de partida', lat:DB.base.lat, lng:DB.base.lng});
+  } else if(finModo==='custom' && DB.fin && DB.fin.lat!=null){
+    ruta.push({id:'fin', tipo:'fin', nombre:'🏁 '+(DB.fin.nombre||'Punto final'), dir:'Punto final', lat:DB.fin.lat, lng:DB.fin.lng});
+  }
+}
+// Cambio de modo del punto final
+function _finChange(){
+  const modo=document.getElementById('sel-fin').value;
+  document.getElementById('fin-custom-box').style.display = modo==='custom' ? '' : 'none';
+  if(!DB.fin) DB.fin={};
+  DB.fin.modo=modo;
+  if(modo==='custom'){ const n=document.getElementById('fin-nombre'); if(n && DB.fin.nombre) n.value=DB.fin.nombre; }
+  save(); rebuildRutaBase(); renderAgenda(); drawMap(); updateEstimado();
+}
+function _finGuardar(){
+  if(!DB.fin) DB.fin={};
+  DB.fin.nombre=document.getElementById('fin-nombre').value;
+  save(); rebuildRutaBase(); renderAgenda(); drawMap();
+}
+function pickFinCoord(){
+  if(!DB.fin) DB.fin={};
+  DB.fin.nombre=document.getElementById('fin-nombre').value||DB.fin.nombre||'';
+  pickTarget='__FIN__';
+  document.getElementById('hint-picker').style.display='block';
+  switchTab('recorrido');
+  alert('Hacé clic en el mapa para fijar el punto final del recorrido.');
 }
 function addParada(pid){
   const p=DB.proveedores.find(x=>x.id===pid); if(!p) return;
@@ -939,7 +991,7 @@ function renderAgenda(){
     const arriboInput = s.tipo==='prov'
       ? `<div class="stops-times"><label>Arribo real</label><input type="time" value="${s.arribo||''}" onchange="setArribo('${s.id}',this.value)"></div>` : '';
     li.innerHTML=`
-      <div class="num" style="${s.tipo==='base'?'background:#58595b':''}">${s.tipo==='base'?'🏠':i+1}</div>
+      <div class="num" style="${s.tipo==='base'?'background:#58595b':(s.tipo==='fin'?'background:#13161E':'')}">${s.tipo==='base'?'🏠':(s.tipo==='fin'?'🏁':ruta.slice(0,i).filter(x=>x.tipo==='prov').length+1)}</div>
       <div class="info">
         <div class="n">${s.nombre}</div>
         <div class="a">${s.dir||''}</div>
@@ -992,6 +1044,7 @@ function guardarRecorrido(){
       scNum:p.scNum||'', scItems:p.scItems||[], adjuntos:p.adjuntos||[]
     })),
     base:{ nombre:DB.base?.nombre||'', lat:DB.base?.lat, lng:DB.base?.lng },
+    fin:(()=>{ const f=ruta.find(x=>x.tipo==='fin'); return f?{nombre:f.nombre,lat:f.lat,lng:f.lng}:null; })(),
     estKm:+est.km.toFixed(1), estMin:Math.round(est.minTot), estLitros:+est.litros.toFixed(1),
     kmIni:+document.getElementById('real-km-ini').value||null,
     kmFin:+document.getElementById('real-km-fin').value||null,
@@ -1359,6 +1412,7 @@ function consultarRecorrido(id){
     <div id="mini-map" style="height:260px;border-radius:10px;margin-top:6px;border:1px solid var(--border,#333);background:var(--s2,#1f1b16)"></div>
 
     <div style="margin-top:16px;text-align:right">
+      <button class="btn" onclick="recalcularConRetorno('${r.id}')" style="background:#eab308;color:#1a1a1a;margin-right:6px" title="Recalcular la distancia y el tiempo estimados incluyendo el regreso">🔄 Recalcular con retorno</button>
       <button class="btn" onclick="compartirRecorridoGuardado('${r.id}')" style="background:#3e7cb1;margin-right:6px">📤 Compartir</button>
       <button class="btn" onclick="cargarDatosChofer('${r.id}')" style="background:#2f9e6b;margin-right:6px">✏️ Cargar datos</button>
       <button class="btn" onclick="closeModal()" style="background:var(--s3,#2a251e)">Cerrar</button>
@@ -1392,19 +1446,63 @@ function compartirRecorridoGuardado(id){
   }
 }
 
+// Recalcula el estimado de un recorrido guardado INCLUYENDO el retorno.
+// Secuencia: base -> paradas -> punto final (retorno). Usa ORS (mejor ruta por calles) si hay clave.
+async function recalcularConRetorno(id){
+  const r=DB.historial.find(x=>x.id===id); if(!r) return;
+  // Armar la secuencia de puntos con coordenadas
+  const pts=[];
+  if(r.base && r.base.lat!=null) pts.push({lat:r.base.lat,lng:r.base.lng});
+  (r.paradas||[]).forEach(p=>{ if(p.lat!=null) pts.push({lat:p.lat,lng:p.lng}); });
+  // Punto final: el guardado, o por defecto volver a la base
+  if(r.fin && r.fin.lat!=null) pts.push({lat:r.fin.lat,lng:r.fin.lng});
+  else if(r.base && r.base.lat!=null) pts.push({lat:r.base.lat,lng:r.base.lng});
+  if(pts.length<2){ alert('Este recorrido no tiene suficientes ubicaciones para recalcular.'); return; }
+
+  const kmAntes=r.estKm;
+  let km=null, min=null, metodo='';
+  // 1) Intentar ruta real por calles (mejor camino, respeta sentidos)
+  if(_orsDisponible()){
+    const res=await _orsRuta(pts);
+    if(res && res.km){ km=res.km; min=res.min; metodo='por calles (ORS)'; }
+  }
+  // 2) Fallback: linea recta con factor
+  if(km==null){
+    km=0;
+    for(let i=1;i<pts.length;i++){ km += haversine([pts[i-1].lat,pts[i-1].lng],[pts[i].lat,pts[i].lng])*FACTOR_CALLE; }
+    metodo='aproximado (línea recta ×1,3)';
+  }
+  // Recalcular tiempo, litros y costo con la config guardada del recorrido
+  const c=r.cfg||{vel:28,parada:12,precio:1200};
+  const nParadas=(r.paradas||[]).length;
+  const minViaje = (c.vel>0)? (km/c.vel)*60 : (min||0);
+  const estMin = Math.round((min!=null?min:minViaje) + nParadas*(c.parada||0));
+  const consumo = (c.consumo!=null)? c.consumo : 12;
+  const estLitros = +(km*consumo/100).toFixed(1);
+
+  r.estKm=+km.toFixed(1);
+  r.estMin=estMin;
+  r.estLitros=estLitros;
+  r.retornoIncluido=true;
+  save(); renderHistorial();
+  consultarRecorrido(id);   // refrescar el detalle
+  alert('✅ Recalculado con retorno ('+metodo+').\n\nAntes: '+kmAntes+' km\nAhora: '+r.estKm+' km (incluye la vuelta al punto final).');
+}
+
 function _dibujarMiniMapa(r){
   const cont=document.getElementById('mini-map'); if(!cont || typeof L==='undefined') return;
   const pts=[];
   if(r.base && r.base.lat!=null) pts.push({lat:r.base.lat,lng:r.base.lng,nombre:r.base.nombre||'Base',base:true});
   (r.paradas||[]).forEach(p=>{ if(p.lat!=null) pts.push({lat:p.lat,lng:p.lng,nombre:p.nombre,extra:p.extra}); });
+  if(r.fin && r.fin.lat!=null) pts.push({lat:r.fin.lat,lng:r.fin.lng,nombre:r.fin.nombre||'Punto final',fin:true});
   if(!pts.length){ cont.innerHTML='<div class="muted" style="padding:30px;text-align:center">Este recorrido no tiene ubicaciones cargadas.</div>'; return; }
   try{
     const mm=L.map(cont,{scrollWheelZoom:false,attributionControl:false}).setView([pts[0].lat,pts[0].lng],12);
     L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',{subdomains:['mt0','mt1','mt2','mt3']}).addTo(mm);
     const latlngs=[];
     pts.forEach((p,i)=>{
-      const color=p.base?'#13161E':(p.extra?'#3e7cb1':'#E8611A');
-      const label=p.base?'🏠':String(i);
+      const color=p.base?'#13161E':(p.fin?'#13161E':(p.extra?'#3e7cb1':'#E8611A'));
+      const label=p.base?'🏠':(p.fin?'🏁':String(i));
       L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',html:`<div style="background:${color};color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">${label}</div>`,iconSize:[24,24],iconAnchor:[12,12]})}).addTo(mm).bindPopup(`<b>${p.base?'🏠 ':(i+'. ')}${_escRec(p.nombre)}</b>${p.extra?'<br><span style="color:#3e7cb1">fuera del plan</span>':''}`);
       latlngs.push([p.lat,p.lng]);
     });
@@ -1880,6 +1978,12 @@ initMap();
   if(_g('cfg-parada')) _g('cfg-parada').value=DB.cfg?.parada??12;
   if(_g('cfg-precio')) _g('cfg-precio').value=DB.cfg?.precio??1200;
   _orsRenderCampo();
+  // Restaurar configuración del punto final
+  if(DB.fin && DB.fin.modo){
+    const sf=_g('sel-fin'); if(sf) sf.value=DB.fin.modo;
+    const fb=_g('fin-custom-box'); if(fb) fb.style.display = DB.fin.modo==='custom'?'':'none';
+    const fn=_g('fin-nombre'); if(fn && DB.fin.nombre) fn.value=DB.fin.nombre;
+  }
   // Restaurar el recorrido en edición guardado (con sus SC/adjuntos por parada)
   if(Array.isArray(DB.rutaActual) && DB.rutaActual.length){ ruta = DB.rutaActual; }
   _migrarCodigosRC();   // asignar código RC-#### a recorridos que no lo tengan
