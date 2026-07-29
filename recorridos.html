@@ -173,6 +173,9 @@
     <div class="grid">
       <!-- Panel izquierdo -->
       <div>
+        <button id="btn-nuevo-recorrido" onclick="nuevoRecorrido()" style="width:100%;background:linear-gradient(135deg,#E8611A,#f0801f);color:#fff;border:none;border-radius:12px;padding:16px;font-size:17px;font-weight:800;letter-spacing:.5px;cursor:pointer;box-shadow:0 4px 14px rgba(232,97,26,.35);margin-bottom:16px;display:flex;align-items:center;justify-content:center;gap:10px">
+          ➕ NUEVO RECORRIDO
+        </button>
         <div class="card">
           <h2>Planificar recorrido</h2>
           <div class="body">
@@ -296,10 +299,33 @@
       <h2>📊 Historial de recorridos y análisis</h2>
       <div class="body">
         <div class="metrics" style="grid-template-columns:repeat(4,1fr)" id="kpis-hist"></div>
+
+        <!-- Filtros -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;padding:12px;background:var(--s2,#1f1b16);border:1px solid var(--border,#3a332b);border-radius:10px;align-items:flex-end">
+          <div><label style="font-size:11px;color:var(--muted)">Desde</label><input type="date" id="fh-desde" onchange="renderHistorial()" style="display:block"></div>
+          <div><label style="font-size:11px;color:var(--muted)">Hasta</label><input type="date" id="fh-hasta" onchange="renderHistorial()" style="display:block"></div>
+          <div><label style="font-size:11px;color:var(--muted)">Vehículo</label><select id="fh-veh" onchange="renderHistorial()" style="display:block"></select></div>
+          <div><label style="font-size:11px;color:var(--muted)">Chofer</label><select id="fh-chofer" onchange="renderHistorial()" style="display:block"></select></div>
+          <button class="btn gray sm" onclick="_limpiarFiltrosHist()">Limpiar filtros</button>
+        </div>
+
+        <!-- Gráfico de análisis -->
+        <div class="card" style="margin-top:14px;background:var(--s2,#1f1b16)">
+          <h2 style="font-size:14px">📈 Análisis
+            <select id="graf-tipo" onchange="renderGrafico()" style="width:auto;margin-left:auto;padding:4px 8px;font-size:12px">
+              <option value="km">Km por recorrido (est. vs real)</option>
+              <option value="tiempo">Tiempo por recorrido (est. vs real)</option>
+              <option value="rend">Rendimiento km/L</option>
+              <option value="chofer">Km totales por chofer</option>
+            </select>
+          </h2>
+          <div class="body"><div id="graf-cont" style="width:100%;overflow-x:auto"></div></div>
+        </div>
+
         <div style="overflow:auto;margin-top:12px">
           <table id="tabla-hist">
             <thead><tr>
-              <th>Fecha</th><th>Vehículo</th><th>Chofer</th><th>Paradas</th>
+              <th>Código</th><th>Fecha</th><th>Vehículo</th><th>Chofer</th><th>Paradas</th>
               <th>Km est/real</th><th>Tiempo est/real</th><th>Litros est/real</th><th>Desvío tiempo</th><th>Estado</th><th>Acciones</th>
             </tr></thead>
             <tbody></tbody>
@@ -957,7 +983,7 @@ function guardarRecorrido(){
   const v=vehSel(), c=DB.choferes.find(x=>x.id===document.getElementById('sel-chofer').value);
   const salida=document.getElementById('hora-salida').value, regreso=document.getElementById('real-regreso').value;
   const rec={
-    id:uid(), fecha:document.getElementById('fecha').value,
+    id:uid(), codigo:_nuevoCodigoRC(), fecha:document.getElementById('fecha').value,
     vehiculo:v?`${v.patente} ${v.desc}`:'-', chofer:c?c.nombre:'-',
     // Guardar la ruta COMPLETA (con coords, horarios, SC asignada, ítems y adjuntos)
     paradas:provs.map(p=>({
@@ -976,7 +1002,38 @@ function guardarRecorrido(){
     estado:'ENVIADO', creado:new Date().toISOString()
   };
   DB.historial.unshift(rec); save(); renderHistorial();
-  alert('Recorrido guardado en el historial ✔\n\nEl chofer ya puede ingresar sus datos reales desde "Historial y análisis".');
+  limpiarRecorrido();   // dejar la pantalla lista para el próximo
+  alert('Recorrido '+rec.codigo+' guardado en el historial ✔\n\nEl chofer puede cargar sus datos reales desde "Historial y análisis" (botón ✏️).');
+}
+// Genera el próximo código RC-2026-#### (correlativo, robusto ante huecos)
+function _nuevoCodigoRC(){
+  const anio=new Date().getFullYear();
+  let max=0;
+  (DB.historial||[]).forEach(r=>{
+    const m=/^RC-(\d{4})-(\d+)$/.exec(r.codigo||'');
+    if(m && +m[1]===anio){ const n=+m[2]; if(n>max) max=n; }
+  });
+  return 'RC-'+anio+'-'+String(max+1).padStart(4,'0');
+}
+// Asigna código a recorridos existentes que no lo tengan (del más viejo al más nuevo)
+function _migrarCodigosRC(){
+  if(!DB.historial || !DB.historial.length) return;
+  const sinCodigo = DB.historial.filter(r=>!r.codigo);
+  if(!sinCodigo.length) return;
+  // ordenar por fecha ascendente (el más antiguo primero) para numerar cronológicamente
+  const orden = sinCodigo.slice().sort((a,b)=>{
+    const fa=(a.fecha||'')+(a.creado||''), fb=(b.fecha||'')+(b.creado||'');
+    return fa<fb?-1:(fa>fb?1:0);
+  });
+  orden.forEach(r=>{ r.codigo=_nuevoCodigoRC(); });
+  save();
+}
+
+// ══ Nuevo recorrido: limpia la pantalla para armar otro ══
+function nuevoRecorrido(){
+  const hayDatos = ruta.some(s=>s.tipo==='prov') || document.getElementById('hora-salida').value;
+  if(hayDatos && !confirm('¿Empezar un recorrido nuevo? Se limpiará lo que estás cargando (si no lo guardaste, se pierde).')) return;
+  limpiarRecorrido();
 }
 function mapsLink(){
   const pts=ruta.filter(s=>s.lat!=null);
@@ -1039,16 +1096,30 @@ function limpiarRecorrido(){
   renderAgenda(); drawMap(); updateEstimado();
 }
 function renderHistorial(){
+  // Poblar selects de filtro (una vez por render, según datos)
+  _poblarFiltrosHist();
+  const fDesde=(document.getElementById('fh-desde')||{}).value||'';
+  const fHasta=(document.getElementById('fh-hasta')||{}).value||'';
+  const fVeh=(document.getElementById('fh-veh')||{}).value||'';
+  const fChofer=(document.getElementById('fh-chofer')||{}).value||'';
+  const lista=DB.historial.filter(r=>{
+    if(fDesde && (r.fecha||'')<fDesde) return false;
+    if(fHasta && (r.fecha||'')>fHasta) return false;
+    if(fVeh && r.vehiculo!==fVeh) return false;
+    if(fChofer && r.chofer!==fChofer) return false;
+    return true;
+  });
   const tb=document.querySelector('#tabla-hist tbody');
-  if(DB.historial.length===0){ tb.innerHTML='<tr><td colspan="11" class="empty">Todavía no guardaste recorridos.</td></tr>'; }
+  if(lista.length===0){ tb.innerHTML='<tr><td colspan="11" class="empty">'+(DB.historial.length?'Ningún recorrido coincide con los filtros.':'Todavía no guardaste recorridos.')+'</td></tr>'; }
   else {
-    tb.innerHTML=DB.historial.map(r=>{
+    tb.innerHTML=lista.map(r=>{
       const dt=(r.realMin!=null)? r.realMin-r.estMin : null;
       const pill = dt==null?'<span class="muted">—</span>' : `<span class="pill ${dt>15?'bad':(dt<-5?'ok':'warn')}">${dt>=0?'+':''}${dt} min</span>`;
       const estBadge = r.estado==='COMPLETADO'
         ? '<span class="pill ok">✔ Completado</span>'
         : ((r.estado==='EN_CURSO'||r.realKm!=null||r.salida||r.kmIni!=null) ? '<span class="pill warn">En curso</span>' : '<span class="pill" style="background:#3a3a3a;color:#bbb">Enviado</span>');
       return `<tr>
+        <td><b style="color:#E8611A">${r.codigo||'—'}</b></td>
         <td>${r.fecha||'-'}</td><td>${r.vehiculo}</td><td>${r.chofer}</td>
         <td>${r.paradas.length}${(r.paradas||[]).some(p=>p.extra)?' <span title="Incluye proveedores fuera del plan" style="color:#3e7cb1;font-weight:700">+</span>':''}</td>
         <td>${r.estKm} / ${r.realKm??'—'}</td>
@@ -1077,6 +1148,93 @@ function renderHistorial(){
     <div class="metric"><div class="v">${totKm.toFixed(0)}</div><div class="l">km totales</div></div>
     <div class="metric"><div class="v">${desvProm>=0?'+':''}${desvProm}</div><div class="l">desvío tiempo prom (min)</div></div>
     <div class="metric"><div class="v">${rendProm?rendProm.toFixed(1):'—'}</div><div class="l">rendimiento km/L</div></div>`;
+  renderGrafico();
+}
+
+// ── Filtros del historial ──
+function _poblarFiltrosHist(){
+  const sv=document.getElementById('fh-veh'), sc=document.getElementById('fh-chofer');
+  if(sv){ const cur=sv.value; const vehs=[...new Set(DB.historial.map(r=>r.vehiculo).filter(Boolean))].sort();
+    sv.innerHTML='<option value="">Todos</option>'+vehs.map(v=>`<option value="${_escRec(v)}">${_escRec(v)}</option>`).join(''); sv.value=cur; }
+  if(sc){ const cur=sc.value; const chs=[...new Set(DB.historial.map(r=>r.chofer).filter(Boolean))].sort();
+    sc.innerHTML='<option value="">Todos</option>'+chs.map(c=>`<option value="${_escRec(c)}">${_escRec(c)}</option>`).join(''); sc.value=cur; }
+}
+function _limpiarFiltrosHist(){
+  ['fh-desde','fh-hasta','fh-veh','fh-chofer'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  renderHistorial();
+}
+
+// ── Gráfico de análisis (SVG puro, sin librerías) ──
+function _histFiltrado(){
+  const fDesde=(document.getElementById('fh-desde')||{}).value||'';
+  const fHasta=(document.getElementById('fh-hasta')||{}).value||'';
+  const fVeh=(document.getElementById('fh-veh')||{}).value||'';
+  const fChofer=(document.getElementById('fh-chofer')||{}).value||'';
+  return DB.historial.filter(r=>{
+    if(fDesde && (r.fecha||'')<fDesde) return false;
+    if(fHasta && (r.fecha||'')>fHasta) return false;
+    if(fVeh && r.vehiculo!==fVeh) return false;
+    if(fChofer && r.chofer!==fChofer) return false;
+    return true;
+  });
+}
+function renderGrafico(){
+  const cont=document.getElementById('graf-cont'); if(!cont) return;
+  const tipo=(document.getElementById('graf-tipo')||{}).value||'km';
+  const data=_histFiltrado().slice().reverse();  // cronológico
+  if(!data.length){ cont.innerHTML='<div class="muted" style="padding:20px;text-align:center">Sin datos para graficar.</div>'; return; }
+
+  if(tipo==='chofer'){
+    const porChofer={};
+    data.forEach(r=>{ const c=r.chofer||'—'; porChofer[c]=(porChofer[c]||0)+(r.realKm||r.estKm||0); });
+    const items=Object.entries(porChofer).sort((a,b)=>b[1]-a[1]);
+    cont.innerHTML=_barrasSimples(items.map(([l,v])=>({label:l, val:v})), 'km', '#E8611A');
+    return;
+  }
+  // series est vs real por recorrido
+  let series;
+  if(tipo==='km') series=data.map(r=>({label:(r.fecha||'').slice(5), a:r.estKm||0, b:r.realKm||0}));
+  else if(tipo==='tiempo') series=data.map(r=>({label:(r.fecha||'').slice(5), a:r.estMin||0, b:r.realMin||0}));
+  else { // rendimiento
+    const items=data.filter(r=>r.realKm&&r.realLitros).map(r=>({label:(r.fecha||'').slice(5), val:+(r.realKm/r.realLitros).toFixed(1)}));
+    if(!items.length){ cont.innerHTML='<div class="muted" style="padding:20px;text-align:center">Faltan km y litros reales para calcular rendimiento.</div>'; return; }
+    cont.innerHTML=_barrasSimples(items, 'km/L', '#3e7cb1');
+    return;
+  }
+  cont.innerHTML=_barrasDobles(series, tipo==='tiempo'?'min':'km');
+}
+function _barrasSimples(items, unidad, color){
+  const max=Math.max(...items.map(i=>i.val),1);
+  const bw=Math.max(34, Math.min(70, 620/items.length));
+  const W=Math.max(360, items.length*bw+60), H=220, base=180;
+  let svg=`<svg viewBox="0 0 ${W} ${H}" style="min-width:${W}px;max-width:100%;font-family:inherit">`;
+  svg+=`<line x1="40" y1="${base}" x2="${W-10}" y2="${base}" stroke="#555"/>`;
+  items.forEach((it,i)=>{
+    const h=(it.val/max)*(base-24); const x=50+i*bw; const y=base-h;
+    svg+=`<rect x="${x}" y="${y}" width="${bw*0.6}" height="${h}" rx="3" fill="${color}"><title>${_escRec(it.label)}: ${it.val} ${unidad}</title></rect>`;
+    svg+=`<text x="${x+bw*0.3}" y="${y-4}" font-size="10" fill="#ccc" text-anchor="middle">${it.val}</text>`;
+    svg+=`<text x="${x+bw*0.3}" y="${base+14}" font-size="9" fill="#999" text-anchor="middle">${_escRec(String(it.label).slice(0,10))}</text>`;
+  });
+  svg+=`</svg><div class="muted" style="font-size:11px;margin-top:4px">Unidad: ${unidad}</div>`;
+  return svg;
+}
+function _barrasDobles(series, unidad){
+  const max=Math.max(...series.flatMap(s=>[s.a,s.b]),1);
+  const gw=Math.max(46, Math.min(90, 640/series.length));
+  const W=Math.max(380, series.length*gw+60), H=240, base=190;
+  let svg=`<svg viewBox="0 0 ${W} ${H}" style="min-width:${W}px;max-width:100%;font-family:inherit">`;
+  svg+=`<line x1="40" y1="${base}" x2="${W-10}" y2="${base}" stroke="#555"/>`;
+  series.forEach((s,i)=>{
+    const x=50+i*gw;
+    const ha=(s.a/max)*(base-24), hb=(s.b/max)*(base-24);
+    const w=gw*0.32;
+    svg+=`<rect x="${x}" y="${base-ha}" width="${w}" height="${ha}" rx="2" fill="#8a8f98"><title>Estimado: ${Math.round(s.a)} ${unidad}</title></rect>`;
+    svg+=`<rect x="${x+w+3}" y="${base-hb}" width="${w}" height="${hb}" rx="2" fill="#E8611A"><title>Real: ${Math.round(s.b)} ${unidad}</title></rect>`;
+    svg+=`<text x="${x+w}" y="${base+14}" font-size="9" fill="#999" text-anchor="middle">${_escRec(s.label)}</text>`;
+  });
+  svg+=`</svg>`;
+  svg+=`<div style="display:flex;gap:16px;font-size:11px;margin-top:6px"><span><span style="display:inline-block;width:11px;height:11px;background:#8a8f98;border-radius:2px;vertical-align:middle"></span> Estimado</span><span><span style="display:inline-block;width:11px;height:11px;background:#E8611A;border-radius:2px;vertical-align:middle"></span> Real</span> <span class="muted">· Unidad: ${unidad}</span></div>`;
+  return svg;
 }
 function delRec(id){ if(confirm('¿Eliminar recorrido?')){ DB.historial=DB.historial.filter(r=>r.id!==id); save(); renderHistorial(); } }
 
@@ -1168,7 +1326,7 @@ function consultarRecorrido(id){
   }).join('');
 
   const fila=(l,est,real)=>`<tr><td style="padding:5px 10px;color:var(--muted)">${l}</td><td style="padding:5px 10px;text-align:right">${est}</td><td style="padding:5px 10px;text-align:right;font-weight:700">${real}</td></tr>`;
-  openModal('👁 '+(r.fecha||'')+' — '+_escRec(r.vehiculo), `
+  openModal('👁 '+(r.codigo?r.codigo+' · ':'')+(r.fecha||'')+' — '+_escRec(r.vehiculo), `
     <div class="row">
       <div><label style="font-size:11px;color:var(--muted)">Chofer</label><div style="font-size:14px;font-weight:600">${_escRec(r.chofer||'—')}</div></div>
       <div><label style="font-size:11px;color:var(--muted)">Vehículo</label><div style="font-size:14px;font-weight:600">${_escRec(r.vehiculo||'—')}</div></div>
@@ -1197,10 +1355,62 @@ function consultarRecorrido(id){
     </div>
     <div style="margin-top:4px">${paradasHtml||'<div class="muted">Sin paradas.</div>'}</div>
 
+    <div style="margin-top:16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or,#E8611A)">🗺️ Recorrido en el mapa</div>
+    <div id="mini-map" style="height:260px;border-radius:10px;margin-top:6px;border:1px solid var(--border,#333);background:var(--s2,#1f1b16)"></div>
+
     <div style="margin-top:16px;text-align:right">
+      <button class="btn" onclick="compartirRecorridoGuardado('${r.id}')" style="background:#3e7cb1;margin-right:6px">📤 Compartir</button>
       <button class="btn" onclick="cargarDatosChofer('${r.id}')" style="background:#2f9e6b;margin-right:6px">✏️ Cargar datos</button>
       <button class="btn" onclick="closeModal()" style="background:var(--s3,#2a251e)">Cerrar</button>
     </div>`, null);
+  // Dibujar el mini-mapa con el recorrido (base + paradas con coordenadas)
+  setTimeout(()=>_dibujarMiniMapa(r), 150);
+}
+function compartirRecorridoGuardado(id){
+  const r=DB.historial.find(x=>x.id===id); if(!r) return;
+  let t=`\uD83D\uDE9A RECORRIDO DE COMPRAS`;
+  if(r.codigo) t+=` \u2014 ${r.codigo}`;
+  t+=`\n${r.fecha||''}\n`;
+  t+=`Movilidad: ${r.vehiculo||'-'}\n`;
+  t+=`Chofer: ${r.chofer||'-'}\n`;
+  if(r.salida) t+=`Salida: ${r.salida} hs\n`;
+  t+=`\nPARADAS:\n`;
+  (r.paradas||[]).forEach((p,i)=>{
+    t+=`${i+1}) ${p.nombre}${p.extra?' (fuera del plan)':''}\n`;
+    if(p.dir) t+=`   \uD83D\uDCCD ${p.dir}\n`;
+    const h=(typeof horarioTxt==='function')?horarioTxt(p):'';
+    if(h) t+=`   \uD83D\uDD52 Atiende: ${h}\n`;
+    if(p.scNum) t+=`   \uD83D\uDCCB SC ${p.scNum}${(p.scItems&&p.scItems.length)?': '+p.scItems.join(', '):''}\n`;
+  });
+  t+=`\nEstimado: ${r.estKm||0} km \u00b7 ${(typeof fmtMin==='function')?fmtMin(r.estMin||0):(r.estMin||0)+' min'}\n`;
+  t+=`\nNielsen Log\u00edstica y Expediciones S.A.`;
+  if(navigator.share){
+    navigator.share({ title:'Recorrido '+(r.codigo||''), text:t }).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(t).then(()=>alert('\u2705 Recorrido copiado al portapapeles. Pegalo en WhatsApp para enviarlo al chofer.'))
+      .catch(()=>{ prompt('Copi\u00e1 el recorrido:', t); });
+  }
+}
+
+function _dibujarMiniMapa(r){
+  const cont=document.getElementById('mini-map'); if(!cont || typeof L==='undefined') return;
+  const pts=[];
+  if(r.base && r.base.lat!=null) pts.push({lat:r.base.lat,lng:r.base.lng,nombre:r.base.nombre||'Base',base:true});
+  (r.paradas||[]).forEach(p=>{ if(p.lat!=null) pts.push({lat:p.lat,lng:p.lng,nombre:p.nombre,extra:p.extra}); });
+  if(!pts.length){ cont.innerHTML='<div class="muted" style="padding:30px;text-align:center">Este recorrido no tiene ubicaciones cargadas.</div>'; return; }
+  try{
+    const mm=L.map(cont,{scrollWheelZoom:false,attributionControl:false}).setView([pts[0].lat,pts[0].lng],12);
+    L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',{subdomains:['mt0','mt1','mt2','mt3']}).addTo(mm);
+    const latlngs=[];
+    pts.forEach((p,i)=>{
+      const color=p.base?'#13161E':(p.extra?'#3e7cb1':'#E8611A');
+      const label=p.base?'🏠':String(i);
+      L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',html:`<div style="background:${color};color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">${label}</div>`,iconSize:[24,24],iconAnchor:[12,12]})}).addTo(mm).bindPopup(`<b>${p.base?'🏠 ':(i+'. ')}${_escRec(p.nombre)}</b>${p.extra?'<br><span style="color:#3e7cb1">fuera del plan</span>':''}`);
+      latlngs.push([p.lat,p.lng]);
+    });
+    if(latlngs.length>1){ L.polyline(latlngs,{color:'#E8611A',weight:4,opacity:.8}).addTo(mm); mm.fitBounds(latlngs,{padding:[30,30]}); }
+    setTimeout(()=>mm.invalidateSize(),200);
+  }catch(e){ console.warn('mini-mapa', e); }
 }
 
 // ══ Agregar un proveedor NO planificado a un recorrido ya guardado ══
@@ -1627,6 +1837,7 @@ function switchTab(name){
     document.getElementById('tab-'+t).style.display = (t===name)?'block':'none';
   });
   if(name==='recorrido' && map) setTimeout(()=>map.invalidateSize(),100);
+  if(name==='historial') renderHistorial();
 }
 document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 
@@ -1671,6 +1882,7 @@ initMap();
   _orsRenderCampo();
   // Restaurar el recorrido en edición guardado (con sus SC/adjuntos por parada)
   if(Array.isArray(DB.rutaActual) && DB.rutaActual.length){ ruta = DB.rutaActual; }
+  _migrarCodigosRC();   // asignar código RC-#### a recorridos que no lo tengan
   fillSelects();
   rebuildRutaBase();
   renderAgenda();
