@@ -314,29 +314,29 @@
       <div class="body">
         <div class="metrics" style="grid-template-columns:repeat(4,1fr)" id="kpis-hist"></div>
 
-        <!-- Filtros -->
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;padding:12px;background:var(--s2,#1f1b16);border:1px solid var(--border,#3a332b);border-radius:10px;align-items:flex-end">
-          <div><label style="font-size:11px;color:var(--muted)">Desde</label><input type="date" id="fh-desde" onchange="renderHistorial()" style="display:block"></div>
-          <div><label style="font-size:11px;color:var(--muted)">Hasta</label><input type="date" id="fh-hasta" onchange="renderHistorial()" style="display:block"></div>
-          <div><label style="font-size:11px;color:var(--muted)">Vehículo</label><select id="fh-veh" onchange="renderHistorial()" style="display:block"></select></div>
-          <div><label style="font-size:11px;color:var(--muted)">Chofer</label><select id="fh-chofer" onchange="renderHistorial()" style="display:block"></select></div>
-          <button class="btn gray sm" onclick="_limpiarFiltrosHist()">Limpiar filtros</button>
+        <!-- Filtros (compactos) -->
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;align-items:end">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Desde</label>
+            <input type="date" id="fh-desde" onchange="renderHistorial()" style="padding:6px 8px;font-size:12px">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Hasta</label>
+            <input type="date" id="fh-hasta" onchange="renderHistorial()" style="padding:6px 8px;font-size:12px">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Vehículo</label>
+            <select id="fh-veh" onchange="renderHistorial()" style="padding:6px 8px;font-size:12px;min-width:130px"></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Chofer</label>
+            <select id="fh-chofer" onchange="renderHistorial()" style="padding:6px 8px;font-size:12px;min-width:130px"></select>
+          </div>
+          <button class="btn ghost sm" onclick="_limpiarFiltrosHist()" style="padding:6px 12px;font-size:12px">Limpiar</button>
         </div>
 
-        <!-- Gráfico de análisis -->
-        <div class="card" style="margin-top:14px;background:var(--s2,#1f1b16)">
-          <h2 style="font-size:14px">📈 Análisis
-            <select id="graf-tipo" onchange="renderGrafico()" style="width:auto;margin-left:auto;padding:4px 8px;font-size:12px">
-              <option value="km">Km por recorrido (est. vs real)</option>
-              <option value="tiempo">Tiempo por recorrido (est. vs real)</option>
-              <option value="rend">Rendimiento km/L</option>
-              <option value="chofer">Km totales por chofer</option>
-            </select>
-          </h2>
-          <div class="body"><div id="graf-cont" style="width:100%;overflow-x:auto"></div></div>
-        </div>
-
-        <div style="overflow:auto;margin-top:12px">
+        <!-- Tabla de recorridos -->
+        <div style="overflow:auto;margin-top:14px">
           <table id="tabla-hist">
             <thead><tr>
               <th>Código</th><th>Fecha</th><th>Vehículo</th><th>Chofer</th><th>Paradas</th>
@@ -344,6 +344,20 @@
             </tr></thead>
             <tbody></tbody>
           </table>
+        </div>
+
+        <!-- Gráfico de análisis (debajo del listado) -->
+        <div style="margin-top:22px;border-top:1px solid var(--border,#3a332b);padding-top:18px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <span style="font-size:13px;font-weight:700;color:var(--text,#ece7e1)">📈 Análisis</span>
+            <select id="graf-tipo" onchange="renderGrafico()" style="width:auto;margin-left:auto;padding:5px 10px;font-size:12px">
+              <option value="km">Km · estimado vs real</option>
+              <option value="tiempo">Tiempo · estimado vs real</option>
+              <option value="rend">Rendimiento km/L</option>
+              <option value="chofer">Km totales por chofer</option>
+            </select>
+          </div>
+          <div id="graf-cont" style="width:100%;overflow-x:auto"></div>
         </div>
       </div>
     </div>
@@ -1258,36 +1272,52 @@ function renderGrafico(){
 }
 function _barrasSimples(items, unidad, color){
   const max=Math.max(...items.map(i=>i.val),1);
-  const bw=Math.max(34, Math.min(70, 620/items.length));
-  const W=Math.max(360, items.length*bw+60), H=220, base=180;
-  let svg=`<svg viewBox="0 0 ${W} ${H}" style="min-width:${W}px;max-width:100%;font-family:inherit">`;
-  svg+=`<line x1="40" y1="${base}" x2="${W-10}" y2="${base}" stroke="#555"/>`;
+  const n=items.length;
+  const W=680, H=200, padL=44, padR=16, padT=16, padB=34;
+  const plotW=W-padL-padR, plotH=H-padT-padB, base=padT+plotH;
+  const slot=plotW/n, bw=Math.min(38, slot*0.55);
+  // ticks del eje Y (4 niveles)
+  let grid='', ticks=4;
+  for(let t=0;t<=ticks;t++){ const val=max*t/ticks; const y=base-(plotH*t/ticks);
+    grid+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="var(--border,#3a332b)" stroke-width="1" opacity="${t===0?.6:.25}"/>`;
+    grid+=`<text x="${padL-8}" y="${(y+3).toFixed(1)}" font-size="9" fill="var(--muted,#9a938a)" text-anchor="end">${Math.round(val)}</text>`;
+  }
+  let bars='';
   items.forEach((it,i)=>{
-    const h=(it.val/max)*(base-24); const x=50+i*bw; const y=base-h;
-    svg+=`<rect x="${x}" y="${y}" width="${bw*0.6}" height="${h}" rx="3" fill="${color}"><title>${_escRec(it.label)}: ${it.val} ${unidad}</title></rect>`;
-    svg+=`<text x="${x+bw*0.3}" y="${y-4}" font-size="10" fill="#ccc" text-anchor="middle">${it.val}</text>`;
-    svg+=`<text x="${x+bw*0.3}" y="${base+14}" font-size="9" fill="#999" text-anchor="middle">${_escRec(String(it.label).slice(0,10))}</text>`;
+    const h=(it.val/max)*plotH; const x=padL+slot*i+(slot-bw)/2; const y=base-h;
+    bars+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0,h).toFixed(1)}" rx="4" fill="${color}"><title>${_escRec(it.label)}: ${it.val} ${unidad}</title></rect>`;
+    bars+=`<text x="${(x+bw/2).toFixed(1)}" y="${(y-5).toFixed(1)}" font-size="10" font-weight="600" fill="var(--text,#ece7e1)" text-anchor="middle">${it.val}</text>`;
+    bars+=`<text x="${(x+bw/2).toFixed(1)}" y="${(base+14).toFixed(1)}" font-size="9" fill="var(--muted,#9a938a)" text-anchor="middle">${_escRec(String(it.label).slice(0,12))}</text>`;
   });
-  svg+=`</svg><div class="muted" style="font-size:11px;margin-top:4px">Unidad: ${unidad}</div>`;
-  return svg;
+  return `<div style="max-width:100%;overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${Math.max(340,n*60)}px;height:auto;font-family:inherit">${grid}${bars}</svg></div>`
+    +`<div class="muted" style="font-size:11px;margin-top:6px;text-align:right">Unidad: ${unidad}</div>`;
 }
 function _barrasDobles(series, unidad){
   const max=Math.max(...series.flatMap(s=>[s.a,s.b]),1);
-  const gw=Math.max(46, Math.min(90, 640/series.length));
-  const W=Math.max(380, series.length*gw+60), H=240, base=190;
-  let svg=`<svg viewBox="0 0 ${W} ${H}" style="min-width:${W}px;max-width:100%;font-family:inherit">`;
-  svg+=`<line x1="40" y1="${base}" x2="${W-10}" y2="${base}" stroke="#555"/>`;
+  const n=series.length;
+  const W=680, H=210, padL=44, padR=16, padT=16, padB=34;
+  const plotW=W-padL-padR, plotH=H-padT-padB, base=padT+plotH;
+  const slot=plotW/n, bw=Math.min(16, slot*0.28), gap=3;
+  let grid='', ticks=4;
+  for(let t=0;t<=ticks;t++){ const val=max*t/ticks; const y=base-(plotH*t/ticks);
+    grid+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="var(--border,#3a332b)" stroke-width="1" opacity="${t===0?.6:.25}"/>`;
+    grid+=`<text x="${padL-8}" y="${(y+3).toFixed(1)}" font-size="9" fill="var(--muted,#9a938a)" text-anchor="end">${Math.round(val)}</text>`;
+  }
+  let bars='';
   series.forEach((s,i)=>{
-    const x=50+i*gw;
-    const ha=(s.a/max)*(base-24), hb=(s.b/max)*(base-24);
-    const w=gw*0.32;
-    svg+=`<rect x="${x}" y="${base-ha}" width="${w}" height="${ha}" rx="2" fill="#8a8f98"><title>Estimado: ${Math.round(s.a)} ${unidad}</title></rect>`;
-    svg+=`<rect x="${x+w+3}" y="${base-hb}" width="${w}" height="${hb}" rx="2" fill="#E8611A"><title>Real: ${Math.round(s.b)} ${unidad}</title></rect>`;
-    svg+=`<text x="${x+w}" y="${base+14}" font-size="9" fill="#999" text-anchor="middle">${_escRec(s.label)}</text>`;
+    const cx=padL+slot*i+slot/2;
+    const ha=(s.a/max)*plotH, hb=(s.b/max)*plotH;
+    const xa=cx-bw-gap/2, xb=cx+gap/2;
+    bars+=`<rect x="${xa.toFixed(1)}" y="${(base-ha).toFixed(1)}" width="${bw}" height="${Math.max(0,ha).toFixed(1)}" rx="3" fill="#8a8f98"><title>Estimado: ${Math.round(s.a)} ${unidad}</title></rect>`;
+    bars+=`<rect x="${xb.toFixed(1)}" y="${(base-hb).toFixed(1)}" width="${bw}" height="${Math.max(0,hb).toFixed(1)}" rx="3" fill="#E8611A"><title>Real: ${Math.round(s.b)} ${unidad}</title></rect>`;
+    bars+=`<text x="${cx.toFixed(1)}" y="${(base+14).toFixed(1)}" font-size="9" fill="var(--muted,#9a938a)" text-anchor="middle">${_escRec(s.label)}</text>`;
   });
-  svg+=`</svg>`;
-  svg+=`<div style="display:flex;gap:16px;font-size:11px;margin-top:6px"><span><span style="display:inline-block;width:11px;height:11px;background:#8a8f98;border-radius:2px;vertical-align:middle"></span> Estimado</span><span><span style="display:inline-block;width:11px;height:11px;background:#E8611A;border-radius:2px;vertical-align:middle"></span> Real</span> <span class="muted">· Unidad: ${unidad}</span></div>`;
-  return svg;
+  return `<div style="max-width:100%;overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${Math.max(340,n*54)}px;height:auto;font-family:inherit">${grid}${bars}</svg></div>`
+    +`<div style="display:flex;gap:16px;font-size:11px;margin-top:8px;align-items:center">
+        <span style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:10px;height:10px;background:#8a8f98;border-radius:2px"></span> Estimado</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:10px;height:10px;background:#E8611A;border-radius:2px"></span> Real</span>
+        <span class="muted" style="margin-left:auto">Unidad: ${unidad}</span>
+      </div>`;
 }
 function delRec(id){ if(confirm('¿Eliminar recorrido?')){ DB.historial=DB.historial.filter(r=>r.id!==id); save(); renderHistorial(); } }
 
@@ -1448,8 +1478,29 @@ function compartirRecorridoGuardado(id){
 
 // Recalcula el estimado de un recorrido guardado INCLUYENDO el retorno.
 // Secuencia: base -> paradas -> punto final (retorno). Usa ORS (mejor ruta por calles) si hay clave.
+// Completa dirección y coordenadas de las paradas de un recorrido guardado,
+// cruzando por nombre con la base de Proveedores (para poder recalcular/mapear).
+function _completarUbicacionesRecorrido(r){
+  if(!r || !r.paradas) return 0;
+  const norm=x=>(x||'').toString().trim().toLowerCase();
+  let completadas=0;
+  r.paradas.forEach(p=>{
+    if(p.lat!=null && p.dir) return;  // ya tiene todo
+    const prov=(DB.proveedores||[]).find(x=>norm(x.nombre)===norm(p.nombre));
+    if(prov){
+      if(p.lat==null && prov.lat!=null){ p.lat=prov.lat; p.lng=prov.lng; completadas++; }
+      if(!p.dir && prov.dir){ p.dir=prov.dir; }
+      // completar también horarios si faltan
+      if(!p.hm1 && prov.hm1){ p.hm1=prov.hm1;p.hm2=prov.hm2;p.ht1=prov.ht1;p.ht2=prov.ht2;p.corrido=!!prov.corrido; }
+    }
+  });
+  return completadas;
+}
+
 async function recalcularConRetorno(id){
   const r=DB.historial.find(x=>x.id===id); if(!r) return;
+  // Antes de calcular, completar direcciones/ubicaciones faltantes desde Proveedores
+  const comp=_completarUbicacionesRecorrido(r);
   // Armar la secuencia de puntos con coordenadas
   const pts=[];
   if(r.base && r.base.lat!=null) pts.push({lat:r.base.lat,lng:r.base.lng});
@@ -1457,7 +1508,11 @@ async function recalcularConRetorno(id){
   // Punto final: el guardado, o por defecto volver a la base
   if(r.fin && r.fin.lat!=null) pts.push({lat:r.fin.lat,lng:r.fin.lng});
   else if(r.base && r.base.lat!=null) pts.push({lat:r.base.lat,lng:r.base.lng});
-  if(pts.length<2){ alert('Este recorrido no tiene suficientes ubicaciones para recalcular.'); return; }
+  if(pts.length<2){
+    alert('Este recorrido no tiene suficientes ubicaciones para recalcular.\n\n'+(comp?('Se completaron '+comp+' ubicación(es) desde Proveedores, pero '):'')+'faltan coordenadas. Cargá la ubicación de los proveedores en la pestaña Proveedores (botón 📍 Mapa).');
+    if(comp){ save(); }
+    return;
+  }
 
   const kmAntes=r.estKm;
   let km=null, min=null, metodo='';
@@ -1506,7 +1561,25 @@ function _dibujarMiniMapa(r){
       L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',html:`<div style="background:${color};color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">${label}</div>`,iconSize:[24,24],iconAnchor:[12,12]})}).addTo(mm).bindPopup(`<b>${p.base?'🏠 ':(i+'. ')}${_escRec(p.nombre)}</b>${p.extra?'<br><span style="color:#3e7cb1">fuera del plan</span>':''}`);
       latlngs.push([p.lat,p.lng]);
     });
-    if(latlngs.length>1){ L.polyline(latlngs,{color:'#E8611A',weight:4,opacity:.8}).addTo(mm); mm.fitBounds(latlngs,{padding:[30,30]}); }
+    if(latlngs.length>1){
+      // Detectar si el último punto es el retorno (fin) para pintarlo distinto
+      const hayFin = pts[pts.length-1].fin;
+      if(hayFin && latlngs.length>=2){
+        // Trayecto de ida: todos menos el último tramo
+        L.polyline(latlngs.slice(0,latlngs.length-1),{color:'#E8611A',weight:4,opacity:.85}).addTo(mm);
+        // Tramo de retorno (última parada → punto final) en amarillo-anaranjado, punteado
+        L.polyline([latlngs[latlngs.length-2],latlngs[latlngs.length-1]],
+          {color:'#F2B01E',weight:4,opacity:.95,dashArray:'8,6'}).addTo(mm);
+      } else {
+        L.polyline(latlngs,{color:'#E8611A',weight:4,opacity:.85}).addTo(mm);
+      }
+      mm.fitBounds(latlngs,{padding:[30,30]});
+    }
+    // Referencia de colores
+    const leg=L.control({position:'bottomleft'});
+    leg.onAdd=function(){ const d=L.DomUtil.create('div'); d.style.cssText='background:rgba(19,22,30,.85);color:#fff;padding:5px 8px;border-radius:6px;font-size:10px;line-height:1.6';
+      d.innerHTML='<span style="color:#E8611A">━</span> Ida &nbsp; <span style="color:#F2B01E">┅</span> Retorno'; return d; };
+    leg.addTo(mm);
     setTimeout(()=>mm.invalidateSize(),200);
   }catch(e){ console.warn('mini-mapa', e); }
 }
