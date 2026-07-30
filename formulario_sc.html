@@ -1873,8 +1873,16 @@ async function enviar() {
 }
 
 async function showSuccess(numSC, numOP) {
-  // ── Guardar PRIMERO en Supabase (con reintentos) y verificar ANTES de confirmar ──
-  const guardadoOk = await _guardarSCenCC(numSC, numOP);   // Supabase + localStorage
+  // ── Subir PRIMERO los archivos a Storage, para guardar sus URLs junto con la SC ──
+  let _mapasAdj = null;
+  const _hayAdjuntosPre = (presupuestos||[]).some(x=>x.data) || (fotosMuestra||[]).some(x=>x.data);
+  if (_hayAdjuntosPre) {
+    if (typeof toast === 'function') toast('⏳ Subiendo archivos adjuntos...');
+    try { _mapasAdj = await _subirArchivosSC(numSC, presupuestosPayload, fotosPayload); }
+    catch(e){ console.warn('subir adjuntos (pre)', e); }
+  }
+  // ── Guardar la SC en Supabase (con los mapas de adjuntos ya incluidos) ──
+  const guardadoOk = await _guardarSCenCC(numSC, numOP, _mapasAdj);   // Supabase + localStorage
   // 1) Correo de confirmación SIN archivos (liviano, no se corta)
   await _enviarEmailSC(numSC, numOP);
   // 1b) Registrar reservas de pañol en la Central de Depósitos (si hay)
@@ -1887,12 +1895,7 @@ async function showSuccess(numSC, numOP) {
       else toast('⚠️ No se pudieron registrar las reservas en el inventario. Hacelas desde la Central de Depósitos.', true);
     }
   }
-  // 2) Subir fotos y presupuestos por separado, uno por uno, con confirmación real
-  const _hayAdjuntos = (presupuestos||[]).some(x=>x.data) || (fotosMuestra||[]).some(x=>x.data);
-  if (_hayAdjuntos) {
-    try { await _subirAdjuntosSC(numSC, presupuestosPayload, fotosPayload); }
-    catch(e){ console.warn('subir adjuntos', e); }
-  }
+  // (Los adjuntos ya se subieron y guardaron junto con la SC, arriba)
 
   document.querySelectorAll('.panel').forEach(p => p.style.display = 'none');
   document.getElementById('success').style.display = 'block';
@@ -2815,6 +2818,37 @@ async function _storageUpload(path, dataUrl){
 }
 
 // Sube fotos y presupuestos de la SC a Storage y guarda los mapas ítem→archivos en Supabase
+// Sube los archivos a Storage y DEVUELVE los mapas {fotos_map, presup_map}
+// para incluirlos directamente en el insert de la SC (no depende de un PATCH posterior).
+async function _subirArchivosSC(numSC, presupuestos, fotos){
+  const grupos = [
+    { arr: fotos||[],        col:'fotos_map',  sub:'fotos' },
+    { arr: presupuestos||[], col:'presup_map', sub:'presupuestos' }
+  ];
+  const total = (fotos||[]).length + (presupuestos||[]).length;
+  const mapas = { fotos_map:{}, presup_map:{} };
+  if(!total) return mapas;
+  let ok=0, fail=0, done=0;
+  for(const g of grupos){
+    for(const a of g.arr){
+      done++;
+      if(typeof toast==='function') toast('⏳ Subiendo archivo '+done+' de '+total+'...');
+      const path = 'sc/'+numSC+'/'+g.sub+'/'+Date.now()+'_'+_slugArchivo(a.name);
+      const url = await _storageUpload(path, a.dataUrl);
+      if(url){
+        ok++;
+        const idxs = (a.itemsIdx && a.itemsIdx.length) ? a.itemsIdx : [0];
+        idxs.forEach(ix=>{ const k=String(ix); if(!mapas[g.col][k]) mapas[g.col][k]=[]; mapas[g.col][k].push({name:a.name, url:url}); });
+      } else fail++;
+    }
+  }
+  if(typeof toast==='function'){
+    if(!fail) toast('✅ '+ok+' archivo(s) subido(s)');
+    else toast('⚠️ '+ok+' subido(s), '+fail+' con error.', true);
+  }
+  return mapas;
+}
+
 async function _subirAdjuntosSC(numSC, presupuestos, fotos){
   const grupos = [
     { arr: fotos||[],        sub:'fotos',         col:'fotos_map'  },
@@ -3001,7 +3035,7 @@ async function _crearProyectoDesdeSC(nombre) {
   } catch (e) { console.warn('_crearProyectoDesdeSC', e); return null; }
 }
 
-async function _guardarSCenCC(numSC, numOP) {
+async function _guardarSCenCC(numSC, numOP, mapasAdj) {
   try {
     const area     = document.getElementById('sol-area')?.value || '';
     const subarea  = document.getElementById('sol-subarea')?.value || '';
@@ -3069,6 +3103,12 @@ async function _guardarSCenCC(numSC, numOP) {
     sc.fotos_items  = Array.from(_fi).sort((a, b) => a - b);
     sc.presup_items = Array.from(_pi).sort((a, b) => a - b);
 
+    // Mapas de adjuntos (URLs de Storage) — incluidos directo en el insert
+    if (mapasAdj) {
+      if (mapasAdj.fotos_map  && Object.keys(mapasAdj.fotos_map).length)  sc.fotos_map  = mapasAdj.fotos_map;
+      if (mapasAdj.presup_map && Object.keys(mapasAdj.presup_map).length) sc.presup_map = mapasAdj.presup_map;
+    }
+
     // 1. Guardar en Supabase (fuente principal) — con reintentos ante fallos transitorios
     let ok = false;
     for (let intento = 1; intento <= 3 && !ok; intento++) {
@@ -3089,6 +3129,7 @@ async function _guardarSCenCC(numSC, numOP) {
       motivo: motivo === 'OTROS' ? 'OTROS — ' + motivoOt : motivo,
       items: itemsTxt, obs, panolero, valeNum: valeNumActual || '',
       fotosItems: sc.fotos_items, presupItems: sc.presup_items,
+      fotosMap: sc.fotos_map || {}, presupMap: sc.presup_map || {},
       estado: 'PENDIENTE', origen: 'FORMULARIO_SC',
       creado: new Date().toISOString()
     };
