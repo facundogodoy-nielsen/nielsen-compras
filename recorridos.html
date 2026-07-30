@@ -502,11 +502,12 @@ async function cargarDesdeNube(){
     _recSetStatus('⚠️ Sin conexion con la nube', '#eab308');
   }
 }
-function save(){
+function save(inmediato){
   if(typeof ruta!=='undefined' && DB) DB.rutaActual = ruta;   // conservar el recorrido en edición (con SC/adjuntos)
   if(_recSaveTimer) clearTimeout(_recSaveTimer);
   _recSetStatus('⏳ Guardando...', 'var(--muted)');
-  _recSaveTimer = setTimeout(_recPush, 500);
+  if(inmediato){ _recPush(); }
+  else { _recSaveTimer = setTimeout(_recPush, 500); }
 }
 async function _recPush(){
   _recSaveTimer = null;
@@ -1070,7 +1071,10 @@ function guardarRecorrido(){
   };
   DB.historial.unshift(rec); save(); renderHistorial();
   limpiarRecorrido();   // dejar la pantalla lista para el próximo
-  alert('Recorrido '+rec.codigo+' guardado en el historial ✔\n\nEl chofer puede cargar sus datos reales desde "Historial y análisis" (botón ✏️).');
+  // Ofrecer compartir el recorrido recién guardado con el chofer
+  if(confirm('Recorrido '+rec.codigo+' guardado en el historial ✔\n\n¿Querés compartirlo con el chofer por WhatsApp ahora?')){
+    compartirRecorridoGuardado(rec.id);
+  }
 }
 // Genera el próximo código RC-2026-#### (correlativo, robusto ante huecos)
 function _nuevoCodigoRC(){
@@ -1483,30 +1487,64 @@ function consultarRecorrido(id){
   // Dibujar el mini-mapa con el recorrido (base + paradas con coordenadas)
   setTimeout(()=>_dibujarMiniMapa(r), 150);
 }
-function compartirRecorridoGuardado(id){
-  const r=DB.historial.find(x=>x.id===id); if(!r) return;
-  let t=`\uD83D\uDE9A RECORRIDO DE COMPRAS`;
-  if(r.codigo) t+=` \u2014 ${r.codigo}`;
+function _mapsLinkDe(r){
+  const pts=[];
+  if(r.base && r.base.lat!=null) pts.push(r.base);
+  (r.paradas||[]).forEach(p=>{ if(p.lat!=null) pts.push(p); });
+  if(r.fin && r.fin.lat!=null) pts.push(r.fin);
+  else if(r.base && r.base.lat!=null && (r.paradas||[]).some(p=>p.lat!=null)) pts.push(r.base);
+  if(pts.length<1) return '';
+  const c=p=>`${p.lat},${p.lng}`;
+  if(pts.length===1) return `https://www.google.com/maps/search/?api=1&query=${c(pts[0])}`;
+  const origin=c(pts[0]), dest=c(pts[pts.length-1]);
+  const wp=pts.slice(1,-1).map(c).join('|');
+  let u=`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`;
+  if(wp) u+=`&waypoints=${encodeURIComponent(wp)}`;
+  return u;
+}
+function _armarTextoRecorrido(r){
+  let t=`🚚 RECORRIDO DE COMPRAS`;
+  if(r.codigo) t+=` — ${r.codigo}`;
   t+=`\n${r.fecha||''}\n`;
   t+=`Movilidad: ${r.vehiculo||'-'}\n`;
   t+=`Chofer: ${r.chofer||'-'}\n`;
   if(r.salida) t+=`Salida: ${r.salida} hs\n`;
+  if(r.base && r.base.nombre) t+=`\n🏠 Partida: ${r.base.nombre}\n`;
   t+=`\nPARADAS:\n`;
   (r.paradas||[]).forEach((p,i)=>{
     t+=`${i+1}) ${p.nombre}${p.extra?' (fuera del plan)':''}\n`;
-    if(p.dir) t+=`   \uD83D\uDCCD ${p.dir}\n`;
+    if(p.dir) t+=`   📍 ${p.dir}\n`;
     const h=(typeof horarioTxt==='function')?horarioTxt(p):'';
-    if(h) t+=`   \uD83D\uDD52 Atiende: ${h}\n`;
-    if(p.scNum) t+=`   \uD83D\uDCCB SC ${p.scNum}${(p.scItems&&p.scItems.length)?': '+p.scItems.join(', '):''}\n`;
+    if(h) t+=`   🕒 Atiende: ${h}\n`;
+    if(p.arribo) t+=`   ⏱️ Arribo: ${p.arribo}\n`;
+    if(p.scNum) t+=`   📋 SC ${p.scNum}${(p.scItems&&p.scItems.length)?': '+p.scItems.join(', '):''}\n`;
   });
-  t+=`\nEstimado: ${r.estKm||0} km \u00b7 ${(typeof fmtMin==='function')?fmtMin(r.estMin||0):(r.estMin||0)+' min'}\n`;
-  t+=`\nNielsen Log\u00edstica y Expediciones S.A.`;
-  if(navigator.share){
-    navigator.share({ title:'Recorrido '+(r.codigo||''), text:t }).catch(()=>{});
-  } else {
-    navigator.clipboard.writeText(t).then(()=>alert('\u2705 Recorrido copiado al portapapeles. Pegalo en WhatsApp para enviarlo al chofer.'))
-      .catch(()=>{ prompt('Copi\u00e1 el recorrido:', t); });
-  }
+  // Punto final
+  if(r.fin && r.fin.nombre) t+=`\n🏁 Final: ${r.fin.nombre}\n`;
+  else if(r.base && r.base.nombre) t+=`\n🏁 Retorno: ${r.base.nombre}\n`;
+  t+=`\nEstimado: ${r.estKm||0} km · ${(typeof fmtMin==='function')?fmtMin(r.estMin||0):(r.estMin||0)+' min'}\n`;
+  const link=_mapsLinkDe(r);
+  if(link) t+=`\n🧭 Navegación (Google Maps):\n${link}\n`;
+  t+=`\nNielsen Logística y Expediciones S.A.`;
+  return t;
+}
+function compartirRecorridoGuardado(id){
+  const r=DB.historial.find(x=>x.id===id); if(!r) return;
+  const t=_armarTextoRecorrido(r);
+  const link=_mapsLinkDe(r);
+  // Buscar el teléfono del chofer por nombre
+  const c=(DB.choferes||[]).find(x=>x.nombre===r.chofer);
+  let tel=(c&&c.tel)?c.tel.replace(/\D/g,''):'';
+  if(tel){ if(tel.startsWith('0')) tel=tel.slice(1); if(!tel.startsWith('54')) tel='549'+tel; }
+  // Usar el mismo modal de compartir del Recorrido del Día
+  const st=document.getElementById('share-text'); if(st) st.value=t;
+  const wa=document.getElementById('share-wa');
+  if(wa) wa.href=(tel?`https://wa.me/${tel}`:`https://wa.me/`)+`?text=${encodeURIComponent(t)}`;
+  const sm=document.getElementById('share-maps'); if(sm) sm.href=link||'#';
+  const stel=document.getElementById('share-tel');
+  if(stel) stel.textContent=(c&&c.tel)?`Chofer ${c.nombre}: ${c.tel}`:'Sugerencia: cargá el teléfono del chofer en la pestaña Choferes.';
+  closeModal();  // cerrar el modal de detalle si estaba abierto
+  document.getElementById('share-bg').classList.add('show');
 }
 
 // Recalcula el estimado de un recorrido guardado INCLUYENDO el retorno.
@@ -1599,18 +1637,35 @@ function _dibujarMiniMapa(r){
       latlngs.push([p.lat,p.lng]);
     });
     if(latlngs.length>1){
-      // Detectar si el último punto es el retorno (fin) para pintarlo distinto
       const hayFin = pts[pts.length-1].fin;
+      // Dibujo provisional con líneas rectas (se reemplaza por calles si hay ORS)
+      let lineasProv=[];
       if(hayFin && latlngs.length>=2){
-        // Trayecto de ida: todos menos el último tramo
-        L.polyline(latlngs.slice(0,latlngs.length-1),{color:'#E8611A',weight:4,opacity:.85}).addTo(mm);
-        // Tramo de retorno (última parada → punto final) en amarillo-anaranjado, punteado
-        L.polyline([latlngs[latlngs.length-2],latlngs[latlngs.length-1]],
-          {color:'#F2B01E',weight:4,opacity:.95,dashArray:'8,6'}).addTo(mm);
+        lineasProv.push(L.polyline(latlngs.slice(0,latlngs.length-1),{color:'#E8611A',weight:4,opacity:.85}).addTo(mm));
+        lineasProv.push(L.polyline([latlngs[latlngs.length-2],latlngs[latlngs.length-1]],
+          {color:'#F2B01E',weight:4,opacity:.95,dashArray:'8,6'}).addTo(mm));
       } else {
-        L.polyline(latlngs,{color:'#E8611A',weight:4,opacity:.85}).addTo(mm);
+        lineasProv.push(L.polyline(latlngs,{color:'#E8611A',weight:4,opacity:.85}).addTo(mm));
       }
       mm.fitBounds(latlngs,{padding:[30,30]});
+      // Si hay clave ORS, pedir la ruta REAL por calles y reemplazar
+      if(typeof _orsDisponible==='function' && _orsDisponible() && typeof _orsRuta==='function'){
+        const puntos=pts.map(p=>({lat:p.lat,lng:p.lng}));
+        // Ida: todos menos el retorno; Retorno: últimos dos
+        const idaPts = hayFin ? puntos.slice(0,puntos.length-1) : puntos;
+        _orsRuta(idaPts).then(res=>{
+          if(res && res.coords){
+            lineasProv.forEach(l=>mm.removeLayer(l)); lineasProv=[];
+            L.polyline(res.coords,{color:'#E8611A',weight:4,opacity:.9}).addTo(mm);
+            if(hayFin){
+              // Retorno por calles (última parada → punto final)
+              _orsRuta([puntos[puntos.length-2],puntos[puntos.length-1]]).then(res2=>{
+                if(res2 && res2.coords) L.polyline(res2.coords,{color:'#F2B01E',weight:4,opacity:.95,dashArray:'8,6'}).addTo(mm);
+              });
+            }
+          }
+        }).catch(()=>{});
+      }
     }
     // Referencia de colores
     const leg=L.control({position:'bottomleft'});
@@ -2018,10 +2073,10 @@ function editVeh(id){
     const o={patente:mval('m-pat').toUpperCase(),desc:mval('m-desc'),tipo:mval('m-tipo'),consumo:+mval('m-cons')||9};
     if(!o.patente){ alert('Poné patente'); return; }
     if(id) Object.assign(v,o); else DB.vehiculos.push({id:uid(),...o});
-    save(); renderVeh(); fillSelects(); closeModal();
+    save(true); renderVeh(); fillSelects(); closeModal();
   });
 }
-function delVeh(id){ if(confirm('¿Eliminar vehículo?')){ DB.vehiculos=DB.vehiculos.filter(x=>x.id!==id); save(); renderVeh(); fillSelects(); } }
+function delVeh(id){ if(confirm('¿Eliminar vehículo?')){ DB.vehiculos=DB.vehiculos.filter(x=>x.id!==id); save(true); renderVeh(); fillSelects(); } }
 
 function editCho(id){
   const c=id?DB.choferes.find(x=>x.id===id):{nombre:'',lic:'',tel:''};
@@ -2033,7 +2088,7 @@ function editCho(id){
     const o={nombre:mval('m-cnom'),lic:mval('m-clic'),tel:mval('m-ctel')};
     if(!o.nombre){ alert('Poné nombre'); return; }
     if(id) Object.assign(c,o); else DB.choferes.push({id:uid(),...o});
-    save(); renderCho(); fillSelects(); closeModal();
+    save(true); renderCho(); fillSelects(); closeModal();
   });
 }
 function delCho(id){ if(confirm('¿Eliminar chofer?')){ DB.choferes=DB.choferes.filter(x=>x.id!==id); save(); renderCho(); fillSelects(); } }
