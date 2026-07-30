@@ -5611,6 +5611,9 @@ function verSC(idx) {
         ⚠️ Algunos ítems marcados como NO COMPRADO. La SC se completará en estado de alerta (naranja).
       </div>
 
+      <!-- Panel con TODOS los adjuntos de la SC (respaldo robusto) -->
+      ${_scAdjuntosPanel(sc)}
+
       <!-- Lista de ítems con estados -->
       <div id="compra-items-list">
         ${renderItemsCompra(lineas, sc)}
@@ -7342,24 +7345,83 @@ function diagnosticarAdjuntosSC(){
   window.open(MAIL_WEBAPP_URL + '?a=diag&sc=' + encodeURIComponent(num), '_blank');
 }
 
+function _scAdjuntosPanel(sc){
+  if(!sc) return '';
+  var _parse = function(m){ if(!m) return {}; if(typeof m==='string'){ try{return JSON.parse(m);}catch(e){return {};} } return m; };
+  var fmap=_parse(sc.fotosMap), pmap=_parse(sc.presupMap);
+  var _url = function(f){ return (f && typeof f==='object') ? (f.url||f.URL||f.link||'') : String(f||''); };
+  var _nom = function(f){ return (f && typeof f==='object') ? (f.name||f.nombre||'archivo') : 'archivo'; };
+  var vistos={}, fotos=[], presup=[];
+  var _recolectar = function(map, dest){
+    Object.keys(map||{}).forEach(function(k){
+      var v=map[k]; if(v==null) return;
+      (Array.isArray(v)?v:[v]).forEach(function(f){
+        var u=_url(f); if(!u || vistos[u]) return; vistos[u]=1; dest.push({url:u, name:_nom(f)});
+      });
+    });
+  };
+  _recolectar(fmap, fotos);
+  _recolectar(pmap, presup);
+  if(!fotos.length && !presup.length) return '';
+  var esImg = function(u,n){ return /\.(jpe?g|png|gif|webp|bmp)$/i.test(n||'') || /\.(jpe?g|png|gif|webp|bmp)(\?|$)/i.test(u||''); };
+  var esc = function(s){ return String(s||'').replace(/"/g,'&quot;'); };
+  var tarjeta = function(f, tipoColor, tipoTxt){
+    var img = esImg(f.url,f.name);
+    var thumb = img
+      ? '<img src="'+esc(f.url)+'" loading="lazy" style="width:100%;height:90px;object-fit:cover;display:block" onerror="this.style.display=\'none\'">'
+      : '<div style="height:90px;display:flex;align-items:center;justify-content:center;font-size:30px">\uD83D\uDCC4</div>';
+    return '<a href="'+esc(f.url)+'" target="_blank" rel="noopener" title="'+esc(f.name)+'" '
+      + 'style="display:block;width:130px;border:1px solid var(--border);border-radius:9px;overflow:hidden;text-decoration:none;background:var(--s2)">'
+      + thumb
+      + '<div style="padding:6px 8px;border-top:1px solid var(--border)">'
+      + '<div style="font-size:9px;font-weight:700;color:'+tipoColor+';text-transform:uppercase;letter-spacing:.5px">'+tipoTxt+' \u2197</div>'
+      + '<div style="font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(f.name)+'</div>'
+      + '</div></a>';
+  };
+  var cards='';
+  fotos.forEach(function(f){ cards += tarjeta(f, '#22c55e', '\uD83D\uDCF7 Foto muestra'); });
+  presup.forEach(function(f){ cards += tarjeta(f, 'var(--or)', '\uD83D\uDCC4 Presupuesto'); });
+  return '<div style="margin:4px 0 14px;padding:12px 14px;background:var(--s2);border:1px solid var(--border);border-radius:10px">'
+    + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or);margin-bottom:10px">'
+    + '\uD83D\uDCCE Archivos adjuntos de la SC <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">('+(fotos.length+presup.length)+' \u2014 toc\u00e1 para ver)</span></div>'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap">'+cards+'</div></div>';
+}
+
 function _scItemAdjuntos(sc, i){
   if(!sc) return '';
-  var fmap = sc.fotosMap || {}, pmap = sc.presupMap || {};
-  var fotos  = fmap[i] || fmap[String(i)] || [];
-  var presup = pmap[i] || pmap[String(i)] || [];
+  // Normalizar los mapas: pueden venir como objeto, string JSON, o con claves numéricas/texto
+  var _parseMap = function(m){
+    if(!m) return {};
+    if(typeof m === 'string'){ try{ return JSON.parse(m); }catch(e){ return {}; } }
+    return m;
+  };
+  var fmap = _parseMap(sc.fotosMap), pmap = _parseMap(sc.presupMap);
+  // Buscar por clave numérica y de texto, y aceptar tanto array como valor suelto
+  var _get = function(map, idx){
+    var v = map[idx];
+    if(v==null) v = map[String(idx)];
+    if(v==null) return [];
+    return Array.isArray(v) ? v : [v];
+  };
+  var fotos  = _get(fmap, i);
+  var presup = _get(pmap, i);
   var has = function(arr){ return (arr||[]).indexOf(i) >= 0 || (arr||[]).indexOf(String(i)) >= 0; };
   var fotosPres = has(sc.fotosItems), presupPres = has(sc.presupItems);
   if(!fotos.length && !presup.length && !fotosPres && !presupPres) return '';
   var esc = function(s){ return String(s||'').replace(/"/g,'&quot;'); };
+  // Normalizar cada entrada: puede ser {name,url} o un string url suelto
+  var _url = function(f){ return (f && typeof f==='object') ? (f.url||f.URL||f.link||'') : String(f||''); };
+  var _nom = function(f){ return (f && typeof f==='object') ? (f.name||f.nombre||'archivo') : 'archivo'; };
   var pill = function(url, bg, bd, col, txt, title){
     var inner = '<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:999px;font-size:9px;font-weight:700;background:'+bg+';border:1px solid '+bd+';color:'+col+'">'+txt+'</span>';
-    return url ? '<a href="'+esc(url)+'" target="_blank" rel="noopener" style="text-decoration:none" title="'+esc(title||'Abrir en Drive')+'">'+inner+'</a>' : inner;
+    return url ? '<a href="'+esc(url)+'" target="_blank" rel="noopener" style="text-decoration:none" title="'+esc(title||'Abrir archivo')+'">'+inner+'</a>' : inner;
   };
   var h = '';
   // FOTOS — link directo por archivo (fallback: carpeta)
   if(fotos.length){
     fotos.forEach(function(f, k){
-      h += pill(f.url, 'rgba(34,197,94,.14)','rgba(34,197,94,.4)','#22c55e', '📷 '+(fotos.length>1?('Foto '+(k+1)):'Foto')+' ↗', f.name);
+      var u=_url(f); if(!u) return;
+      h += pill(u, 'rgba(34,197,94,.14)','rgba(34,197,94,.4)','#22c55e', '📷 '+(fotos.length>1?('Foto '+(k+1)):'Foto')+' ↗', _nom(f));
     });
   } else if(fotosPres){
     h += pill(sc.driveFotosUrl || _driveSearchUrl(sc), 'rgba(34,197,94,.14)','rgba(34,197,94,.4)','#22c55e', '📷 Foto ↗', 'Buscar en Drive');
@@ -7367,11 +7429,13 @@ function _scItemAdjuntos(sc, i){
   // PRESUPUESTOS — link directo por archivo (fallback: carpeta)
   if(presup.length){
     presup.forEach(function(f, k){
-      h += pill(f.url, 'rgba(232,93,37,.14)','rgba(232,93,37,.4)','var(--or)', '📄 '+(presup.length>1?('Presup. '+(k+1)):'Presup.')+' ↗', f.name);
+      var u=_url(f); if(!u) return;
+      h += pill(u, 'rgba(232,93,37,.14)','rgba(232,93,37,.4)','var(--or)', '📄 '+(presup.length>1?('Presup. '+(k+1)):'Presup.')+' ↗', _nom(f));
     });
   } else if(presupPres){
     h += pill(sc.drivePresupUrl || _driveSearchUrl(sc), 'rgba(232,93,37,.14)','rgba(232,93,37,.4)','var(--or)', '📄 Presup. ↗', 'Buscar en Drive');
   }
+  if(!h) return '';
   return ' <span style="display:inline-flex;flex-wrap:wrap;gap:5px;margin-left:6px;vertical-align:middle">'+h+'</span>';
 }
 function _driveSearchUrl(sc){
