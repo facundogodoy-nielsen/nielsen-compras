@@ -185,7 +185,7 @@
             <select id="sel-chofer"></select>
             <div class="row">
               <div>
-                <label>Hora de salida (real)</label>
+                <label>Hora de salida (real) <span style="color:#E8611A">*</span></label>
                 <input type="time" id="hora-salida">
               </div>
               <div>
@@ -272,7 +272,7 @@
               <div>
                 <div class="muted" style="font-weight:700;margin-bottom:4px">REAL (carga manual)</div>
                 <div class="row">
-                  <div><label style="margin-top:0">Km inicial</label><input type="number" id="real-km-ini" placeholder="odómetro salida"></div>
+                  <div><label style="margin-top:0">Km inicial <span style="color:#E8611A">*</span></label><input type="number" id="real-km-ini" placeholder="odómetro salida"></div>
                   <div><label style="margin-top:0">Km final</label><input type="number" id="real-km-fin" placeholder="odómetro regreso"></div>
                 </div>
                 <div class="muted" id="km-recorridos" style="margin-top:4px">Km recorridos: —</div>
@@ -1046,6 +1046,19 @@ function renderListaAgregar(filtro=''){
 function guardarRecorrido(){
   const provs=ruta.filter(s=>s.tipo==='prov');
   if(provs.length===0){ alert('Agregá al menos un proveedor.'); return; }
+  // Obligatorios para iniciar el recorrido
+  const salidaVal=document.getElementById('hora-salida').value;
+  const kmIniVal=document.getElementById('real-km-ini').value;
+  if(!salidaVal){
+    alert('⚠️ Falta la HORA DE SALIDA (real).\n\nEs obligatoria para guardar e iniciar el recorrido.');
+    document.getElementById('hora-salida').focus();
+    return;
+  }
+  if(!kmIniVal || +kmIniVal<=0){
+    alert('⚠️ Falta el KM INICIAL (odómetro de salida).\n\nEs obligatorio para guardar e iniciar el recorrido.');
+    document.getElementById('real-km-ini').focus();
+    return;
+  }
   const est=calcEstimado();
   const v=vehSel(), c=DB.choferes.find(x=>x.id===document.getElementById('sel-chofer').value);
   const salida=document.getElementById('hora-salida').value, regreso=document.getElementById('real-regreso').value;
@@ -1479,6 +1492,7 @@ function consultarRecorrido(id){
     <div id="mini-map" style="height:260px;border-radius:10px;margin-top:6px;border:1px solid var(--border,#333);background:var(--s2,#1f1b16)"></div>
 
     <div style="margin-top:16px;text-align:right">
+      <button class="btn" onclick="abrirNavegacion('${r.id}')" style="background:#E8611A;margin-right:6px" title="Abrir la ruta en Google Maps para navegar">🧭 Abrir navegación</button>
       <button class="btn" onclick="recalcularConRetorno('${r.id}')" style="background:#eab308;color:#1a1a1a;margin-right:6px" title="Recalcular la distancia y el tiempo estimados incluyendo el regreso">🔄 Recalcular con retorno</button>
       <button class="btn" onclick="compartirRecorridoGuardado('${r.id}')" style="background:#3e7cb1;margin-right:6px">📤 Compartir</button>
       <button class="btn" onclick="cargarDatosChofer('${r.id}')" style="background:#2f9e6b;margin-right:6px">✏️ Cargar datos</button>
@@ -1527,6 +1541,13 @@ function _armarTextoRecorrido(r){
   if(link) t+=`\n🧭 Navegación (Google Maps):\n${link}\n`;
   t+=`\nNielsen Logística y Expediciones S.A.`;
   return t;
+}
+// Abre la navegación del recorrido en Google Maps (ruta por calles con waypoints)
+function abrirNavegacion(id){
+  const r=DB.historial.find(x=>x.id===id); if(!r) return;
+  const link=_mapsLinkDe(r);
+  if(!link){ alert('Este recorrido no tiene ubicaciones cargadas para navegar.\n\nCargá las ubicaciones de los proveedores en la pestaña Proveedores.'); return; }
+  window.open(link, '_blank');
 }
 function compartirRecorridoGuardado(id){
   const r=DB.historial.find(x=>x.id===id); if(!r) return;
