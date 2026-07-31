@@ -54,14 +54,16 @@
   <!-- PASO 1: parámetros -->
   <div class="card">
     <h2>1 · Parámetros</h2>
+    <div class="warn" style="margin-bottom:12px">
+      🔎 <b>Criterio:</b> se renombran solo las SC cuyo PC tenga <b>5 dígitos</b> después del guion (ej: <code>PC-2026-00178</code>). Las de <b>4 dígitos</b> (ej: <code>PC-2026-0001</code> al <code>0177</code>) quedan <b>intactas</b>.
+    </div>
     <div class="row">
-      <div>
-        <label>PC desde (Nº)</label>
-        <input type="number" id="pc-desde" value="1" min="1">
-      </div>
-      <div>
-        <label>PC hasta (Nº)</label>
-        <input type="number" id="pc-hasta" value="212" min="1">
+      <div style="flex:2">
+        <label>Renombrar las SC cuyo PC tenga…</label>
+        <select id="criterio">
+          <option value="5">5 dígitos después del guion (ej: PC-2026-00178)</option>
+          <option value="4">4 dígitos después del guion (ej: PC-2026-0001)</option>
+        </select>
       </div>
       <div>
         <label>Marcador de camada</label>
@@ -86,6 +88,7 @@
       </div>
     </div>
     <div id="estado-carga" class="muted" style="margin-top:10px;font-size:12px"></div>
+    <div class="ok" style="margin-top:10px">✔️ Solo se renombran las SC que cumplen el criterio de dígitos. El resto queda <b>intacto, sin ningún cambio</b>.</div>
   </div>
 
   <!-- PASO 2: vista previa -->
@@ -95,7 +98,7 @@
     <div id="avisos"></div>
     <div class="tbl-wrap">
       <table id="tabla-prev">
-        <thead><tr><th>#</th><th>PC</th><th>Área</th><th>Nombre actual</th><th>→</th><th>Nombre nuevo</th></tr></thead>
+        <thead><tr><th>#</th><th>PC</th><th>Díg.</th><th>Área</th><th>Nombre actual</th><th>→</th><th>Nombre nuevo</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -137,6 +140,11 @@ function _pcNum(v){
   const m = /(\d+)\s*$/.exec(normPC(v)||'');
   return m ? parseInt(m[1],10) : null;
 }
+// Cantidad de dígitos del correlativo del PC (después del último guion): PC-2026-00178 → 5
+function _pcDigitos(v){
+  const m = /PC-\d{4}-(\d+)\s*$/.exec(normPC(v)||'');
+  return m ? m[1].length : null;
+}
 function _prefijoDe(area, subarea){
   let p = PREFIJOS[(area||'').toUpperCase()] || 'SC';
   if((area||'').toUpperCase()==='MANTENIMIENTO' && subarea && SUBPREFIJOS[(subarea||'').toUpperCase()]){
@@ -161,17 +169,13 @@ async function previsualizar(){
   const btn = document.getElementById('btn-prev'); btn.disabled = true;
   try{
     _rows = await _cargarSCs();
-    const desde = +document.getElementById('pc-desde').value || 1;
-    const hasta = +document.getElementById('pc-hasta').value || 212;
+    const criterio = +document.getElementById('criterio').value || 5;
     const camada = (document.getElementById('camada').value||'1').trim();
     const anio = (document.getElementById('anio').value||'2026').trim();
     const orden = document.getElementById('orden').value;
 
-    // 1) filtrar por rango de PC
-    let elegibles = _rows.filter(r=>{
-      const n = _pcNum(r.num_op);
-      return n!=null && n>=desde && n<=hasta;
-    });
+    // 1) filtrar por CANTIDAD DE DÍGITOS del PC (5 dígitos = camada a renombrar)
+    let elegibles = _rows.filter(r=> _pcDigitos(r.num_op) === criterio);
 
     // 2) ordenar
     elegibles.sort((a,b)=>{
@@ -187,7 +191,7 @@ async function previsualizar(){
       contador[pref] = (contador[pref]||0)+1;
       const corr = String(contador[pref]).padStart(4,'0');
       const nuevo = pref + '-' + anio + '/' + camada + '-' + corr;
-      return { rawNumSC:r.num_sc, actual:normPC(r.num_sc)||r.num_sc, nuevo, area:(r.area||'—'), subarea:r.subarea||'', pc:normPC(r.num_op), pcNum:_pcNum(r.num_op) };
+      return { rawNumSC:r.num_sc, actual:normPC(r.num_sc)||r.num_sc, nuevo, area:(r.area||'—'), subarea:r.subarea||'', pc:normPC(r.num_op), pcNum:_pcNum(r.num_op), digitos:_pcDigitos(r.num_op) };
     });
 
     _render();
@@ -206,7 +210,10 @@ function _render(){
   const porArea = {};
   _preview.forEach(p=>{ porArea[p.area] = (porArea[p.area]||0)+1; });
   const kpi = document.getElementById('kpis');
-  kpi.innerHTML = '<div><div class="v">'+_preview.length+'</div><div class="l">SC a renombrar</div></div>'
+  const criterio = +document.getElementById('criterio').value || 5;
+  const intactas = _rows.filter(r=>{ const d=_pcDigitos(r.num_op); return d!=null && d!==criterio; }).length;
+  kpi.innerHTML = '<div><div class="v">'+_preview.length+'</div><div class="l">SC a renombrar ('+criterio+' díg.)</div></div>'
+    + '<div><div class="v" style="color:var(--green)">'+intactas+'</div><div class="l">SC intactas (otros díg.)</div></div>'
     + Object.entries(porArea).sort((a,b)=>b[1]-a[1]).map(([a,n])=>'<div><div class="v">'+n+'</div><div class="l">'+a+'</div></div>').join('');
 
   // avisos: duplicados de nombre nuevo, SC sin PC, etc.
@@ -228,6 +235,7 @@ function _render(){
   tb.innerHTML = _preview.map((p,i)=>
     '<tr><td class="muted">'+(i+1)+'</td>'
     + '<td class="mono">'+(p.pc||'—')+'</td>'
+    + '<td class="mono" style="text-align:center">'+(p.digitos||'?')+'</td>'
     + '<td><span class="badge b-area">'+p.area+(p.subarea?(' / '+p.subarea):'')+'</span></td>'
     + '<td class="mono old">'+p.actual+'</td>'
     + '<td class="muted">→</td>'
