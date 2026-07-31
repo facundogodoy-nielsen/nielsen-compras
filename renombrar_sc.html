@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Renombrar SC — Primera Camada · Nielsen</title>
+<style>
+  :root{ --or:#E8611A; --navy:#13161E; --bg:#14171f; --s1:#1b1f2a; --s2:#222736; --border:#2f3546; --text:#e9ebf0; --muted:#8b93a7; --green:#22c55e; --yellow:#eab308; --red:#ef4444; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}
+  header{background:linear-gradient(135deg,var(--navy),#1e2433);padding:20px 24px;border-bottom:3px solid var(--or)}
+  h1{margin:0;font-size:20px;font-weight:800}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .wrap{max-width:1100px;margin:0 auto;padding:22px 18px}
+  .card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+  .card h2{margin:0 0 12px;font-size:15px;color:var(--or)}
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+  input,select{background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;width:100%}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:140px}
+  .btn{background:var(--or);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+  .btn.green{background:var(--green)}
+  .btn.red{background:var(--red)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--border);text-align:left}
+  th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;background:var(--s1)}
+  .mono{font-family:ui-monospace,Menlo,monospace}
+  .old{color:var(--muted);text-decoration:line-through}
+  .new{color:var(--or);font-weight:700}
+  .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .b-area{background:rgba(232,97,26,.15);color:var(--or)}
+  .warn{background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.4);color:#f4d160;padding:10px 12px;border-radius:8px;font-size:12.5px;margin-top:8px}
+  .ok{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#7ee2a4;padding:10px 12px;border-radius:8px;font-size:12.5px;margin-top:8px}
+  .tbl-wrap{max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-top:10px}
+  .muted{color:var(--muted)}
+  .kpi{display:flex;gap:22px;flex-wrap:wrap;margin:10px 0}
+  .kpi>div{background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:10px 14px;min-width:110px}
+  .kpi .v{font-size:22px;font-weight:800;color:var(--or)}
+  .kpi .l{font-size:11px;color:var(--muted)}
+  .step{opacity:.5;pointer-events:none}
+  .step.active{opacity:1;pointer-events:auto}
+  code{background:var(--s2);padding:1px 6px;border-radius:5px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔁 Renombrar SC — Primera Camada (sistema anterior)</h1>
+  <div class="sub">Genera nombres con formato <code>SC&lt;ÁREA&gt;-2026/1-####</code> con correlativo por área. El "/1" marca la primera camada migrada.</div>
+</header>
+<div class="wrap">
+
+  <!-- PASO 1: parámetros -->
+  <div class="card">
+    <h2>1 · Parámetros</h2>
+    <div class="row">
+      <div>
+        <label>PC desde (Nº)</label>
+        <input type="number" id="pc-desde" value="1" min="1">
+      </div>
+      <div>
+        <label>PC hasta (Nº)</label>
+        <input type="number" id="pc-hasta" value="212" min="1">
+      </div>
+      <div>
+        <label>Marcador de camada</label>
+        <input type="text" id="camada" value="1">
+      </div>
+      <div>
+        <label>Año</label>
+        <input type="number" id="anio" value="2026">
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div style="flex:2">
+        <label>Orden del correlativo</label>
+        <select id="orden">
+          <option value="pc">Por número de PC (recomendado)</option>
+          <option value="fecha">Por fecha de solicitud</option>
+          <option value="sc">Por número de SC actual</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn" onclick="previsualizar()" id="btn-prev">👁️ Previsualizar (sin guardar)</button>
+      </div>
+    </div>
+    <div id="estado-carga" class="muted" style="margin-top:10px;font-size:12px"></div>
+  </div>
+
+  <!-- PASO 2: vista previa -->
+  <div class="card step" id="paso2">
+    <h2>2 · Vista previa</h2>
+    <div class="kpi" id="kpis"></div>
+    <div id="avisos"></div>
+    <div class="tbl-wrap">
+      <table id="tabla-prev">
+        <thead><tr><th>#</th><th>PC</th><th>Área</th><th>Nombre actual</th><th>→</th><th>Nombre nuevo</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PASO 3: aplicar -->
+  <div class="card step" id="paso3">
+    <h2>3 · Aplicar cambios</h2>
+    <div class="warn">
+      ⚠️ Esto renombrará las SC en Supabase (columna <code>num_sc</code>). Antes de aplicar, se descarga automáticamente un <b>respaldo JSON</b> de los valores actuales. Revisá la vista previa con cuidado.
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn ghost" onclick="descargarRespaldo()" id="btn-resp">💾 Descargar respaldo</button>
+      <button class="btn green" onclick="aplicar()" id="btn-aplicar" disabled>✅ Aplicar renombrado</button>
+    </div>
+    <div id="estado-aplicar" style="margin-top:12px"></div>
+  </div>
+
+</div>
+
+<script>
+const _SB_URL = 'https://qivvewvgqlsptydftlhx.supabase.co';
+const _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+
+// Mismos prefijos que el sistema principal
+const PREFIJOS = {
+  TALLER:'SCTL', TRANSPORTE:'SCTR', MANTENIMIENTO:'SCMT',
+  GERENCIA:'SCG', COMPRAS:'SCCYA', SSMA:'SCSSMA',
+  LOGISTICA:'SCLG', RRHH:'SCRH', CALIDAD:'SCCL',
+  PRESIDENCIA:'SCPR', 'COCINA BASE':'SCCB', 'CAMPAMENTOS':'SCCAMP'
+};
+const SUBPREFIJOS = { ELECTRICIDAD:'MTE', PLOMERIA:'MTP', METALURGIA:'MTM', CAMPAMENTO:'MTC' };
+
+let _preview = [];   // [{sc, actual, nuevo, area, pcNum}]
+let _rows = [];      // filas crudas de Supabase
+
+function normPC(v){ return v ? String(v).replace(/^OP-/, 'PC-') : v; }
+function _pcNum(v){
+  const m = /(\d+)\s*$/.exec(normPC(v)||'');
+  return m ? parseInt(m[1],10) : null;
+}
+function _prefijoDe(area, subarea){
+  let p = PREFIJOS[(area||'').toUpperCase()] || 'SC';
+  if((area||'').toUpperCase()==='MANTENIMIENTO' && subarea && SUBPREFIJOS[(subarea||'').toUpperCase()]){
+    p = 'SC' + SUBPREFIJOS[(subarea||'').toUpperCase()];
+  }
+  return p;
+}
+
+async function _cargarSCs(){
+  const el = document.getElementById('estado-carga');
+  el.textContent = 'Cargando solicitudes desde Supabase...';
+  const r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra?select=num_sc,num_op,area,subarea,fecha&limit=5000', {
+    headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY }, cache:'no-store'
+  });
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const rows = await r.json();
+  el.textContent = 'Se leyeron ' + rows.length + ' solicitudes en total.';
+  return rows;
+}
+
+async function previsualizar(){
+  const btn = document.getElementById('btn-prev'); btn.disabled = true;
+  try{
+    _rows = await _cargarSCs();
+    const desde = +document.getElementById('pc-desde').value || 1;
+    const hasta = +document.getElementById('pc-hasta').value || 212;
+    const camada = (document.getElementById('camada').value||'1').trim();
+    const anio = (document.getElementById('anio').value||'2026').trim();
+    const orden = document.getElementById('orden').value;
+
+    // 1) filtrar por rango de PC
+    let elegibles = _rows.filter(r=>{
+      const n = _pcNum(r.num_op);
+      return n!=null && n>=desde && n<=hasta;
+    });
+
+    // 2) ordenar
+    elegibles.sort((a,b)=>{
+      if(orden==='pc') return (_pcNum(a.num_op)||0)-(_pcNum(b.num_op)||0);
+      if(orden==='fecha') return String(a.fecha||'').localeCompare(String(b.fecha||''));
+      return String(a.num_sc||'').localeCompare(String(b.num_sc||''));
+    });
+
+    // 3) asignar correlativo por área (prefijo)
+    const contador = {};
+    _preview = elegibles.map(r=>{
+      const pref = _prefijoDe(r.area, r.subarea);
+      contador[pref] = (contador[pref]||0)+1;
+      const corr = String(contador[pref]).padStart(4,'0');
+      const nuevo = pref + '-' + anio + '/' + camada + '-' + corr;
+      return { rawNumSC:r.num_sc, actual:normPC(r.num_sc)||r.num_sc, nuevo, area:(r.area||'—'), subarea:r.subarea||'', pc:normPC(r.num_op), pcNum:_pcNum(r.num_op) };
+    });
+
+    _render();
+    document.getElementById('paso2').classList.add('active');
+    document.getElementById('paso3').classList.add('active');
+    document.getElementById('btn-aplicar').disabled = false;
+  }catch(e){
+    document.getElementById('estado-carga').innerHTML = '<span style="color:var(--red)">Error: '+e.message+'</span>';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function _render(){
+  // KPIs por área
+  const porArea = {};
+  _preview.forEach(p=>{ porArea[p.area] = (porArea[p.area]||0)+1; });
+  const kpi = document.getElementById('kpis');
+  kpi.innerHTML = '<div><div class="v">'+_preview.length+'</div><div class="l">SC a renombrar</div></div>'
+    + Object.entries(porArea).sort((a,b)=>b[1]-a[1]).map(([a,n])=>'<div><div class="v">'+n+'</div><div class="l">'+a+'</div></div>').join('');
+
+  // avisos: duplicados de nombre nuevo, SC sin PC, etc.
+  const avisos = [];
+  const nuevos = _preview.map(p=>p.nuevo);
+  const dupNuevos = nuevos.filter((n,i)=>nuevos.indexOf(n)!==i);
+  if(dupNuevos.length) avisos.push('<div class="warn">⚠️ Hay '+dupNuevos.length+' nombre(s) nuevo(s) repetido(s). Revisá antes de aplicar.</div>');
+  // ¿algún nombre nuevo choca con SC existentes fuera del set?
+  const setActuales = new Set(_rows.map(r=>r.num_sc));
+  const choques = _preview.filter(p=>setActuales.has(p.nuevo) && p.nuevo!==p.rawNumSC);
+  if(choques.length) avisos.push('<div class="warn">⚠️ '+choques.length+' nombre(s) nuevo(s) ya existen en la base. Podrían pisar otra SC.</div>');
+  const yaFormato = _preview.filter(p=>/\/\d+-\d{4}$/.test(p.rawNumSC||''));
+  if(yaFormato.length) avisos.push('<div class="warn">ℹ️ '+yaFormato.length+' SC ya parecen tener el formato de camada. Verificá si hay que re-renombrarlas.</div>');
+  if(!avisos.length) avisos.push('<div class="ok">✔️ Sin conflictos detectados. Los nombres nuevos son únicos.</div>');
+  document.getElementById('avisos').innerHTML = avisos.join('');
+
+  // tabla
+  const tb = document.querySelector('#tabla-prev tbody');
+  tb.innerHTML = _preview.map((p,i)=>
+    '<tr><td class="muted">'+(i+1)+'</td>'
+    + '<td class="mono">'+(p.pc||'—')+'</td>'
+    + '<td><span class="badge b-area">'+p.area+(p.subarea?(' / '+p.subarea):'')+'</span></td>'
+    + '<td class="mono old">'+p.actual+'</td>'
+    + '<td class="muted">→</td>'
+    + '<td class="mono new">'+p.nuevo+'</td></tr>'
+  ).join('');
+}
+
+function descargarRespaldo(){
+  if(!_preview.length){ alert('Primero previsualizá.'); return; }
+  const backup = {
+    generado: new Date().toISOString(),
+    descripcion: 'Respaldo previo al renombrado de SC (primera camada). Contiene num_sc actual → nuevo.',
+    total: _preview.length,
+    cambios: _preview.map(p=>({ actual:p.rawNumSC, nuevo:p.nuevo, pc:p.pc, area:p.area, subarea:p.subarea }))
+  };
+  const blob = new Blob([JSON.stringify(backup,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'respaldo_renombrado_sc_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+}
+
+async function aplicar(){
+  if(!_preview.length){ alert('Primero previsualizá.'); return; }
+  if(!confirm('Vas a renombrar '+_preview.length+' solicitudes en Supabase.\n\n¿Descargaste el respaldo? Esta acción cambia los identificadores.\n\nContinuar?')) return;
+  // respaldo automático por las dudas
+  descargarRespaldo();
+
+  const est = document.getElementById('estado-aplicar');
+  const btn = document.getElementById('btn-aplicar'); btn.disabled = true;
+  let ok=0, fail=0, saltados=0;
+  for(let i=0;i<_preview.length;i++){
+    const p = _preview[i];
+    if(p.nuevo === p.rawNumSC){ saltados++; continue; }
+    est.innerHTML = '<div class="muted">Renombrando '+(i+1)+' de '+_preview.length+'... ('+p.actual+' → '+p.nuevo+')</div>';
+    try{
+      const r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra?num_sc=eq.' + encodeURIComponent(p.rawNumSC), {
+        method:'PATCH',
+        headers:{ 'Content-Type':'application/json', apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, Prefer:'return=minimal' },
+        body: JSON.stringify({ num_sc: p.nuevo })
+      });
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      ok++;
+    }catch(e){ fail++; console.warn('fallo', p.actual, e); }
+  }
+  est.innerHTML = '<div class="ok">✅ Terminado. Renombradas: '+ok+' · Sin cambios: '+saltados+(fail?(' · <span style="color:var(--red)">Errores: '+fail+'</span>'):'')+'</div>'
+    + '<div class="muted" style="margin-top:6px;font-size:12px">Actualizá el Centro de Control (Ctrl+Shift+R) para ver los nuevos nombres.</div>';
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
