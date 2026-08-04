@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recuperar SC — Nielsen</title>
+<style>
+  :root{ --or:#E8611A; --navy:#13161E; --bg:#14171f; --s1:#1b1f2a; --s2:#222736; --border:#2f3546; --text:#e9ebf0; --muted:#8b93a7; --green:#22c55e; --yellow:#eab308; --red:#ef4444; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}
+  header{background:linear-gradient(135deg,var(--navy),#1e2433);padding:20px 24px;border-bottom:3px solid var(--or)}
+  h1{margin:0;font-size:20px;font-weight:800}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .wrap{max-width:980px;margin:0 auto;padding:22px 18px}
+  .card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+  .card h2{margin:0 0 12px;font-size:15px;color:var(--or)}
+  .btn{background:var(--or);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+  .btn.green{background:var(--green)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--border);text-align:left}
+  th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .mono{font-family:ui-monospace,Menlo,monospace}
+  .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700}
+  .b-falta{background:rgba(234,179,8,.15);color:#f4d160}
+  .b-ok{background:rgba(34,197,94,.15);color:#7ee2a4}
+  .warn{background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.4);color:#f4d160;padding:10px 12px;border-radius:8px;font-size:12.5px;margin-top:8px}
+  .ok{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.4);color:#7ee2a4;padding:10px 12px;border-radius:8px;font-size:12.5px;margin-top:8px}
+  .muted{color:var(--muted)}
+  .tbl-wrap{max-height:420px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔧 Recuperar SC — subir las que quedaron solo en este dispositivo</h1>
+  <div class="sub">Compara las SC guardadas localmente en <b>este navegador</b> contra Supabase, y sube las que falten.</div>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <div class="warn">
+      ⚠️ <b>Importante:</b> esta herramienta solo ve las SC guardadas en <b>ESTE dispositivo/navegador</b>. Si una SC se cargó desde otro celular o PC, tenés que abrir esta página <b>desde ese mismo dispositivo</b> para recuperarla.
+    </div>
+    <div style="margin-top:14px">
+      <button class="btn" onclick="analizar()" id="btn-analizar">🔍 Analizar SC locales vs. nube</button>
+    </div>
+    <div id="estado" class="muted" style="margin-top:12px;font-size:13px"></div>
+  </div>
+
+  <div class="card" id="card-resultado" style="display:none">
+    <h2>Resultado</h2>
+    <div id="resumen"></div>
+    <div class="tbl-wrap">
+      <table id="tabla">
+        <thead><tr><th>N° SC</th><th>N° PC</th><th>Solicitante</th><th>Área</th><th>Estado en nube</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn ghost" onclick="descargarLocal()">💾 Descargar copia local (respaldo)</button>
+      <button class="btn green" onclick="subirFaltantes()" id="btn-subir" disabled>⬆️ Subir las faltantes a la nube</button>
+    </div>
+    <div id="estado-subir" style="margin-top:12px"></div>
+  </div>
+
+</div>
+
+<script>
+const _SB_URL = 'https://qivvewvgqlsptydftlhx.supabase.co';
+const _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+
+let _locales = [];      // SC del localStorage
+let _faltantes = [];    // las que no están en la nube
+
+function normSC(v){ return v ? String(v).trim().toUpperCase() : ''; }
+
+async function _sbTraerNums(){
+  const nums = new Set();
+  const PAGE = 1000;
+  for(let g=0; g<50; g++){
+    const r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra?select=num_sc&limit='+PAGE+'&offset='+(g*PAGE), {
+      headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY }, cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const rows = await r.json();
+    if(!rows.length) break;
+    rows.forEach(x=>nums.add(normSC(x.num_sc)));
+    if(rows.length < PAGE) break;
+  }
+  return nums;
+}
+
+async function analizar(){
+  const est = document.getElementById('estado');
+  const btn = document.getElementById('btn-analizar'); btn.disabled = true;
+  est.textContent = 'Leyendo SC locales y consultando la nube...';
+  try{
+    // 1) SC locales de este navegador
+    try { _locales = JSON.parse(localStorage.getItem('nielsen_scs_2026') || '[]'); } catch(e){ _locales = []; }
+    if(!Array.isArray(_locales)) _locales = [];
+
+    // 2) N° de SC que ya están en la nube
+    const enNube = await _sbTraerNums();
+
+    // 3) cuáles faltan
+    _faltantes = _locales.filter(sc => sc.numSC && !enNube.has(normSC(sc.numSC)));
+
+    // render
+    document.getElementById('card-resultado').style.display = 'block';
+    const tb = document.querySelector('#tabla tbody');
+    tb.innerHTML = _locales.map(sc=>{
+      const falta = sc.numSC && !enNube.has(normSC(sc.numSC));
+      return '<tr>'
+        + '<td class="mono">'+(sc.numSC||'—')+'</td>'
+        + '<td class="mono">'+(sc.numOP||'—')+'</td>'
+        + '<td>'+(sc.solicitante||'—')+'</td>'
+        + '<td>'+(sc.area||'—')+(sc.subarea?(' / '+sc.subarea):'')+'</td>'
+        + '<td>'+(falta?'<span class="badge b-falta">⚠️ Falta subir</span>':'<span class="badge b-ok">✔️ Ya está</span>')+'</td>'
+        + '</tr>';
+    }).join('') || '<tr><td colspan="5" class="muted" style="padding:14px">No hay SC guardadas en este navegador.</td></tr>';
+
+    document.getElementById('resumen').innerHTML = _faltantes.length
+      ? '<div class="warn">Se encontraron <b>'+_faltantes.length+'</b> SC que están en este dispositivo pero <b>no</b> en la nube. Podés subirlas abajo.</div>'
+      : '<div class="ok">✔️ Todas las SC de este dispositivo ya están en la nube. No falta nada por recuperar.</div>';
+
+    document.getElementById('btn-subir').disabled = _faltantes.length === 0;
+    est.textContent = _locales.length + ' SC locales · ' + _faltantes.length + ' faltan en la nube.';
+  }catch(e){
+    est.innerHTML = '<span style="color:var(--red)">Error: '+e.message+'</span>';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function descargarLocal(){
+  const blob = new Blob([JSON.stringify(_locales,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'respaldo_sc_locales_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+}
+
+// Convierte una SC local (camelCase) al formato de columnas de Supabase
+function _aFilaSB(sc){
+  return {
+    num_sc:       sc.numSC,
+    num_op:       sc.numOP || '',
+    area:         sc.area || '',
+    subarea:      sc.subarea || '',
+    solicitante:  sc.solicitante || '',
+    email:        sc.email || '',
+    fecha:        sc.fecha || null,
+    fecha_limite: sc.fechaLimite || null,
+    criticidad:   sc.criticidad || 'MEDIA',
+    os:           sc.os || '',
+    os_asunto:    sc.osAsunto || '',
+    os_desc:      sc.osDesc || '',
+    os_resp:      sc.osResp || '',
+    destino:      sc.destino || '',
+    motivo:       sc.motivo || '',
+    items:        sc.items || '',
+    obs:          sc.obs || '',
+    panolero:     sc.panolero || '',
+    proyecto_asociado: sc.proyectoAsociado || null,
+    vale_num:     sc.valeNum || '',
+    fotos_items:  sc.fotosItems || [],
+    presup_items: sc.presupItems || [],
+    fotos_map:    sc.fotosMap || {},
+    presup_map:   sc.presupMap || {},
+    estado:       sc.estado || 'PENDIENTE',
+    origen:       sc.origen || 'RECUPERADA_LOCAL'
+  };
+}
+
+async function subirFaltantes(){
+  if(!_faltantes.length) return;
+  if(!confirm('Vas a subir '+_faltantes.length+' SC a la nube.\n\n¿Descargaste el respaldo? Continuar?')) return;
+  descargarLocal();  // respaldo automático
+  const est = document.getElementById('estado-subir');
+  const btn = document.getElementById('btn-subir'); btn.disabled = true;
+  let ok=0, fail=0;
+  for(let i=0;i<_faltantes.length;i++){
+    const sc = _faltantes[i];
+    est.innerHTML = '<div class="muted">Subiendo '+(i+1)+' de '+_faltantes.length+'... ('+sc.numSC+')</div>';
+    try{
+      const r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, Prefer:'return=minimal' },
+        body: JSON.stringify(_aFilaSB(sc))
+      });
+      if(!r.ok){ const t=await r.text(); console.error('fallo', sc.numSC, t); throw new Error('HTTP '+r.status); }
+      ok++;
+    }catch(e){ fail++; }
+  }
+  est.innerHTML = '<div class="ok">✅ Terminado. Subidas: '+ok+(fail?(' · <span style="color:var(--red)">Errores: '+fail+'</span>'):'')+'</div>'
+    + '<div class="muted" style="margin-top:6px;font-size:12px">Abrí el Centro de Control y refrescá (Ctrl+Shift+R) para verlas.</div>';
+}
+</script>
+</body>
+</html>
