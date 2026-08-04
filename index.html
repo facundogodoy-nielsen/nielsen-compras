@@ -3073,6 +3073,15 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer">🔍 Ver columnas</button>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px" id="eval-kpis"></div>
+
+  <!-- Pestañas: Resumen actual / Historial por año -->
+  <div style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:18px">
+    <button id="etab-resumen" onclick="_evalTab('resumen')" style="padding:9px 16px;border:none;background:none;color:var(--or);font-family:var(--ff);font-size:13px;font-weight:700;cursor:pointer;border-bottom:2px solid var(--or)">📊 Resumen actual</button>
+    <button id="etab-historial" onclick="_evalTab('historial')" style="padding:9px 16px;border:none;background:none;color:var(--muted);font-family:var(--ff);font-size:13px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent">📅 Historial por año</button>
+  </div>
+
+  <!-- PANE: Resumen actual -->
+  <div id="epane-resumen">
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
     <div style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px">
       <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--or);margin-bottom:12px">Ranking — Promedio General por Proveedor</div>
@@ -3096,9 +3105,39 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <tbody id="eval-table-body"></tbody>
     </table>
   </div>
+  </div><!-- /epane-resumen -->
+
+  <!-- PANE: Historial por año -->
+  <div id="epane-historial" style="display:none">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+      <span style="font-size:12px;font-weight:700;color:var(--muted)">Año:</span>
+      <select id="eval-anio-sel" onchange="_renderHistAnio()" style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-weight:700"></select>
+      <span id="eval-hist-resumen" style="font-size:12px;color:var(--muted);margin-left:auto"></span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
+      <div style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--or);margin-bottom:12px">Evolución del promedio general por año</div>
+        <div style="position:relative;height:300px"><canvas id="chart-hist-anios"></canvas></div>
+      </div>
+      <div style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--or);margin-bottom:12px">Ranking del año seleccionado</div>
+        <div style="position:relative;height:300px"><canvas id="chart-hist-ranking"></canvas></div>
+      </div>
+    </div>
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--s1)">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--s2);border-bottom:2px solid var(--border2)">
+          <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Proveedor</th>
+          <th style="padding:9px 12px;text-align:center;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Fecha</th>
+          <th style="padding:9px 12px;text-align:center;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Promedio</th>
+          <th style="padding:9px 12px;text-align:center;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Evaluaciones</th>
+        </tr></thead>
+        <tbody id="eval-hist-body"></tbody>
+      </table>
+    </div>
+  </div><!-- /epane-historial -->
 </div>
 </main>
-</div>
 
 <!-- ══ BADGES DE NAVEGACIÓN DE LISTA (Historial SC / Pedidos) ══ -->
 <div id="scrollNav" style="position:fixed;right:18px;bottom:22px;z-index:900;display:none;flex-direction:column;gap:8px">
@@ -10797,11 +10836,26 @@ const EVAL_SHEETS = {
 function _evalCsvUrl(cfg){
   return cfg.pubCsv || ('https://docs.google.com/spreadsheets/d/' + cfg.id + '/export?format=csv&gid=' + cfg.gid);
 }
+// Convierte las filas (array de arrays) en objetos {encabezado: valor} usando la fila 0 como encabezado.
+function _csvAObjetos(rows){
+  if(!rows || rows.length<2) return [];
+  const head = rows[0].map(h=>String(h||'').trim());
+  const out = [];
+  for(let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if(!r || r.every(c=>String(c||'').trim()==='')) continue;  // saltar vacías
+    const o = {};
+    head.forEach((h,j)=>{ o[h] = r[j]!=null ? r[j] : ''; });
+    out.push(o);
+  }
+  return out;
+}
 let satisfData = [];   // respuestas de satisfacción (R GC 19)
+let satisfHead = [];   // encabezados de la planilla de satisfacción
 let _evalLiveOK = false;
 
-// Convierte una fila del CSV (objeto por encabezado) en un registro de evaluación.
-// Es tolerante: busca columnas por palabra clave, porque los encabezados del form son largos.
+// Convierte una fila (objeto por encabezado) en un registro de evaluación.
+// Tolerante: busca columnas por palabra clave (los encabezados del form son largos).
 function _mapEvalRow(row){
   const keys = Object.keys(row);
   const find = (...terms) => {
@@ -10826,7 +10880,6 @@ function _mapEvalRow(row){
   const vals = Object.values(crit).filter(v=>v!=null);
   const prom = vals.length ? +(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2) : null;
   let fecha = find('marca','temporal') || find('fecha') || '';
-  // normalizar fecha dd/mm/yyyy → yyyy-mm-dd (para ordenar)
   const mf = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(fecha);
   if (mf) fecha = mf[3].padStart(4,'20') + '-' + mf[2].padStart(2,'0') + '-' + mf[1].padStart(2,'0');
   return Object.assign(crit, {
@@ -10836,15 +10889,14 @@ function _mapEvalRow(row){
   });
 }
 
-// Carga en vivo las respuestas de evaluación desde la planilla publicada.
 async function cargarEvalLive(){
   try{
     const url = _evalCsvUrl(EVAL_SHEETS.evaluacion);
     const r = await fetch(url, { cache:'no-store' });
     if(!r.ok) throw new Error('HTTP '+r.status);
     const txt = await r.text();
-    const rows = _parseCSV(txt);
-    const parsed = rows.map(_mapEvalRow).filter(e => e.promedio!=null && e.nombre && e.nombre!=='—');
+    const objs = _csvAObjetos(_parseCSV(txt));
+    const parsed = objs.map(_mapEvalRow).filter(e => e.promedio!=null && e.nombre && e.nombre!=='—');
     if(parsed.length){ evalData = parsed; _evalLiveOK = true; }
   }catch(e){ console.warn('cargarEvalLive:', e.message); _evalLiveOK = false; }
 }
@@ -10855,19 +10907,25 @@ async function _diagEvalColumnas(){
       const r = await fetch(_evalCsvUrl(cfg), { cache:'no-store' });
       if(!r.ok) return titulo+': ERROR HTTP '+r.status;
       const txt = await r.text();
-      const rows = _parseCSV(txt);
+      const rows = _parseCSV(txt);   // array de arrays [fila][celda]
       if(!rows.length) return titulo+': (sin filas)';
-      const cols = Object.keys(rows[0]);
-      return titulo+' ('+rows.length+' respuestas):\n' + cols.map((c,i)=>'  ['+(i+1)+'] '+c).join('\n');
+      let out = titulo+' ('+rows.length+' filas en total)\n';
+      // Mostrar las primeras 3 filas, celda por celda con su índice de columna
+      const nMostrar = Math.min(3, rows.length);
+      for(let f=0; f<nMostrar; f++){
+        out += '\n── FILA '+f+' '+(f===0?'(¿encabezados?)':'')+' ──\n';
+        rows[f].forEach((cel,i)=>{ out += '  ['+i+'] '+String(cel).slice(0,80)+'\n'; });
+      }
+      return out;
     }catch(e){ return titulo+': no se pudo leer ('+e.message+')'; }
   };
   const a = await leer(EVAL_SHEETS.evaluacion, 'R GC 17 - EVALUACION');
   const b = await leer(EVAL_SHEETS.satisfaccion, 'R GC 19 - SATISFACCION');
-  const txt = a + '\n\n' + b;
+  const txt = a + '\n\n════════════════════════\n\n' + b;
   console.log(txt);
-  const win = window.open('', '_blank', 'width=720,height=620');
+  const win = window.open('', '_blank', 'width=760,height=640');
   if(win){
-    win.document.write('<pre style="font-family:monospace;font-size:12px;white-space:pre-wrap;padding:16px;line-height:1.6">'
+    win.document.write('<pre style="font-family:monospace;font-size:11px;white-space:pre-wrap;padding:16px;line-height:1.5">'
       + txt.replace(/</g,'&lt;') + '</pre>');
   } else { alert(txt); }
 }
@@ -10879,7 +10937,9 @@ async function cargarSatisfLive(){
     const r = await fetch(url, { cache:'no-store' });
     if(!r.ok) throw new Error('HTTP '+r.status);
     const txt = await r.text();
-    satisfData = _parseCSV(txt);
+    const rows = _parseCSV(txt);
+    satisfHead = rows.length ? rows[0].map(h=>String(h||'').trim()) : [];
+    satisfData = _csvAObjetos(rows);
   }catch(e){ console.warn('cargarSatisfLive:', e.message); }
 }
 
@@ -11494,6 +11554,67 @@ function _renderEvalProvUI() {
       + '<td style="padding:8px 12px;text-align:center">'+(e.plazosEntrega||'—')+'</td>'
       + '</tr>';
   }).join('');
+}
+
+// ══ Pestañas de Evaluación: Resumen actual / Historial por año ══
+function _evalTab(t){
+  document.getElementById('epane-resumen').style.display = t==='resumen'?'':'none';
+  document.getElementById('epane-historial').style.display = t==='historial'?'':'none';
+  const tr=document.getElementById('etab-resumen'), th=document.getElementById('etab-historial');
+  tr.style.color = t==='resumen'?'var(--or)':'var(--muted)';
+  tr.style.borderBottomColor = t==='resumen'?'var(--or)':'transparent';
+  th.style.color = t==='historial'?'var(--or)':'var(--muted)';
+  th.style.borderBottomColor = t==='historial'?'var(--or)':'transparent';
+  if(t==='historial') _renderHistorialEval();
+}
+function _anioDe(e){ const m=/^(\d{4})/.exec(e.fecha||''); return m?m[1]:'Sin fecha'; }
+function _renderHistorialEval(){
+  if(!evalData.length) return;
+  const anios=[...new Set(evalData.map(_anioDe))].filter(a=>a!=='Sin fecha').sort((a,b)=>b-a);
+  const sel=document.getElementById('eval-anio-sel');
+  const prev=sel.value;
+  sel.innerHTML=anios.map(a=>'<option value="'+a+'">'+a+'</option>').join('');
+  if(prev && anios.includes(prev)) sel.value=prev;
+  const porAnio={};
+  evalData.forEach(e=>{ const a=_anioDe(e); if(a==='Sin fecha')return; (porAnio[a]=porAnio[a]||[]).push(e.promedio); });
+  const aniosAsc=Object.keys(porAnio).sort();
+  const promAnio=aniosAsc.map(a=>+(porAnio[a].reduce((s,v)=>s+v,0)/porAnio[a].length).toFixed(2));
+  _destroyChart('chart-hist-anios');
+  const cEvo=document.getElementById('chart-hist-anios');
+  if(cEvo) _provCharts['chart-hist-anios']=new Chart(cEvo,{
+    type:'line',
+    data:{labels:aniosAsc,datasets:[{label:'Promedio general',data:promAnio,borderColor:'#e85d25',backgroundColor:'rgba(232,93,37,.15)',fill:true,tension:.3,pointRadius:5,pointBackgroundColor:'#e85d25'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:0,max:10,ticks:{color:'#9ca3af'},grid:{color:'rgba(255,255,255,.05)'}},x:{ticks:{color:'#9ca3af'},grid:{display:false}}}}
+  });
+  _renderHistAnio();
+}
+function _renderHistAnio(){
+  const anio=document.getElementById('eval-anio-sel').value;
+  if(!anio)return;
+  const delAnio=evalData.filter(e=>_anioDe(e)===anio);
+  const porProv={};
+  delAnio.forEach(e=>{ (porProv[e.nombre]=porProv[e.nombre]||[]).push(e); });
+  const ranking=Object.entries(porProv).map(([nombre,evs])=>({
+    nombre, promedio:+(evs.reduce((s,e)=>s+e.promedio,0)/evs.length).toFixed(2),
+    fecha:evs.map(e=>e.fecha).sort().slice(-1)[0], n:evs.length
+  })).sort((a,b)=>b.promedio-a.promedio);
+  const avg=ranking.length?(delAnio.reduce((s,e)=>s+e.promedio,0)/delAnio.length).toFixed(2):'—';
+  document.getElementById('eval-hist-resumen').textContent=delAnio.length+' evaluaciones · '+ranking.length+' proveedores · promedio '+avg;
+  _destroyChart('chart-hist-ranking');
+  const cR=document.getElementById('chart-hist-ranking');
+  if(cR) _provCharts['chart-hist-ranking']=new Chart(cR,{
+    type:'bar',
+    data:{labels:ranking.map(r=>r.nombre.length>22?r.nombre.slice(0,22)+'…':r.nombre),datasets:[{data:ranking.map(r=>r.promedio),backgroundColor:ranking.map(r=>r.promedio>=9?'rgba(34,197,94,.8)':r.promedio>=8?'rgba(232,93,37,.8)':'rgba(234,179,8,.8)')}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{min:0,max:10,ticks:{color:'#9ca3af'},grid:{color:'rgba(255,255,255,.05)'}},y:{ticks:{color:'#9ca3af',font:{size:9}},grid:{display:false}}}}
+  });
+  document.getElementById('eval-hist-body').innerHTML=ranking.map(r=>{
+    const pColor=r.promedio>=9?'var(--green)':r.promedio>=8?'var(--or)':'var(--yellow)';
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      +'<td style="padding:8px 12px;font-weight:600">'+r.nombre+'</td>'
+      +'<td style="padding:8px 12px;text-align:center;font-size:11px;color:var(--muted)">'+(r.fecha||'—')+'</td>'
+      +'<td style="padding:8px 12px;text-align:center"><span style="font-weight:800;color:'+pColor+'">'+r.promedio+'</span></td>'
+      +'<td style="padding:8px 12px;text-align:center;color:var(--muted)">'+r.n+'</td></tr>';
+  }).join('')||'<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--muted)">Sin evaluaciones este año.</td></tr>';
 }
 
 function _destroyChart(id) {
