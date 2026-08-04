@@ -3055,6 +3055,23 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       😊 Evaluación Satisfacción de Proveedores <span style="font-size:16px">↗</span>
     </button>
   </div>
+  <!-- Enlaces a las respuestas de los formularios (planillas) -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;align-items:center">
+    <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Respuestas:</span>
+    <button onclick="window.open(EVAL_SHEETS.evaluacion.formUrl,'_blank')"
+      style="padding:8px 14px;border-radius:999px;border:1px solid var(--or);background:rgba(232,93,37,.06);color:var(--or);font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+      📊 Respuestas Evaluación (R GC 17) ↗
+    </button>
+    <button onclick="window.open(EVAL_SHEETS.satisfaccion.formUrl,'_blank')"
+      style="padding:8px 14px;border-radius:999px;border:1px solid #3b82f6;background:rgba(59,130,246,.06);color:#60a5fa;font-family:var(--ff);font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+      📊 Respuestas Satisfacción (R GC 19) ↗
+    </button>
+    <span id="eval-live-status" style="font-size:11px;color:var(--muted);margin-left:auto"></span>
+    <button onclick="refrescarEvalLive()" title="Actualizar datos desde las planillas"
+      style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer">🔄 Actualizar</button>
+    <button onclick="_diagEvalColumnas()" title="Ver los encabezados reales de las planillas"
+      style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer">🔍 Ver columnas</button>
+  </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px" id="eval-kpis"></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
     <div style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px">
@@ -10759,6 +10776,113 @@ const _SHEET_ID = '1XZ1jW4O8cRMMK-MQYrlUJtSyS2UgQ6Oo98qAXHRuHUI';
 const _SHEET_GID = '696441563';
 const _SHEET_EXPORT_FALLBACK = 'https://docs.google.com/spreadsheets/d/' + _SHEET_ID + '/export?format=csv&gid=' + _SHEET_GID;
 
+// ══ PLANILLAS DE EVALUACIÓN DE PROVEEDORES (respuestas de formularios) ══
+// R GC 17 — Evaluación de Proveedores | R GC 19 — Satisfacción de Proveedores
+// Para lectura en vivo conviene "Publicar en la web → CSV" y pegar esa URL /pub aquí.
+// El endpoint /export funciona si la planilla es "cualquiera con el enlace: Lector".
+const EVAL_SHEETS = {
+  evaluacion: {
+    id: '1iOMjqX0PUIqWv1Q_p2W8VLE5hpkqK4MkMf71NThf-WQ',
+    gid: '1439098478',
+    formUrl: 'https://docs.google.com/spreadsheets/d/1iOMjqX0PUIqWv1Q_p2W8VLE5hpkqK4MkMf71NThf-WQ/edit?gid=1439098478',
+    pubCsv: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQbjdntH7LP7XMdOt2HPH8bucE7ivNrzKwLE8AWucZbL-VbdIK6e8QB8WK5cRyIeGJZQ-ozXIkq8hYK/pub?gid=1439098478&single=true&output=csv'
+  },
+  satisfaccion: {
+    id: '1RjTFFCo_ddBAJQd7JPFr-qsTnHqPWT-tR-zAWzsdYHs',
+    gid: '2062877697',
+    formUrl: 'https://docs.google.com/spreadsheets/d/1RjTFFCo_ddBAJQd7JPFr-qsTnHqPWT-tR-zAWzsdYHs/edit?gid=2062877697',
+    pubCsv: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHFTKyB1d14vknNBeecsYsAKD6b9hbnZSNcyrBpstX9XJIA06SaZbxd76zqPfXk6_xA4voPG33De1j/pub?gid=2062877697&single=true&output=csv'
+  }
+};
+function _evalCsvUrl(cfg){
+  return cfg.pubCsv || ('https://docs.google.com/spreadsheets/d/' + cfg.id + '/export?format=csv&gid=' + cfg.gid);
+}
+let satisfData = [];   // respuestas de satisfacción (R GC 19)
+let _evalLiveOK = false;
+
+// Convierte una fila del CSV (objeto por encabezado) en un registro de evaluación.
+// Es tolerante: busca columnas por palabra clave, porque los encabezados del form son largos.
+function _mapEvalRow(row){
+  const keys = Object.keys(row);
+  const find = (...terms) => {
+    for (const k of keys){ const kl = k.toLowerCase(); if (terms.every(t=>kl.includes(t))) return row[k]; }
+    return '';
+  };
+  const numOf = v => { const n = parseFloat(String(v).replace(',','.').replace(/[^0-9.]/g,'')); return isNaN(n)?null:n; };
+  const crit = {
+    reputacion: numOf(find('reputaci')),
+    precio: numOf(find('precio')),
+    formaPago: numOf(find('forma','pago')),
+    plazosPago: numOf(find('plazo','pago')),
+    atencion: numOf(find('atenci')),
+    cumplProductos: numOf(find('cumpl')),
+    adaptacion: numOf(find('adapta')),
+    reclamos: numOf(find('reclamo')),
+    calidad: numOf(find('calidad')),
+    plazosEntrega: numOf(find('plazo','entrega')),
+    postventa: numOf(find('post')),
+    alineacion: numOf(find('alinea'))
+  };
+  const vals = Object.values(crit).filter(v=>v!=null);
+  const prom = vals.length ? +(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2) : null;
+  let fecha = find('marca','temporal') || find('fecha') || '';
+  // normalizar fecha dd/mm/yyyy → yyyy-mm-dd (para ordenar)
+  const mf = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(fecha);
+  if (mf) fecha = mf[3].padStart(4,'20') + '-' + mf[2].padStart(2,'0') + '-' + mf[1].padStart(2,'0');
+  return Object.assign(crit, {
+    nombre: (find('proveedor') || find('razón') || find('razon') || find('empresa') || '—').trim(),
+    email: find('correo') || find('mail') || '',
+    fecha, promedio: prom
+  });
+}
+
+// Carga en vivo las respuestas de evaluación desde la planilla publicada.
+async function cargarEvalLive(){
+  try{
+    const url = _evalCsvUrl(EVAL_SHEETS.evaluacion);
+    const r = await fetch(url, { cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const txt = await r.text();
+    const rows = _parseCSV(txt);
+    const parsed = rows.map(_mapEvalRow).filter(e => e.promedio!=null && e.nombre && e.nombre!=='—');
+    if(parsed.length){ evalData = parsed; _evalLiveOK = true; }
+  }catch(e){ console.warn('cargarEvalLive:', e.message); _evalLiveOK = false; }
+}
+// Diagnóstico: muestra los encabezados reales de ambas planillas publicadas.
+async function _diagEvalColumnas(){
+  const leer = async (cfg, titulo) => {
+    try{
+      const r = await fetch(_evalCsvUrl(cfg), { cache:'no-store' });
+      if(!r.ok) return titulo+': ERROR HTTP '+r.status;
+      const txt = await r.text();
+      const rows = _parseCSV(txt);
+      if(!rows.length) return titulo+': (sin filas)';
+      const cols = Object.keys(rows[0]);
+      return titulo+' ('+rows.length+' respuestas):\n' + cols.map((c,i)=>'  ['+(i+1)+'] '+c).join('\n');
+    }catch(e){ return titulo+': no se pudo leer ('+e.message+')'; }
+  };
+  const a = await leer(EVAL_SHEETS.evaluacion, 'R GC 17 - EVALUACION');
+  const b = await leer(EVAL_SHEETS.satisfaccion, 'R GC 19 - SATISFACCION');
+  const txt = a + '\n\n' + b;
+  console.log(txt);
+  const win = window.open('', '_blank', 'width=720,height=620');
+  if(win){
+    win.document.write('<pre style="font-family:monospace;font-size:12px;white-space:pre-wrap;padding:16px;line-height:1.6">'
+      + txt.replace(/</g,'&lt;') + '</pre>');
+  } else { alert(txt); }
+}
+
+// Carga en vivo las respuestas de satisfacción.
+async function cargarSatisfLive(){
+  try{
+    const url = _evalCsvUrl(EVAL_SHEETS.satisfaccion);
+    const r = await fetch(url, { cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const txt = await r.text();
+    satisfData = _parseCSV(txt);
+  }catch(e){ console.warn('cargarSatisfLive:', e.message); }
+}
+
 // ── Carga desde Supabase (keyset por id, igual patrón que compras_proveedor) ──
 async function cargarDetalleSB() {
   try {
@@ -11287,7 +11411,28 @@ function limpiarFiltrosDetCamp() {
 // ── EVALUACIÓN DE PROVEEDORES ──
 const EVAL_CRITERIOS = {reputacion:'Reputación',precio:'Precio',formaPago:'Forma de pago',plazosPago:'Plazos de pago',atencion:'Atención',cumplProductos:'Cumpl. productos',adaptacion:'Adaptación',reclamos:'Reclamos',calidad:'Calidad',plazosEntrega:'Plazos entrega',postventa:'Post-venta',alineacion:'Alineación'};
 
+let _evalLiveLoaded = false;
+async function refrescarEvalLive(){
+  const st = document.getElementById('eval-live-status');
+  if(st) st.textContent = '⏳ Actualizando desde las planillas...';
+  await Promise.all([cargarEvalLive(), cargarSatisfLive()]);
+  _evalLiveLoaded = true;
+  if(st){
+    if(_evalLiveOK){
+      const now = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      st.innerHTML = '<span style="color:var(--green)">● En vivo</span> · '+evalData.length+' evaluaciones · '+now;
+    } else {
+      st.innerHTML = '<span style="color:var(--yellow)">● Datos locales</span> · publicá la planilla para ver en vivo';
+    }
+  }
+  _renderEvalProvUI();
+}
 function renderEvalProv() {
+  // Primera vez: intentar cargar en vivo; si falla, usa los datos locales.
+  if(!_evalLiveLoaded){ refrescarEvalLive(); }
+  _renderEvalProvUI();
+}
+function _renderEvalProvUI() {
   if (!evalData.length) return;
   // Aggregate latest eval per provider (use most recent by fecha)
   const latest = {};
