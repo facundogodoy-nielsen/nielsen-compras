@@ -367,8 +367,8 @@
   <section id="tab-proveedores" style="display:none">
     <div class="card">
       <h2>🏭 Proveedores
-        <button class="btn sm" id="btn-import-cc" style="margin-left:auto;background:#2f9e6b">⬇️ Importar desde Base de Datos</button>
-        <button class="btn sm" id="btn-add-prov">+ Nuevo proveedor</button>
+        <button class="btn sm" id="btn-import-cc" style="margin-left:auto;background:#2f9e6b;display:none">⬇️ Importar desde Base de Datos</button>
+        <button class="btn sm" id="btn-add-prov" style="display:none">+ Nuevo proveedor</button>
       </h2>
       <div class="body">
         <div class="picker-hint" id="hint-picker" style="display:none">📍 Modo selección: hacé clic en el mapa de la pestaña "Recorrido" para fijar la ubicación, o cargá lat/long manualmente.</div>
@@ -383,7 +383,7 @@
   <!-- ===================== VEHICULOS ===================== -->
   <section id="tab-vehiculos" style="display:none">
     <div class="card">
-      <h2>🚗 Vehículos <button class="btn sm" id="btn-add-veh" style="margin-left:auto">+ Nuevo vehículo</button></h2>
+      <h2>🚗 Vehículos <button class="btn sm" id="btn-add-veh" style="margin-left:auto;display:none">+ Nuevo vehículo</button></h2>
       <div class="body">
         <table id="tabla-veh">
           <thead><tr><th>Patente</th><th>Descripción</th><th>Tipo</th><th>Consumo (L/100km)</th><th></th></tr></thead>
@@ -396,7 +396,7 @@
   <!-- ===================== CHOFERES ===================== -->
   <section id="tab-choferes" style="display:none">
     <div class="card">
-      <h2>👤 Choferes <button class="btn sm" id="btn-add-cho" style="margin-left:auto">+ Nuevo chofer</button></h2>
+      <h2>👤 Choferes <button class="btn sm" id="btn-add-cho" style="margin-left:auto;display:none">+ Nuevo chofer</button></h2>
       <div class="body">
         <table id="tabla-cho">
           <thead><tr><th>Nombre</th><th>Licencia / Nº</th><th>Teléfono</th><th></th></tr></thead>
@@ -445,6 +445,53 @@ const KEY = 'nielsen_recorridos_v1';
 const REC_SB_URL = 'https://qivvewvgqlsptydftlhx.supabase.co';
 const REC_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
 const REC_ROW_ID = 'nielsen-recorridos-v1';
+
+// ══ MODO EDITOR (PIN 1102) — habilita eliminar/editar/importar/mapa ══
+let _modoEditor = false;
+function esEditor(){ return _modoEditor; }
+function toggleModoEditor(){
+  if(_modoEditor){
+    _modoEditor = false;
+    _aplicarModoEditor();
+    return;
+  }
+  const pin = prompt('🔑 Ingresá el PIN de Modo Editor:');
+  if(pin === null) return;
+  if(String(pin).trim() !== '1102'){ alert('🔒 PIN incorrecto.'); return; }
+  _modoEditor = true;
+  _aplicarModoEditor();
+}
+function _aplicarModoEditor(){
+  const badge = document.getElementById('rec-editor-badge');
+  const icon = document.getElementById('rec-editor-icon');
+  const txt = document.getElementById('rec-editor-text');
+  if(badge){
+    if(_modoEditor){
+      badge.style.background = 'rgba(34,197,94,.18)';
+      badge.style.borderColor = 'rgba(34,197,94,.5)';
+      badge.style.color = '#7ee2a4';
+      icon.textContent = '✏️'; txt.textContent = 'Modo Editor';
+    } else {
+      badge.style.background = 'rgba(255,255,255,.08)';
+      badge.style.borderColor = 'rgba(255,255,255,.18)';
+      badge.style.color = '#cfd3da';
+      icon.textContent = '🔒'; txt.textContent = 'Solo lectura';
+    }
+  }
+  // Re-renderizar las secciones que tienen botones protegidos
+  if(typeof renderHistorial==='function') renderHistorial();
+  if(typeof renderProv==='function') renderProv();
+  if(typeof renderVeh==='function') renderVeh();
+  if(typeof renderCho==='function') renderCho();
+  // Botón importar desde base de datos
+  const bimp = document.getElementById('btn-import-cc');
+  if(bimp) bimp.style.display = _modoEditor ? '' : 'none';
+  // Botones "+ Nuevo" de proveedor/vehículo/chofer
+  ['btn-add-prov','btn-add-veh','btn-add-cho'].forEach(id=>{
+    const b = document.getElementById(id);
+    if(b) b.style.display = _modoEditor ? '' : 'none';
+  });
+}
 let _recSaveTimer = null;
 function _recSetStatus(txt, col){
   const el = document.getElementById('rec-sync-status');
@@ -1284,7 +1331,7 @@ function renderHistorial(){
         <td style="white-space:nowrap">
           <button class="btn sm" onclick="cargarDatosChofer('${r.id}')" title="Cargar datos reales del recorrido" style="background:#2f9e6b">✏️</button>
           <button class="btn gray sm" onclick="consultarRecorrido('${r.id}')" title="Ver detalle completo">👁</button>
-          <button class="btn danger sm" onclick="delRec('${r.id}')" title="Eliminar">✕</button>
+          <button class="btn danger sm" onclick="delRec('${r.id}')" title="Eliminar" style="${esEditor()?'':'display:none'}">✕</button>
         </td>
       </tr>`;
     }).join('');
@@ -1406,7 +1453,7 @@ function _barrasDobles(series, unidad){
         <span class="muted" style="margin-left:auto">Unidad: ${unidad}</span>
       </div>`;
 }
-function delRec(id){ if(confirm('¿Eliminar recorrido?')){ DB.historial=DB.historial.filter(r=>r.id!==id); _recItemDelete(id); renderHistorial(); } }
+function delRec(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar recorrido?')){ DB.historial=DB.historial.filter(r=>r.id!==id); _recItemDelete(id); renderHistorial(); } }
 
 // ══════════════════════════════════════════════════════════════
 // CARGA DE DATOS REALES POR EL CHOFER (sobre un recorrido del historial)
@@ -1874,9 +1921,10 @@ function renderProv(){
     <td class="muted">${horarioTxt(p)||'—'}</td>
     <td class="muted">${p.lat!=null?`${p.lat}, ${p.lng}`:'<span style="color:#fca5a5">sin ubicar</span>'}</td>
     <td style="white-space:nowrap">
-      <button class="btn ghost sm" onclick="pickCoord('${p.id}')">📍 Mapa</button>
-      <button class="btn gray sm" onclick="editProv('${p.id}')">✎</button>
-      <button class="btn danger sm" onclick="delProv('${p.id}')">✕</button>
+      <button class="btn ghost sm" onclick="pickCoord('${p.id}')" style="${esEditor()?'':'display:none'}">📍 Mapa</button>
+      <button class="btn gray sm" onclick="editProv('${p.id}')" style="${esEditor()?'':'display:none'}">✎</button>
+      <button class="btn danger sm" onclick="delProv('${p.id}')" style="${esEditor()?'':'display:none'}">✕</button>
+      <span class="muted" style="${esEditor()?'display:none':''};font-size:11px">—</span>
     </td></tr>`).join('');
   renderListaAgregar(document.getElementById('buscar-prov').value);
 }
@@ -2071,14 +2119,14 @@ function renderVeh(){
   const tb=document.querySelector('#tabla-veh tbody');
   tb.innerHTML=DB.vehiculos.map(v=>`<tr>
     <td><b>${v.patente}</b></td><td>${v.desc}</td><td>${v.tipo}</td><td>${v.consumo}</td>
-    <td><button class="btn gray sm" onclick="editVeh('${v.id}')">✎</button> <button class="btn danger sm" onclick="delVeh('${v.id}')">✕</button></td>
+    <td><button class="btn gray sm" onclick="editVeh('${v.id}')" style="${esEditor()?'':'display:none'}">✎</button> <button class="btn danger sm" onclick="delVeh('${v.id}')" style="${esEditor()?'':'display:none'}">✕</button><span class="muted" style="${esEditor()?'display:none':''};font-size:11px">—</span></td>
   </tr>`).join('');
 }
 function renderCho(){
   const tb=document.querySelector('#tabla-cho tbody');
   tb.innerHTML=DB.choferes.map(c=>`<tr>
     <td><b>${c.nombre}</b></td><td>${c.lic||''}</td><td>${c.tel||''}</td>
-    <td><button class="btn gray sm" onclick="editCho('${c.id}')">✎</button> <button class="btn danger sm" onclick="delCho('${c.id}')">✕</button></td>
+    <td><button class="btn gray sm" onclick="editCho('${c.id}')" style="${esEditor()?'':'display:none'}">✎</button> <button class="btn danger sm" onclick="delCho('${c.id}')" style="${esEditor()?'':'display:none'}">✕</button><span class="muted" style="${esEditor()?'display:none':''};font-size:11px">—</span></td>
   </tr>`).join('');
 }
 
@@ -2095,6 +2143,7 @@ document.getElementById('modal-save').onclick=()=>{ if(modalSave) modalSave(); }
 function mval(id){ return document.getElementById(id).value.trim(); }
 
 function editProv(id){
+  if(!esEditor()){ alert('🔒 Activá el Modo Editor para editar.'); return; }
   const p=id?DB.proveedores.find(x=>x.id===id):{nombre:'',rubro:'',dir:'',lat:'',lng:'',hm1:'',hm2:'',ht1:'',ht2:''};
   const esCorrido = !!p.corrido;
   openModal(id?'Editar proveedor':'Nuevo proveedor', `
@@ -2151,9 +2200,10 @@ function _toggleCorrido(){
   if(bp) bp.style.display = on ? 'none' : '';
   if(bc) bc.style.display = on ? '' : 'none';
 }
-function delProv(id){ if(confirm('¿Eliminar proveedor?')){ DB.proveedores=DB.proveedores.filter(x=>x.id!==id); ruta=ruta.filter(s=>s.id!==id); save(); renderProv(); renderAgenda(); drawMap(); updateEstimado(); } }
+function delProv(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar proveedor?')){ DB.proveedores=DB.proveedores.filter(x=>x.id!==id); ruta=ruta.filter(s=>s.id!==id); save(); renderProv(); renderAgenda(); drawMap(); updateEstimado(); } }
 
 function editVeh(id){
+  if(!esEditor()){ alert('🔒 Activá el Modo Editor para editar.'); return; }
   const v=id?DB.vehiculos.find(x=>x.id===id):{patente:'',desc:'',tipo:'Utilitario',consumo:9};
   openModal(id?'Editar vehículo':'Nuevo vehículo', `
     <label>Patente</label><input type="text" id="m-pat" value="${v.patente}">
@@ -2167,9 +2217,10 @@ function editVeh(id){
     save(true); renderVeh(); fillSelects(); closeModal();
   });
 }
-function delVeh(id){ if(confirm('¿Eliminar vehículo?')){ DB.vehiculos=DB.vehiculos.filter(x=>x.id!==id); save(true); renderVeh(); fillSelects(); } }
+function delVeh(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar vehículo?')){ DB.vehiculos=DB.vehiculos.filter(x=>x.id!==id); save(true); renderVeh(); fillSelects(); } }
 
 function editCho(id){
+  if(!esEditor()){ alert('🔒 Activá el Modo Editor para editar.'); return; }
   const c=id?DB.choferes.find(x=>x.id===id):{nombre:'',lic:'',tel:''};
   openModal(id?'Editar chofer':'Nuevo chofer', `
     <label>Nombre</label><input type="text" id="m-cnom" value="${c.nombre}">
@@ -2182,7 +2233,7 @@ function editCho(id){
     save(true); renderCho(); fillSelects(); closeModal();
   });
 }
-function delCho(id){ if(confirm('¿Eliminar chofer?')){ DB.choferes=DB.choferes.filter(x=>x.id!==id); save(); renderCho(); fillSelects(); } }
+function delCho(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar chofer?')){ DB.choferes=DB.choferes.filter(x=>x.id!==id); save(); renderCho(); fillSelects(); } }
 
 /* ============================ TABS ============================ */
 function switchTab(name){
@@ -2220,7 +2271,7 @@ document.getElementById('btn-compartir').onclick=compartirRecorrido;
 document.getElementById('share-copy').onclick=copiarShare;
 document.getElementById('btn-limpiar').onclick=limpiarRecorrido;
 document.getElementById('btn-add-prov').onclick=()=>editProv(null);
-document.getElementById('btn-import-cc').onclick=importarProveedoresCC;
+document.getElementById('btn-import-cc').onclick=function(){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para importar.'); return; } importarProveedoresCC(); };
 document.getElementById('btn-add-veh').onclick=()=>editVeh(null);
 document.getElementById('btn-add-cho').onclick=()=>editCho(null);
 
