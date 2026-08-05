@@ -42,8 +42,12 @@
     <div class="warn">
       ⚠️ <b>Importante:</b> esta herramienta solo ve las SC guardadas en <b>ESTE dispositivo/navegador</b>. Si una SC se cargó desde otro celular o PC, tenés que abrir esta página <b>desde ese mismo dispositivo</b> para recuperarla.
     </div>
-    <div style="margin-top:14px">
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <button class="btn" onclick="analizar()" id="btn-analizar">🔍 Analizar SC locales vs. nube</button>
+      <span class="muted" style="font-size:12px">— o —</span>
+      <label class="btn ghost" style="cursor:pointer">📂 Cargar desde archivo de respaldo (.json)
+        <input type="file" accept=".json" onchange="cargarDesdeArchivo(this)" style="display:none">
+      </label>
     </div>
     <div id="estado" class="muted" style="margin-top:12px;font-size:13px"></div>
   </div>
@@ -93,43 +97,56 @@ async function _sbTraerNums(){
 async function analizar(){
   const est = document.getElementById('estado');
   const btn = document.getElementById('btn-analizar'); btn.disabled = true;
-  est.textContent = 'Leyendo SC locales y consultando la nube...';
+  est.textContent = 'Leyendo SC locales de este navegador...';
   try{
-    // 1) SC locales de este navegador
     try { _locales = JSON.parse(localStorage.getItem('nielsen_scs_2026') || '[]'); } catch(e){ _locales = []; }
     if(!Array.isArray(_locales)) _locales = [];
-
-    // 2) N° de SC que ya están en la nube
-    const enNube = await _sbTraerNums();
-
-    // 3) cuáles faltan
-    _faltantes = _locales.filter(sc => sc.numSC && !enNube.has(normSC(sc.numSC)));
-
-    // render
-    document.getElementById('card-resultado').style.display = 'block';
-    const tb = document.querySelector('#tabla tbody');
-    tb.innerHTML = _locales.map(sc=>{
-      const falta = sc.numSC && !enNube.has(normSC(sc.numSC));
-      return '<tr>'
-        + '<td class="mono">'+(sc.numSC||'—')+'</td>'
-        + '<td class="mono">'+(sc.numOP||'—')+'</td>'
-        + '<td>'+(sc.solicitante||'—')+'</td>'
-        + '<td>'+(sc.area||'—')+(sc.subarea?(' / '+sc.subarea):'')+'</td>'
-        + '<td>'+(falta?'<span class="badge b-falta">⚠️ Falta subir</span>':'<span class="badge b-ok">✔️ Ya está</span>')+'</td>'
-        + '</tr>';
-    }).join('') || '<tr><td colspan="5" class="muted" style="padding:14px">No hay SC guardadas en este navegador.</td></tr>';
-
-    document.getElementById('resumen').innerHTML = _faltantes.length
-      ? '<div class="warn">Se encontraron <b>'+_faltantes.length+'</b> SC que están en este dispositivo pero <b>no</b> en la nube. Podés subirlas abajo.</div>'
-      : '<div class="ok">✔️ Todas las SC de este dispositivo ya están en la nube. No falta nada por recuperar.</div>';
-
-    document.getElementById('btn-subir').disabled = _faltantes.length === 0;
-    est.textContent = _locales.length + ' SC locales · ' + _faltantes.length + ' faltan en la nube.';
+    await _compararConNube(est);
   }catch(e){
     est.innerHTML = '<span style="color:var(--red)">Error: '+e.message+'</span>';
   }finally{
     btn.disabled = false;
   }
+}
+
+function cargarDesdeArchivo(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const est = document.getElementById('estado');
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try{
+      const data = JSON.parse(reader.result);
+      _locales = Array.isArray(data) ? data : (data.cambios || []);
+      if(!Array.isArray(_locales) || !_locales.length){ est.innerHTML='<span style="color:var(--red)">El archivo no tiene SC válidas.</span>'; return; }
+      est.textContent = 'Archivo cargado: '+_locales.length+' SC. Comparando con la nube...';
+      await _compararConNube(est);
+    }catch(e){ est.innerHTML = '<span style="color:var(--red)">No se pudo leer el archivo: '+e.message+'</span>'; }
+  };
+  reader.readAsText(file);
+  input.value='';
+}
+
+async function _compararConNube(est){
+  const enNube = await _sbTraerNums();
+  _faltantes = _locales.filter(sc => sc.numSC && !enNube.has(normSC(sc.numSC)));
+  document.getElementById('card-resultado').style.display = 'block';
+  const tb = document.querySelector('#tabla tbody');
+  tb.innerHTML = _locales.map(sc=>{
+    const falta = sc.numSC && !enNube.has(normSC(sc.numSC));
+    return '<tr>'
+      + '<td class="mono">'+(sc.numSC||'—')+'</td>'
+      + '<td class="mono">'+(sc.numOP||'—')+'</td>'
+      + '<td>'+(sc.solicitante||'—')+'</td>'
+      + '<td>'+(sc.area||'—')+(sc.subarea?(' / '+sc.subarea):'')+'</td>'
+      + '<td>'+(falta?'<span class="badge b-falta">⚠️ Falta subir</span>':'<span class="badge b-ok">✔️ Ya está</span>')+'</td>'
+      + '</tr>';
+  }).join('') || '<tr><td colspan="5" class="muted" style="padding:14px">No hay SC.</td></tr>';
+  document.getElementById('resumen').innerHTML = _faltantes.length
+    ? '<div class="warn">Se encontraron <b>'+_faltantes.length+'</b> SC que <b>no</b> están en la nube. Podés subirlas abajo.</div>'
+    : '<div class="ok">✔️ Todas las SC ya están en la nube. No falta nada por recuperar.</div>';
+  document.getElementById('btn-subir').disabled = _faltantes.length === 0;
+  est.textContent = _locales.length + ' SC · ' + _faltantes.length + ' faltan en la nube.';
 }
 
 function descargarLocal(){
@@ -174,11 +191,10 @@ function _aFilaSB(sc){
 
 async function subirFaltantes(){
   if(!_faltantes.length) return;
-  if(!confirm('Vas a subir '+_faltantes.length+' SC a la nube.\n\n¿Descargaste el respaldo? Continuar?')) return;
-  descargarLocal();  // respaldo automático
+  if(!confirm('Vas a subir '+_faltantes.length+' SC a la nube.\n\nContinuar?')) return;
   const est = document.getElementById('estado-subir');
   const btn = document.getElementById('btn-subir'); btn.disabled = true;
-  let ok=0, fail=0;
+  let ok=0, fail=0; const errores=[];
   for(let i=0;i<_faltantes.length;i++){
     const sc = _faltantes[i];
     est.innerHTML = '<div class="muted">Subiendo '+(i+1)+' de '+_faltantes.length+'... ('+sc.numSC+')</div>';
@@ -188,12 +204,23 @@ async function subirFaltantes(){
         headers:{ 'Content-Type':'application/json', apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, Prefer:'return=minimal' },
         body: JSON.stringify(_aFilaSB(sc))
       });
-      if(!r.ok){ const t=await r.text(); console.error('fallo', sc.numSC, t); throw new Error('HTTP '+r.status); }
+      if(!r.ok){
+        const t = await r.text();
+        errores.push('• '+sc.numSC+': HTTP '+r.status+' → '+t.slice(0,180));
+        throw new Error('HTTP '+r.status);
+      }
       ok++;
-    }catch(e){ fail++; }
+    }catch(e){ fail++; if(errores.length<20 && !errores.some(x=>x.startsWith('• '+sc.numSC))) errores.push('• '+sc.numSC+': '+e.message); }
   }
-  est.innerHTML = '<div class="ok">✅ Terminado. Subidas: '+ok+(fail?(' · <span style="color:var(--red)">Errores: '+fail+'</span>'):'')+'</div>'
-    + '<div class="muted" style="margin-top:6px;font-size:12px">Abrí el Centro de Control y refrescá (Ctrl+Shift+R) para verlas.</div>';
+  let html = '<div class="'+(fail?'warn':'ok')+'">'+(fail?'⚠️':'✅')+' Terminado. Subidas: '+ok+(fail?(' · Errores: '+fail):'')+'</div>';
+  if(fail){
+    html += '<div style="margin-top:8px;font-size:11px;font-family:monospace;background:#0d1017;border:1px solid var(--border);border-radius:8px;padding:10px;white-space:pre-wrap;max-height:220px;overflow:auto;color:#f4d160">'
+      + errores.join('\n').replace(/</g,'&lt;') + '</div>';
+  } else {
+    html += '<div class="muted" style="margin-top:6px;font-size:12px">Abrí el Centro de Control y refrescá (Ctrl+Shift+R) para verlas.</div>';
+  }
+  est.innerHTML = html;
+  btn.disabled = false;
 }
 </script>
 </body>
