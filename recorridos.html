@@ -491,12 +491,30 @@ async function cargarDesdeNube(){
       ['vehiculos','choferes','proveedores','historial'].forEach(k=>{ if(!Array.isArray(DB[k])) DB[k]=[]; });
       if(!DB.base) DB.base = DEFAULTS.base;
       if(!DB.cfg)  DB.cfg  = DEFAULTS.cfg;
-      _recSetStatus('✅ Sincronizado', '#22c55e');
     } else {
       DB = JSON.parse(JSON.stringify(DEFAULTS));
       await _recPush();
-      _recSetStatus('✅ Sincronizado', '#22c55e');
     }
+
+    // ── HISTORIAL: cargar desde las filas individuales (fuente de verdad) ──
+    let items = [];
+    try { items = await _recItemsFetchAll(); }
+    catch(e){ console.warn('fetch items', e); items = null; }
+
+    if(items !== null){
+      // Migración automática: si el JSON viejo tiene recorridos que aún no están
+      // como fila individual, subirlos una vez (sin pisar nada).
+      const idsEnItems = new Set(items.map(x=>x && x.id).filter(Boolean));
+      const porMigrar = (DB.historial||[]).filter(rec => rec && rec.id && !idsEnItems.has(rec.id));
+      if(porMigrar.length){
+        _recSetStatus('⏳ Migrando '+porMigrar.length+' recorrido(s)...', 'var(--muted)');
+        for(const rec of porMigrar){ await _recItemUpsert(rec); items.push(rec); }
+      }
+      // El historial ahora sale de las filas individuales
+      items.sort((a,b)=> String(b.fecha||'').localeCompare(String(a.fecha||'')));
+      DB.historial = items;
+    }
+    _recSetStatus('✅ Sincronizado', '#22c55e');
   }catch(e){
     console.warn('cargar recorridos', e);
     _recSetStatus('⚠️ Sin conexion con la nube', '#eab308');
@@ -524,6 +542,56 @@ async function _recPush(){
     console.warn('guardar recorridos', e);
     _recSetStatus('⚠️ No se pudo guardar', '#ef4444');
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// HISTORIAL POR FILA — cada recorrido es su propio registro.
+// Guardar/editar un recorrido = upsert de UNA fila (nunca pisa las demás).
+// ══════════════════════════════════════════════════════════════
+async function _recItemUpsert(rec){
+  if(!rec || !rec.id) return false;
+  try{
+    const r = await fetch(REC_SB_URL + '/rest/v1/recorridos_items?on_conflict=id', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', apikey:REC_SB_KEY, Authorization:'Bearer '+REC_SB_KEY,
+                Prefer:'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ id:rec.id, codigo:rec.codigo||'', fecha:rec.fecha||'', data:rec, updated_at:new Date().toISOString() })
+    });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return true;
+  }catch(e){ console.warn('guardar recorrido item', e); return false; }
+}
+async function _recItemDelete(id){
+  if(!id) return false;
+  try{
+    const r = await fetch(REC_SB_URL + '/rest/v1/recorridos_items?id=eq.' + encodeURIComponent(id), {
+      method:'DELETE', headers:{ apikey:REC_SB_KEY, Authorization:'Bearer '+REC_SB_KEY, Prefer:'return=minimal' }
+    });
+    return r.ok;
+  }catch(e){ console.warn('borrar recorrido item', e); return false; }
+}
+// Trae TODOS los recorridos (filas individuales), ordenados por fecha desc.
+async function _recItemsFetchAll(){
+  const out = [];
+  const PAGE = 1000;
+  for(let g=0; g<20; g++){
+    const r = await fetch(REC_SB_URL + '/rest/v1/recorridos_items?select=data&order=fecha.desc&limit='+PAGE+'&offset='+(g*PAGE),
+      { headers:{ apikey:REC_SB_KEY, Authorization:'Bearer '+REC_SB_KEY }, cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    if(!rows.length) break;
+    rows.forEach(x=>{ if(x.data) out.push(x.data); });
+    if(rows.length < PAGE) break;
+  }
+  return out;
+}
+// Guarda un recorrido en su fila Y en el historial local (para respuesta inmediata).
+async function guardarRecorridoItem(rec){
+  const ok = await _recItemUpsert(rec);
+  // reflejar en memoria: reemplazar si existe, sino agregar al principio
+  const i = DB.historial.findIndex(x=>x.id===rec.id);
+  if(i>=0) DB.historial[i] = rec; else DB.historial.unshift(rec);
+  return ok;
 }
 function uid(){ return 'x'+Math.random().toString(36).slice(2,8); }
 
@@ -1082,7 +1150,9 @@ function guardarRecorrido(){
     salida, regreso, cfg:cfg(),
     estado:'ENVIADO', creado:new Date().toISOString()
   };
-  DB.historial.unshift(rec); save(); renderHistorial();
+  DB.historial.unshift(rec);
+  guardarRecorridoItem(rec);        // guarda ESTE recorrido en su fila (no pisa las demás)
+  renderHistorial();
   limpiarRecorrido();   // dejar la pantalla lista para el próximo
   // Ofrecer compartir el recorrido recién guardado con el chofer
   if(confirm('Recorrido '+rec.codigo+' guardado en el historial ✔\n\n¿Querés compartirlo con el chofer por WhatsApp ahora?')){
@@ -1336,7 +1406,7 @@ function _barrasDobles(series, unidad){
         <span class="muted" style="margin-left:auto">Unidad: ${unidad}</span>
       </div>`;
 }
-function delRec(id){ if(confirm('¿Eliminar recorrido?')){ DB.historial=DB.historial.filter(r=>r.id!==id); save(); renderHistorial(); } }
+function delRec(id){ if(confirm('¿Eliminar recorrido?')){ DB.historial=DB.historial.filter(r=>r.id!==id); _recItemDelete(id); renderHistorial(); } }
 
 // ══════════════════════════════════════════════════════════════
 // CARGA DE DATOS REALES POR EL CHOFER (sobre un recorrido del historial)
@@ -1391,7 +1461,7 @@ function _guardarDatosChofer(){
   // Solo se considera COMPLETADO cuando hay hora de regreso cargada.
   r.estado = r.regreso ? 'COMPLETADO' : 'EN_CURSO';
   r.actualizado = new Date().toISOString();
-  save(); renderHistorial(); closeModal();
+  guardarRecorridoItem(r); renderHistorial(); closeModal();
   alert(r.regreso
     ? '✅ Recorrido completado. Todos los datos quedaron registrados.'
     : 'Datos guardados. El recorrido queda EN CURSO hasta que cargues la hora de regreso.');
@@ -1631,7 +1701,7 @@ async function recalcularConRetorno(id){
   r.estMin=estMin;
   r.estLitros=estLitros;
   r.retornoIncluido=true;
-  save(); renderHistorial();
+  guardarRecorridoItem(r); renderHistorial();
   consultarRecorrido(id);   // refrescar el detalle
   alert('✅ Recalculado con retorno ('+metodo+').\n\nAntes: '+kmAntes+' km\nAhora: '+r.estKm+' km (incluye la vuelta al punto final).');
 }
@@ -1746,7 +1816,7 @@ function _confirmarAgregarProv(){
     }
   }
   r.tieneExtras=true;
-  save(); renderHistorial();
+  guardarRecorridoItem(r); renderHistorial();
   consultarRecorrido(_apRecId);
   if(typeof toast!=='undefined'&&toast) toast('Proveedor agregado (fuera del plan)');
 }
