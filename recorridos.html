@@ -375,6 +375,11 @@
       </h2>
       <div class="body">
         <div class="picker-hint" id="hint-picker" style="display:none">📍 Modo selección: hacé clic en el mapa de la pestaña "Recorrido" para fijar la ubicación, o cargá lat/long manualmente.</div>
+        <div style="position:relative;margin-bottom:12px">
+          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.5;font-size:14px">🔍</span>
+          <input type="text" id="buscar-prov-gestion" placeholder="Buscar por nombre, rubro o dirección..." oninput="renderProv()"
+            style="width:100%;padding:10px 12px 10px 36px;border:1px solid var(--border,#2f3546);border-radius:9px;background:var(--s2,#222736);color:var(--text,#e9ebf0);font-size:14px;font-family:inherit">
+        </div>
         <table id="tabla-prov">
           <thead><tr><th>Proveedor</th><th>Rubro</th><th>Dirección</th><th>Horario de atención</th><th>Coordenadas</th><th></th></tr></thead>
           <tbody></tbody>
@@ -1919,7 +1924,16 @@ async function importarProveedoresCC(){
 
 function renderProv(){
   const tb=document.querySelector('#tabla-prov tbody');
-  tb.innerHTML=DB.proveedores.map(p=>`<tr>
+  const q = (document.getElementById('buscar-prov-gestion')?.value || '').trim().toLowerCase();
+  let lista = DB.proveedores;
+  if(q){
+    lista = lista.filter(p =>
+      String(p.nombre||'').toLowerCase().includes(q) ||
+      String(p.rubro||'').toLowerCase().includes(q) ||
+      String(p.dir||'').toLowerCase().includes(q)
+    );
+  }
+  tb.innerHTML = lista.map(p=>`<tr>
     <td><b>${p.nombre}</b></td><td><span class="tag">${p.rubro}</span></td><td>${p.dir||''}</td>
     <td class="muted">${horarioTxt(p)||'—'}</td>
     <td class="muted">${p.lat!=null?`${p.lat}, ${p.lng}`:'<span style="color:#fca5a5">sin ubicar</span>'}</td>
@@ -1928,8 +1942,9 @@ function renderProv(){
       <button class="btn gray sm" onclick="editProv('${p.id}')" style="${esEditor()?'':'display:none'}">✎</button>
       <button class="btn danger sm" onclick="delProv('${p.id}')" style="${esEditor()?'':'display:none'}">✕</button>
       <span class="muted" style="${esEditor()?'display:none':''};font-size:11px">—</span>
-    </td></tr>`).join('');
-  renderListaAgregar(document.getElementById('buscar-prov').value);
+    </td></tr>`).join('') || `<tr><td colspan="6" class="muted" style="padding:16px;text-align:center">${q?'Sin resultados para "'+q+'".':'No hay proveedores cargados.'}</td></tr>`;
+  const bp = document.getElementById('buscar-prov');
+  if(bp) renderListaAgregar(bp.value);
 }
 function pickCoord(id){ pickTarget=id; document.getElementById('hint-picker').style.display='block'; switchTab('recorrido'); alert('Hacé clic en el mapa para fijar la ubicación de este proveedor.'); }
 
