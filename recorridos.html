@@ -192,11 +192,15 @@
                 <input type="time" id="hora-salida">
               </div>
               <div>
-                <label>Punto de partida <button class="btn ghost sm" onclick="editBase()" style="padding:1px 8px;font-size:11px;margin-left:4px" title="Editar el Depósito Nielsen">✎ Editar</button></label>
-                <select id="sel-base"></select>
+                <label>Km inicial (odómetro) <span style="color:#E8611A">*</span></label>
+                <input type="number" id="real-km-ini" placeholder="km al salir">
               </div>
             </div>
             <div class="row">
+              <div>
+                <label>Punto de partida <button class="btn ghost sm" onclick="editBase()" style="padding:1px 8px;font-size:11px;margin-left:4px" title="Editar el Depósito Nielsen">✎ Editar</button></label>
+                <select id="sel-base"></select>
+              </div>
               <div>
                 <label>Punto final</label>
                 <select id="sel-fin" onchange="_finChange()">
@@ -205,6 +209,8 @@
                   <option value="custom">📍 Otro lugar (fijar en el mapa)</option>
                 </select>
               </div>
+            </div>
+            <div class="row">
               <div id="fin-custom-box" style="display:none">
                 <label>Lugar final <button class="btn ghost sm" onclick="pickFinCoord()" style="padding:1px 8px;font-size:11px;margin-left:4px">📍 Fijar</button></label>
                 <input type="text" id="fin-nombre" placeholder="Nombre del lugar final" oninput="_finGuardar()">
@@ -273,16 +279,10 @@
                 </div>
               </div>
               <div>
-                <div class="muted" style="font-weight:700;margin-bottom:4px">REAL (carga manual)</div>
-                <div class="row">
-                  <div><label style="margin-top:0">Km inicial <span style="color:#E8611A">*</span></label><input type="number" id="real-km-ini" placeholder="odómetro salida"></div>
-                  <div><label style="margin-top:0">Km final</label><input type="number" id="real-km-fin" placeholder="odómetro regreso"></div>
+                <div class="muted" style="font-weight:700;margin-bottom:4px">DATOS FINALES DEL RECORRIDO</div>
+                <div class="muted" style="font-size:12px;line-height:1.5;padding:10px 12px;background:var(--s2,#222736);border:1px solid var(--border,#2f3546);border-radius:9px">
+                  🏁 Los datos finales (km final, litros de gasoil y hora de regreso) los carga el chofer al terminar, desde <b>Historial y análisis → Acciones → ✏️ Cargar datos</b>.
                 </div>
-                <div class="muted" id="km-recorridos" style="margin-top:4px">Km recorridos: —</div>
-                <label>Litros cargados (gasoil)</label>
-                <input type="number" id="real-litros" placeholder="litros">
-                <label>Hora de regreso</label>
-                <input type="time" id="real-regreso">
               </div>
             </div>
 
@@ -989,22 +989,24 @@ function minutosEntre(t1,t2){
   const [h1,m1]=t1.split(':').map(Number), [h2,m2]=t2.split(':').map(Number);
   let d=(h2*60+m2)-(h1*60+m1); if(d<0) d+=1440; return d;
 }
+// Helper: valor de un input si existe (los campos finales ahora están en el historial)
+function _gv(id){ const el=document.getElementById(id); return el ? el.value : ''; }
 function realKmCalc(){
-  const ini=+document.getElementById('real-km-ini').value;
-  const fin=+document.getElementById('real-km-fin').value;
-  const iniOk=document.getElementById('real-km-ini').value!=='';
-  const finOk=document.getElementById('real-km-fin').value!=='';
+  const ini=+_gv('real-km-ini');
+  const fin=+_gv('real-km-fin');
+  const iniOk=_gv('real-km-ini')!=='';
+  const finOk=_gv('real-km-fin')!=='';
   if(iniOk&&finOk && fin>=ini) return fin-ini;
   return 0;
 }
 function updateComparacion(){
   const est=calcEstimado();
-  const salida=document.getElementById('hora-salida').value;
-  const regreso=document.getElementById('real-regreso').value;
+  const salida=_gv('hora-salida');
+  const regreso=_gv('real-regreso');
   const realKm=realKmCalc();
-  const realLit=+document.getElementById('real-litros').value||0;
+  const realLit=+_gv('real-litros')||0;
   const realMin=minutosEntre(salida,regreso);
-  document.getElementById('km-recorridos').textContent = realKm>0? `Km recorridos: ${realKm}` : 'Km recorridos: —';
+  const _kmR=document.getElementById('km-recorridos'); if(_kmR) _kmR.textContent = realKm>0? `Km recorridos: ${realKm}` : 'Km recorridos: —';
   const el=document.getElementById('comparacion');
   if(ruta.filter(s=>s.tipo==='prov').length===0){ el.textContent='Agregá proveedores a la agenda para calcular.'; return; }
   let html=`Estimado: <b>${est.km.toFixed(1)} km</b> · <b>${fmtMin(est.minTot)}</b> · <b>${est.litros.toFixed(1)} L</b>.`;
@@ -1062,18 +1064,21 @@ function pickFinCoord(){
 function addParada(pid){
   const p=DB.proveedores.find(x=>x.id===pid); if(!p) return;
   if(ruta.some(s=>s.id===pid)) return;
-  ruta.push({id:p.id, tipo:'prov', nombre:p.nombre, dir:p.dir, lat:p.lat, lng:p.lng, arribo:'', hm1:p.hm1,hm2:p.hm2,ht1:p.ht1,ht2:p.ht2});
+  // Insertar la parada ANTES del punto final (si existe), para que el fin quede siempre último
+  const finIdx = ruta.findIndex(s=>s.tipo==='fin');
+  const nueva = {id:p.id, tipo:'prov', nombre:p.nombre, dir:p.dir, lat:p.lat, lng:p.lng, arribo:'', hm1:p.hm1,hm2:p.hm2,ht1:p.ht1,ht2:p.ht2};
+  if(finIdx>=0) ruta.splice(finIdx, 0, nueva); else ruta.push(nueva);
+  rebuildRutaBase();   // reordena: base al inicio, fin al final
   save(); renderAgenda(); drawMap(); updateEstimado();
 }
-function delParada(pid){ ruta=ruta.filter(s=>s.id!==pid); save(); renderAgenda(); drawMap(); updateEstimado(); }
+function delParada(pid){ ruta=ruta.filter(s=>s.id!==pid); rebuildRutaBase(); save(); renderAgenda(); drawMap(); updateEstimado(); }
 function moveParada(i,dir){
   const j=i+dir;
-  const provIdx = ruta.map((s,k)=>s.tipo==='prov'?k:-1).filter(k=>k>=0);
   // mover dentro de proveedores solamente
   const a=ruta[i]; if(!a||a.tipo!=='prov') return;
   if(j<0||j>=ruta.length) return;
   const b=ruta[j]; if(!b||b.tipo!=='prov') return;
-  ruta[i]=b; ruta[j]=a; save(); renderAgenda(); drawMap(); updateEstimado();
+  ruta[i]=b; ruta[j]=a; rebuildRutaBase(); save(); renderAgenda(); drawMap(); updateEstimado();
 }
 function optimizar(){
   const provs=ruta.filter(s=>s.tipo==='prov' && s.lat!=null);
@@ -1184,7 +1189,7 @@ function guardarRecorrido(){
   }
   const est=calcEstimado();
   const v=vehSel(), c=DB.choferes.find(x=>x.id===document.getElementById('sel-chofer').value);
-  const salida=document.getElementById('hora-salida').value, regreso=document.getElementById('real-regreso').value;
+  const salida=_gv('hora-salida'), regreso=_gv('real-regreso');
   const rec={
     id:uid(), codigo:_nuevoCodigoRC(), fecha:document.getElementById('fecha').value,
     vehiculo:v?`${v.patente} ${v.desc}`:'-', chofer:c?c.nombre:'-',
@@ -1198,9 +1203,9 @@ function guardarRecorrido(){
     fin:(()=>{ const f=ruta.find(x=>x.tipo==='fin'); return f?{nombre:f.nombre,lat:f.lat,lng:f.lng}:null; })(),
     estKm:+est.km.toFixed(1), estMin:Math.round(est.minTot), estLitros:+est.litros.toFixed(1),
     kmIni:+document.getElementById('real-km-ini').value||null,
-    kmFin:+document.getElementById('real-km-fin').value||null,
+    kmFin:+_gv('real-km-fin')||null,
     realKm:realKmCalc()||null,
-    realLitros:+document.getElementById('real-litros').value||null,
+    realLitros:+_gv('real-litros')||null,
     realMin:minutosEntre(salida,regreso),
     salida, regreso, cfg:cfg(),
     estado:'ENVIADO', creado:new Date().toISOString()
@@ -1297,11 +1302,9 @@ function copiarShare(){
 function limpiarRecorrido(){
   ruta=[]; rebuildRutaBase();
   document.getElementById('real-km-ini').value='';
-  document.getElementById('real-km-fin').value='';
-  document.getElementById('real-litros').value='';
-  document.getElementById('real-regreso').value='';
+  ['real-km-fin','real-litros','real-regreso'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('hora-salida').value='';
-  document.getElementById('km-recorridos').textContent='Km recorridos: —';
+  const _kmR2=document.getElementById('km-recorridos'); if(_kmR2) _kmR2.textContent='Km recorridos: —';
   renderAgenda(); drawMap(); updateEstimado();
 }
 function renderHistorial(){
@@ -2275,7 +2278,7 @@ _orsRenderCampo();
   DB.cfg={...DB.cfg, vel:+document.getElementById('cfg-vel').value,parada:+document.getElementById('cfg-parada').value,precio:+document.getElementById('cfg-precio').value};
   save(); renderAgenda(); updateEstimado();
 }));
-['real-regreso','real-km-ini','real-km-fin','real-litros'].forEach(id=>document.getElementById(id).addEventListener('input',updateComparacion));
+['real-regreso','real-km-ini','real-km-fin','real-litros'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input',updateComparacion); });
 document.getElementById('hora-salida').addEventListener('input',()=>{ renderAgenda(); updateComparacion(); });
 document.getElementById('sel-vehiculo').addEventListener('change',updateEstimado);
 document.getElementById('sel-base').addEventListener('change',()=>{ rebuildRutaBase(); renderAgenda(); drawMap(); updateEstimado(); });
