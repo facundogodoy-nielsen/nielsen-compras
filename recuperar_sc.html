@@ -68,6 +68,18 @@
     <div id="estado-subir" style="margin-top:12px"></div>
   </div>
 
+  <!-- Gestión de SC marcadas como borradas (tombstones) — la causa de "subo pero no aparece" -->
+  <div class="card" id="card-tomb">
+    <h2>🪦 SC marcadas como "eliminadas" en ESTE dispositivo</h2>
+    <div class="warn">
+      Si una SC fue eliminada alguna vez, su número queda en una lista de "borrados" <b>en este navegador</b>. El Centro de Control la oculta <b>y la vuelve a borrar de la nube</b> automáticamente al refrescar. Si subís una SC y "no aparece", casi seguro su número está en esta lista.
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn" onclick="verTombstones()">🔍 Ver lista de eliminadas</button>
+    </div>
+    <div id="tomb-lista" style="margin-top:12px"></div>
+  </div>
+
 </div>
 
 <script>
@@ -78,6 +90,40 @@ let _locales = [];      // SC del localStorage
 let _faltantes = [];    // las que no están en la nube
 
 function normSC(v){ return v ? String(v).trim().toUpperCase() : ''; }
+
+// ══ Gestión de la lista de SC "eliminadas" (tombstones) de este dispositivo ══
+const _TOMB_KEY = 'nielsen_scs_deleted';
+function _getTombs(){
+  try{ const v=JSON.parse(localStorage.getItem(_TOMB_KEY)||'[]'); return Array.isArray(v)?v:[]; }catch(e){ return []; }
+}
+function verTombstones(){
+  const cont = document.getElementById('tomb-lista');
+  const t = _getTombs();
+  if(!t.length){
+    cont.innerHTML = '<div class="ok">✔️ No hay ninguna SC marcada como eliminada en este dispositivo. Este no es el problema acá.</div>';
+    return;
+  }
+  cont.innerHTML = '<div class="warn" style="margin-bottom:10px">Hay <b>'+t.length+'</b> SC marcadas como eliminadas. Si alguna de estas es una que querés recuperar, quitala de la lista con ✕ y volvé a subirla.</div>'
+    + '<div class="tbl-wrap"><table><thead><tr><th>N° SC eliminada</th><th>Acción</th></tr></thead><tbody>'
+    + t.map(n=>'<tr><td class="mono">'+n+'</td><td><button class="btn ghost" style="padding:4px 10px;font-size:12px" onclick="quitarTomb(\''+String(n).replace(/'/g,"\\'")+'\')">✕ Quitar de eliminadas</button></td></tr>').join('')
+    + '</tbody></table></div>'
+    + '<div style="margin-top:10px"><button class="btn red" onclick="limpiarTombs()">🧹 Vaciar toda la lista de eliminadas</button></div>';
+}
+function quitarTomb(num){
+  let t = _getTombs();
+  t = t.filter(x => normSC(x) !== normSC(num));
+  try{ localStorage.setItem(_TOMB_KEY, JSON.stringify(t)); }catch(e){}
+  document.getElementById('estado-subir').innerHTML =
+    '<div class="ok">✔️ Se quitó '+num+' de la lista de eliminadas. Ahora volvé a subirla (arriba) y refrescá el Centro de Control.</div>';
+  verTombstones();
+}
+function limpiarTombs(){
+  if(!confirm('Vas a vaciar la lista de SC eliminadas de ESTE dispositivo.\n\nEsto hace que ninguna SC se oculte por estar "borrada". ¿Continuar?')) return;
+  try{ localStorage.setItem(_TOMB_KEY, '[]'); }catch(e){}
+  verTombstones();
+  document.getElementById('estado-subir').innerHTML =
+    '<div class="ok">✔️ Lista de eliminadas vaciada. Volvé a subir las faltantes y refrescá el Centro de Control.</div>';
+}
 
 async function _sbTraerNums(){
   const nums = new Set();
@@ -129,24 +175,41 @@ function cargarDesdeArchivo(input){
 
 async function _compararConNube(est){
   const enNube = await _sbTraerNums();
+  const tombs = new Set(_getTombs().map(normSC));
   _faltantes = _locales.filter(sc => sc.numSC && !enNube.has(normSC(sc.numSC)));
+  // ¿alguna faltante está marcada como eliminada? → nunca aparecerá aunque se suba
+  const bloqueadas = _faltantes.filter(sc => tombs.has(normSC(sc.numSC)));
   document.getElementById('card-resultado').style.display = 'block';
   const tb = document.querySelector('#tabla tbody');
   tb.innerHTML = _locales.map(sc=>{
     const falta = sc.numSC && !enNube.has(normSC(sc.numSC));
+    const bloq = falta && tombs.has(normSC(sc.numSC));
+    let estado;
+    if(bloq) estado = '<span class="badge b-falta" style="background:rgba(239,68,68,.15);color:#f87171">🪦 Eliminada (bloqueada)</span>';
+    else if(falta) estado = '<span class="badge b-falta">⚠️ Falta subir</span>';
+    else estado = '<span class="badge b-ok">✔️ Ya está</span>';
     return '<tr>'
       + '<td class="mono">'+(sc.numSC||'—')+'</td>'
       + '<td class="mono">'+(sc.numOP||'—')+'</td>'
       + '<td>'+(sc.solicitante||'—')+'</td>'
       + '<td>'+(sc.area||'—')+(sc.subarea?(' / '+sc.subarea):'')+'</td>'
-      + '<td>'+(falta?'<span class="badge b-falta">⚠️ Falta subir</span>':'<span class="badge b-ok">✔️ Ya está</span>')+'</td>'
+      + '<td>'+estado+'</td>'
       + '</tr>';
   }).join('') || '<tr><td colspan="5" class="muted" style="padding:14px">No hay SC.</td></tr>';
-  document.getElementById('resumen').innerHTML = _faltantes.length
+  let resumen = '';
+  if(bloqueadas.length){
+    resumen += '<div class="warn" style="background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.4);color:#f87171">🪦 <b>'+bloqueadas.length+'</b> SC faltante(s) están marcadas como <b>ELIMINADAS</b> en este dispositivo: '
+      + bloqueadas.map(s=>s.numSC).join(', ')
+      + '.<br>Aunque las subas, el Centro de Control las va a re-borrar. <b>Primero</b> quitalas de la lista de eliminadas (abajo, en 🪦), <b>después</b> subilas.</div>';
+  }
+  resumen += _faltantes.length
     ? '<div class="warn">Se encontraron <b>'+_faltantes.length+'</b> SC que <b>no</b> están en la nube. Podés subirlas abajo.</div>'
-    : '<div class="ok">✔️ Todas las SC ya están en la nube. No falta nada por recuperar.</div>';
+    : '<div class="ok">✔️ Todas las SC ya están en la nube.</div>';
+  document.getElementById('resumen').innerHTML = resumen;
   document.getElementById('btn-subir').disabled = _faltantes.length === 0;
-  est.textContent = _locales.length + ' SC · ' + _faltantes.length + ' faltan en la nube.';
+  est.textContent = _locales.length + ' SC · ' + _faltantes.length + ' faltan · ' + bloqueadas.length + ' bloqueadas por "eliminada".';
+  // si hay bloqueadas, mostrar la lista de tombstones automáticamente
+  if(bloqueadas.length) verTombstones();
 }
 
 function descargarLocal(){
@@ -195,6 +258,12 @@ async function subirFaltantes(){
   const est = document.getElementById('estado-subir');
   const btn = document.getElementById('btn-subir'); btn.disabled = true;
   let ok=0, fail=0; const errores=[];
+  // Quitar de la lista de "eliminadas" las que vamos a subir (si no, el CC las re-borra)
+  let tombs = _getTombs();
+  const antesTomb = tombs.length;
+  const numsSubir = new Set(_faltantes.map(sc=>normSC(sc.numSC)));
+  tombs = tombs.filter(n => !numsSubir.has(normSC(n)));
+  if(tombs.length !== antesTomb){ try{ localStorage.setItem(_TOMB_KEY, JSON.stringify(tombs)); }catch(e){} }
   for(let i=0;i<_faltantes.length;i++){
     const sc = _faltantes[i];
     est.innerHTML = '<div class="muted">Subiendo '+(i+1)+' de '+_faltantes.length+'... ('+sc.numSC+')</div>';
@@ -217,7 +286,9 @@ async function subirFaltantes(){
     html += '<div style="margin-top:8px;font-size:11px;font-family:monospace;background:#0d1017;border:1px solid var(--border);border-radius:8px;padding:10px;white-space:pre-wrap;max-height:220px;overflow:auto;color:#f4d160">'
       + errores.join('\n').replace(/</g,'&lt;') + '</div>';
   } else {
-    html += '<div class="muted" style="margin-top:6px;font-size:12px">Abrí el Centro de Control y refrescá (Ctrl+Shift+R) para verlas.</div>';
+    html += '<div class="muted" style="margin-top:6px;font-size:12px">'
+      + (antesTomb!==tombs.length ? 'Se quitaron '+(antesTomb-tombs.length)+' de la lista de eliminadas. ' : '')
+      + 'Abrí el Centro de Control y refrescá (Ctrl+Shift+R) para verlas.</div>';
   }
   est.innerHTML = html;
   btn.disabled = false;
