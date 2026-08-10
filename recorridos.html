@@ -577,6 +577,7 @@ async function cargarDesdeNube(){
 }
 function save(inmediato){
   if(typeof ruta!=='undefined' && DB) DB.rutaActual = ruta;   // conservar el recorrido en edición (con SC/adjuntos)
+  if(typeof _guardarBorrador==='function') _guardarBorrador();
   if(_recSaveTimer) clearTimeout(_recSaveTimer);
   _recSetStatus('⏳ Guardando...', 'var(--muted)');
   if(inmediato){ _recPush(); }
@@ -1091,9 +1092,13 @@ function optimizar(){
     rem.forEach((p,k)=>{const d=haversine(cur,[p.lat,p.lng]); if(d<bd){bd=d;bi=k;}});
     const nx=rem.splice(bi,1)[0]; ord.push(nx); cur=[nx.lat,nx.lng];
   }
+  // Conservar proveedores sin ubicación (no se pueden ordenar por distancia)
+  const sinUbic = ruta.filter(s=>s.tipo==='prov' && s.lat==null);
+  // Reconstruir: base al inicio (fijo) + proveedores optimizados + fin al final (fijo)
   const base=ruta.filter(s=>s.tipo==='base');
-  ruta=[...base,...ord];
-  renderAgenda(); drawMap(); updateEstimado();
+  const fin=ruta.filter(s=>s.tipo==='fin');
+  ruta=[...base,...ord,...sinUbic,...fin];
+  save(); renderAgenda(); drawMap(); updateEstimado();
 }
 function renderAgenda(){
   const ul=document.getElementById('agenda'); ul.innerHTML='';
@@ -1308,7 +1313,23 @@ function limpiarRecorrido(){
   ['real-km-fin','real-litros','real-regreso'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('hora-salida').value='';
   const _kmR2=document.getElementById('km-recorridos'); if(_kmR2) _kmR2.textContent='Km recorridos: —';
+  // Borrar el borrador en la nube: al entrar de nuevo NO debe precargarse
+  DB.rutaActual = [];
+  DB.borrador = null;
+  save(true);
   renderAgenda(); drawMap(); updateEstimado();
+}
+// Guarda el borrador (recorrido en edición sin guardar) para poder retomarlo
+function _guardarBorrador(){
+  if(!DB) return;
+  const hayAlgo = ruta.some(s=>s.tipo==='prov') || _gv('hora-salida') || _gv('real-km-ini');
+  DB.borrador = hayAlgo ? {
+    horaSalida: _gv('hora-salida'),
+    kmIni: _gv('real-km-ini'),
+    vehiculo: (document.getElementById('sel-vehiculo')||{}).value || '',
+    chofer: (document.getElementById('sel-chofer')||{}).value || '',
+    fecha: (document.getElementById('fecha')||{}).value || ''
+  } : null;
 }
 function renderHistorial(){
   // Poblar selects de filtro (una vez por render, según datos)
@@ -2380,8 +2401,17 @@ initMap();
     const fb=_g('fin-custom-box'); if(fb) fb.style.display = DB.fin.modo==='custom'?'':'none';
     const fn=_g('fin-nombre'); if(fn && DB.fin.nombre) fn.value=DB.fin.nombre;
   }
-  // Restaurar el recorrido en edición guardado (con sus SC/adjuntos por parada)
+  // Restaurar el recorrido en edición SOLO si quedó sin guardar (borrador)
   if(Array.isArray(DB.rutaActual) && DB.rutaActual.length){ ruta = DB.rutaActual; }
+  if(DB.borrador){
+    const b=DB.borrador;
+    const _set=(id,v)=>{ const el=_g(id); if(el && v) el.value=v; };
+    _set('hora-salida', b.horaSalida);
+    _set('real-km-ini', b.kmIni);
+    _set('sel-vehiculo', b.vehiculo);
+    _set('sel-chofer', b.chofer);
+    if(b.fecha) _set('fecha', b.fecha);
+  }
   _migrarCodigosRC();   // asignar código RC-#### a recorridos que no lo tengan
   fillSelects();
   rebuildRutaBase();
