@@ -1121,10 +1121,13 @@ function renderAgenda(){
         else etaBadge=`<span class="pill warn">llega ~${minToHHMM(eta)}</span>`;
       }
       if(ht||etaBadge) hLine=`<div class="leg" style="color:var(--muted);margin-top:3px">🕒 ${ht||'sin horario'} ${etaBadge}</div>`;
-      // Resumen de SC asignada / ítems a buscar / adjuntos
-      if(s.scNum || (s.scItems&&s.scItems.length)){
-        const its=(s.scItems||[]);
-        hLine+=`<div class="leg" style="margin-top:3px;color:#f0a35e">📋 ${s.scNum?('SC '+s.scNum):'Ítems'}: ${its.length?its.map(x=>_escRec(x)).join(', '):'(sin ítems seleccionados)'}</div>`;
+      // Resumen de SC asignadas / ítems a buscar / adjuntos
+      const _scsList=_paradaScs(s);
+      if(_scsList.length){
+        _scsList.forEach(sc=>{
+          const its=(sc.items||[]);
+          hLine+=`<div class="leg" style="margin-top:3px;color:#f0a35e">📋 SC ${_escRec(sc.num)}: ${its.length?its.map(x=>_escRec(x)).join(', '):'(sin ítems seleccionados)'}</div>`;
+        });
       }
       if(s.adjuntos&&s.adjuntos.length){
         hLine+=`<div class="leg" style="margin-top:3px">📎 ${s.adjuntos.map(a=>`<a href="${a.url}" target="_blank" style="color:#7cc4ff;text-decoration:underline">${_escRec(a.nombre)}</a>`).join(' · ')}</div>`;
@@ -1143,7 +1146,7 @@ function renderAgenda(){
         ${arriboInput}
       </div>
       <div class="acts">
-        ${s.tipo==='prov'?`<button class="btn ghost sm" onclick="abrirParadaDetalle('${s.id}')" title="Asignar SC o adjuntar documentos" style="position:relative">📎${(s.scItems&&s.scItems.length)||(s.adjuntos&&s.adjuntos.length)?`<span style="position:absolute;top:-5px;right:-5px;background:#E8611A;color:#fff;border-radius:50%;width:15px;height:15px;font-size:9px;line-height:15px;text-align:center">${((s.scItems&&s.scItems.length)||0)+((s.adjuntos&&s.adjuntos.length)||0)}</span>`:''}</button>
+        ${s.tipo==='prov'?`<button class="btn ghost sm" onclick="abrirParadaDetalle('${s.id}')" title="Asignar SC o adjuntar documentos" style="position:relative">📎${(_paradaScs(s).length)||(s.adjuntos&&s.adjuntos.length)?`<span style="position:absolute;top:-5px;right:-5px;background:#E8611A;color:#fff;border-radius:50%;width:15px;height:15px;font-size:9px;line-height:15px;text-align:center">${(_paradaScs(s).length||0)+((s.adjuntos&&s.adjuntos.length)||0)}</span>`:''}</button>
         <button class="btn gray sm" onclick="moveParada(${i},-1)">▲</button>
         <button class="btn gray sm" onclick="moveParada(${i},1)">▼</button>
         <button class="btn danger sm" onclick="delParada('${s.id}')">✕</button>`:''}
@@ -1197,7 +1200,7 @@ function guardarRecorrido(){
     paradas:provs.map(p=>({
       id:p.id, nombre:p.nombre, dir:p.dir||'', lat:p.lat, lng:p.lng,
       arribo:p.arribo||'', hm1:p.hm1||'',hm2:p.hm2||'',ht1:p.ht1||'',ht2:p.ht2||'',corrido:!!p.corrido,
-      scNum:p.scNum||'', scItems:p.scItems||[], adjuntos:p.adjuntos||[]
+      scNum:p.scNum||'', scItems:p.scItems||[], scs:_paradaScs(p), adjuntos:p.adjuntos||[]
     })),
     base:{ nombre:DB.base?.nombre||'', lat:DB.base?.lat, lng:DB.base?.lng },
     fin:(()=>{ const f=ruta.find(x=>x.tipo==='fin'); return f?{nombre:f.nombre,lat:f.lat,lng:f.lng}:null; })(),
@@ -1566,14 +1569,25 @@ function consultarRecorrido(id){
   const dt = (r.realMin!=null)? r.realMin - r.estMin : null;
   const rend = (r.realKm && r.realLitros) ? (r.realKm/r.realLitros).toFixed(1) : null;
   const paradasHtml = (r.paradas||[]).map((p,i)=>{
-    const its=(p.scItems||[]);
     const adj=(p.adjuntos||[]);
     let extra='';
-    if(p.scNum || its.length){
-      extra+=`<div style="margin-top:5px;font-size:12px;color:#f0a35e">📋 ${p.scNum?('SC '+_escRec(p.scNum)):'Ítems'}${its.length?': '+its.map(x=>_escRec(x)).join(', '):''}</div>`;
+    // Todas las SC asignadas a este proveedor, con sus ítems a retirar
+    const _scs = Array.isArray(p.scs) && p.scs.length ? p.scs
+               : (p.scNum ? [{num:p.scNum, items:(p.scItems||[])}] : []);
+    if(_scs.length){
+      extra += '<div style="margin-top:7px;padding:8px 10px;background:rgba(232,97,26,.07);border:1px solid rgba(232,97,26,.3);border-radius:8px">';
+      extra += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#f0a35e;margin-bottom:5px">📋 Qué retirar acá</div>';
+      _scs.forEach(sc=>{
+        const its=(sc.items||[]);
+        extra += `<div style="font-size:12px;color:#f0a35e;margin-top:3px"><b>SC ${_escRec(sc.num)}</b>${its.length?': '+its.map(x=>_escRec(x)).join(', '):' <span class="muted">(sin ítems detallados)</span>'}</div>`;
+      });
+      extra += '</div>';
     }
     if(adj.length){
-      extra+=`<div style="margin-top:5px;font-size:12px">📎 ${adj.map(a=>`<a href="${a.url}" target="_blank" style="color:#7cc4ff;text-decoration:underline">${_escRec(a.nombre)}</a>`).join(' · ')}</div>`;
+      extra += '<div style="margin-top:7px;padding:8px 10px;background:rgba(124,196,255,.07);border:1px solid rgba(124,196,255,.3);border-radius:8px">';
+      extra += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#7cc4ff;margin-bottom:5px">📎 Documentos para descargar</div>';
+      extra += adj.map(a=>`<a href="${a.url}" target="_blank" rel="noopener" download style="display:inline-flex;align-items:center;gap:5px;margin:2px 6px 2px 0;padding:4px 10px;background:rgba(124,196,255,.12);border:1px solid rgba(124,196,255,.4);border-radius:999px;color:#7cc4ff;text-decoration:none;font-size:11px;font-weight:600">⬇️ ${_escRec(a.nombre)}</a>`).join('');
+      extra += '</div>';
     }
     return `<div style="padding:10px 0;border-bottom:1px solid var(--border,#333)">
       <div style="display:flex;align-items:center;gap:10px">
@@ -1659,7 +1673,14 @@ function _armarTextoRecorrido(r){
     const h=(typeof horarioTxt==='function')?horarioTxt(p):'';
     if(h) t+=`   🕒 Atiende: ${h}\n`;
     if(p.arribo) t+=`   ⏱️ Arribo: ${p.arribo}\n`;
-    if(p.scNum) t+=`   📋 SC ${p.scNum}${(p.scItems&&p.scItems.length)?': '+p.scItems.join(', '):''}\n`;
+    const _scsW = Array.isArray(p.scs) && p.scs.length ? p.scs
+                : (p.scNum ? [{num:p.scNum, items:(p.scItems||[])}] : []);
+    _scsW.forEach(sc=>{
+      t+=`   📋 SC ${sc.num}${(sc.items&&sc.items.length)?': '+sc.items.join(', '):''}\n`;
+    });
+    if(p.adjuntos && p.adjuntos.length){
+      t+=`   📎 ${p.adjuntos.length} documento(s) adjunto(s) — ver en el sistema\n`;
+    }
   });
   // Punto final
   if(r.fin && r.fin.nombre) t+=`\n🏁 Final: ${r.fin.nombre}\n`;
@@ -1857,7 +1878,7 @@ function _confirmarAgregarProv(){
   r.paradas.push({
     id:'extra_'+uid(), nombre:p.nombre, dir:p.dir||'', lat:p.lat, lng:p.lng,
     arribo, hm1:p.hm1||'',hm2:p.hm2||'',ht1:p.ht1||'',ht2:p.ht2||'',corrido:!!p.corrido,
-    scNum:'', scItems:[], adjuntos:[],
+    scNum:'', scItems:[], scs:[], adjuntos:[],
     extra:true   // ← marca: fuera del plan inicial
   });
   // Recalcular estimados sumando el tramo hasta el nuevo proveedor (si tiene ubicación)
@@ -2001,35 +2022,49 @@ async function renderParadaSC(){
   const scs = _scCache || await _cargarSCs();
   if(!scs){ box.innerHTML='<div class="muted" style="padding:10px;color:#eab308">No se pudo conectar con el Historial de SC.</div>'; return; }
 
-  const selNum = s.scNum || '';
-  const opts = '<option value="">— Sin SC asignada —</option>' +
-    scs.map(x=>`<option value="${_escRec(x.num_sc)}" ${x.num_sc===selNum?'selected':''}>${_escRec(x.num_sc)} · ${_escRec((x.area||'').slice(0,22))} · ${_escRec((x.fecha||'').slice(0,10))}</option>`).join('');
+  const asignadas = _paradaScs(s);
+  const yaNums = asignadas.map(x=>x.num);
 
-  let itemsHtml='';
-  const scSel = scs.find(x=>x.num_sc===selNum);
-  if(scSel){
-    const lineas=(scSel.items||'').split('\n').map(l=>l.trim()).filter(l=>l&&l!=='-');
+  // Selector para AGREGAR otra SC (excluye las ya asignadas)
+  const disponibles = scs.filter(x=>!yaNums.includes(x.num_sc));
+  const opts = '<option value="">— Elegí una SC para agregar —</option>' +
+    disponibles.map(x=>`<option value="${_escRec(x.num_sc)}">${_escRec(x.num_sc)} · ${_escRec((x.area||'').slice(0,22))} · ${_escRec((x.fecha||'').slice(0,10))}</option>`).join('');
+
+  // Bloque por cada SC asignada, con sus ítems
+  let bloques='';
+  asignadas.forEach(sc=>{
+    const info = scs.find(x=>x.num_sc===sc.num);
+    const lineas = info ? (info.items||'').split('\n').map(l=>l.trim()).filter(l=>l&&l!=='-') : [];
+    let itemsHtml='';
     if(lineas.length){
-      itemsHtml=`<div style="margin-top:12px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or,#E8611A);margin-bottom:8px">Ítems a buscar en este proveedor</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Tildá los ítems de esta SC que vas a cotizar/comprar acá.</div>
-        <div style="border:1px solid var(--border,#333);border-radius:8px;overflow:hidden">`;
-      lineas.forEach((l,idx)=>{
-        const checked=(s.scItems||[]).includes(l);
+      itemsHtml='<div style="border:1px solid var(--border,#333);border-radius:8px;overflow:hidden;margin-top:8px">';
+      lineas.forEach(l=>{
+        const checked=(sc.items||[]).includes(l);
+        const esc=_escRec(l).replace(/'/g,"\\'");
         itemsHtml+=`<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border,#333);cursor:pointer">
-          <input type="checkbox" ${checked?'checked':''} onchange="_toggleScItem('${_escRec(l).replace(/'/g,"\\\\'")}',this.checked)" style="width:16px;height:16px;flex:none">
+          <input type="checkbox" ${checked?'checked':''} onchange="_toggleScItem('${_escRec(sc.num)}','${esc}',this.checked)" style="width:16px;height:16px;flex:none">
           <span style="flex:1;font-size:13px">${_escRec(l)}</span></label>`;
       });
-      itemsHtml+='</div></div>';
+      itemsHtml+='</div>';
     } else {
-      itemsHtml='<div class="muted" style="margin-top:12px;font-size:12px">Esta SC no tiene ítems detallados en el listado.</div>';
+      itemsHtml='<div class="muted" style="margin-top:6px;font-size:12px">Esta SC no tiene ítems detallados.</div>';
     }
-  }
+    bloques += `<div style="border:1px solid var(--or,#E8611A);border-radius:10px;padding:12px;margin-bottom:10px;background:rgba(232,97,26,.05)">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-weight:800;color:var(--or,#E8611A);font-size:13px">📋 ${_escRec(sc.num)}</span>
+        ${info&&info.area?`<span class="muted" style="font-size:11px">${_escRec(info.area)}</span>`:''}
+        <button class="btn danger sm" onclick="_quitarSC('${_escRec(sc.num)}')" style="margin-left:auto;padding:2px 9px;font-size:11px" title="Quitar esta SC">✕</button>
+      </div>
+      ${info&&info.motivo?`<div style="margin-top:5px;font-size:11px;color:var(--muted)"><b>Motivo:</b> ${_escRec(info.motivo)}</div>`:''}
+      <div style="margin-top:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">Ítems a retirar acá</div>
+      ${itemsHtml}
+    </div>`;
+  });
 
   box.innerHTML=`
-    <label style="font-size:12px;color:var(--muted)">Asignar solicitud del Historial de SC</label>
-    <select id="pd-sc-sel" onchange="_asignarSC(this.value)" style="width:100%;margin-top:6px">${opts}</select>
-    ${scSel&&scSel.motivo?`<div style="margin-top:8px;font-size:12px;color:var(--muted)"><b>Motivo:</b> ${_escRec(scSel.motivo)}</div>`:''}
-    ${itemsHtml}
+    ${asignadas.length?bloques:'<div class="muted" style="padding:10px 0;font-size:12px">Todavía no asignaste ninguna SC a este proveedor.</div>'}
+    <label style="font-size:12px;color:var(--muted);margin-top:6px;display:block">➕ Agregar otra solicitud del Historial de SC</label>
+    <select id="pd-sc-sel" onchange="_agregarSC(this.value)" style="width:100%;margin-top:6px">${opts}</select>
     <div style="margin-top:14px;text-align:right"><button class="btn" onclick="_guardarParada()" style="background:#2f9e6b">✔ Guardar</button></div>`;
 }
 function _asignarSC(num){
@@ -2038,11 +2073,44 @@ function _asignarSC(num){
   if(!num) s.scItems=[];
   renderParadaSC();
 }
-function _toggleScItem(item, on){
+// ══ SC MÚLTIPLES POR PARADA ══
+// Estructura nueva: s.scs = [{num:'SC...', items:[...]}]
+// Compatibilidad: si viene el formato viejo (scNum/scItems), lo convierte.
+function _paradaScs(s){
+  if(!s) return [];
+  if(Array.isArray(s.scs)) return s.scs;
+  // migrar formato viejo
+  if(s.scNum){ s.scs = [{num:s.scNum, items:(s.scItems||[]).slice()}]; }
+  else s.scs = [];
+  return s.scs;
+}
+// Mantener scNum/scItems sincronizados (para compartir por WhatsApp y compatibilidad)
+function _syncParadaSCLegacy(s){
+  const arr=_paradaScs(s);
+  s.scNum = arr.length ? arr.map(x=>x.num).join(' + ') : '';
+  s.scItems = arr.reduce((acc,x)=>acc.concat(x.items||[]), []);
+}
+function _agregarSC(num){
+  const s=_paradaById(_pdParadaId); if(!s||!num) return;
+  const arr=_paradaScs(s);
+  if(arr.some(x=>x.num===num)) return;   // ya asignada
+  arr.push({num, items:[]});
+  _syncParadaSCLegacy(s);
+  renderParadaSC();
+}
+function _quitarSC(num){
   const s=_paradaById(_pdParadaId); if(!s) return;
-  if(!s.scItems) s.scItems=[];
-  if(on){ if(!s.scItems.includes(item)) s.scItems.push(item); }
-  else { s.scItems=s.scItems.filter(x=>x!==item); }
+  s.scs=_paradaScs(s).filter(x=>x.num!==num);
+  _syncParadaSCLegacy(s);
+  renderParadaSC();
+}
+function _toggleScItem(num, item, on){
+  const s=_paradaById(_pdParadaId); if(!s) return;
+  const sc=_paradaScs(s).find(x=>x.num===num); if(!sc) return;
+  if(!sc.items) sc.items=[];
+  if(on){ if(!sc.items.includes(item)) sc.items.push(item); }
+  else { sc.items=sc.items.filter(x=>x!==item); }
+  _syncParadaSCLegacy(s);
 }
 function _guardarParada(){
   save(); renderAgenda(); drawMap(); closeModal();
