@@ -2813,9 +2813,14 @@ async function _storageUpload(path, dataUrl){
       headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, 'x-upsert':'true', 'Content-Type': blob.type || 'application/octet-stream' },
       body: blob
     });
-    if(!r.ok){ console.warn('storage upload', r.status, await r.text().catch(()=>'')); return null; }
+    if(!r.ok){
+      const _t = await r.text().catch(()=> '');
+      console.warn('storage upload', r.status, _t);
+      window._ultimoErrorStorage = 'HTTP ' + r.status + (_t ? ' — ' + String(_t).slice(0,180) : '');
+      return null;
+    }
     return _SB_URL + '/storage/v1/object/public/' + _SB_BUCKET + '/' + clean;
-  }catch(e){ console.warn('storage upload err', e); return null; }
+  }catch(e){ console.warn('storage upload err', e); window._ultimoErrorStorage = e.message; return null; }
 }
 
 // Sube fotos y presupuestos de la SC a Storage y guarda los mapas ítem→archivos en Supabase
@@ -2843,9 +2848,19 @@ async function _subirArchivosSC(numSC, presupuestos, fotos){
       } else fail++;
     }
   }
-  if(typeof toast==='function'){
-    if(!fail) toast('✅ '+ok+' archivo(s) subido(s)');
-    else toast('⚠️ '+ok+' subido(s), '+fail+' con error.', true);
+  if(fail){
+    const motivo = window._ultimoErrorStorage || 'sin detalle';
+    if(typeof toast==='function') toast('⚠️ '+ok+' subido(s), '+fail+' con error.', true);
+    // Aviso destacado: el usuario DEBE enterarse de que sus archivos no se guardaron
+    try{
+      alert('⚠️ ATENCIÓN: ' + fail + ' de ' + total + ' archivo(s) NO se pudieron guardar.\n\n'
+        + 'Motivo: ' + motivo + '\n\n'
+        + 'La solicitud se va a registrar igual, pero SIN esos archivos.\n'
+        + 'Avisá a Compras para que los cargue de nuevo.');
+    }catch(e){}
+    window._huboFalloAdjuntos = true;
+  } else if(typeof toast==='function'){
+    toast('✅ '+ok+' archivo(s) subido(s)');
   }
   return mapas;
 }

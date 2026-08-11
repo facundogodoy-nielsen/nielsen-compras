@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diagnóstico de Archivos — Nielsen</title>
+<style>
+  :root{ --or:#E8611A; --navy:#13161E; --bg:#14171f; --s1:#1b1f2a; --s2:#222736; --border:#2f3546; --text:#e9ebf0; --muted:#8b93a7; --green:#22c55e; --yellow:#eab308; --red:#ef4444; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55}
+  header{background:linear-gradient(135deg,var(--navy),#1e2433);padding:20px 24px;border-bottom:3px solid var(--or)}
+  h1{margin:0;font-size:19px;font-weight:800}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .wrap{max-width:980px;margin:0 auto;padding:22px 18px}
+  .card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+  .card h2{margin:0 0 12px;font-size:15px;color:var(--or)}
+  .btn{background:var(--or);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+  .btn.green{background:#2f9e6b}
+  input{background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 12px;font-size:14px;font-family:inherit}
+  .chk{display:flex;align-items:flex-start;gap:11px;padding:11px 13px;border-radius:9px;margin-bottom:9px;font-size:13px;border:1px solid var(--border);background:var(--s2)}
+  .chk .ic{font-size:17px;flex:none;line-height:1.3}
+  .chk.ok{border-color:rgba(34,197,94,.45);background:rgba(34,197,94,.08)}
+  .chk.bad{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.08)}
+  .chk.warn{border-color:rgba(234,179,8,.45);background:rgba(234,179,8,.08)}
+  .chk b{display:block;margin-bottom:2px}
+  .chk .det{color:var(--muted);font-size:12px;font-family:ui-monospace,Menlo,monospace;word-break:break-all}
+  .fix{background:rgba(232,97,26,.08);border:1px solid rgba(232,97,26,.4);border-radius:10px;padding:14px 16px;margin-top:12px;font-size:13px}
+  .fix h3{margin:0 0 8px;font-size:14px;color:var(--or)}
+  .fix ol{margin:8px 0 0 18px;padding:0}
+  .fix li{margin-bottom:7px}
+  code{background:#0d1017;padding:2px 7px;border-radius:5px;font-size:12px;font-family:ui-monospace,Menlo,monospace;color:#f0a35e}
+  pre{background:#0d1017;border:1px solid var(--border);border-radius:9px;padding:13px;font-size:11.5px;overflow:auto;max-height:280px;color:#cfd3da}
+  .muted{color:var(--muted)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--border);text-align:left}
+  th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  a{color:#7cc4ff}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔬 Diagnóstico de Archivos (fotos y presupuestos)</h1>
+  <div class="sub">Verifica dónde están realmente los archivos y por qué no se ven.</div>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <h2>1 · Revisión del sistema de archivos</h2>
+    <p class="muted" style="font-size:13px;margin-top:0">Comprueba que el depósito de archivos exista, que se pueda subir y que se pueda leer. Tarda unos segundos.</p>
+    <button class="btn" onclick="revisar()" id="btn-rev">▶️ Revisar ahora</button>
+    <div id="checks" style="margin-top:16px"></div>
+    <div id="solucion"></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · Revisar una solicitud puntual</h2>
+    <div class="row">
+      <input type="text" id="numSC" placeholder="Ej: SCTL-2026-0059" style="flex:1;min-width:220px">
+      <button class="btn ghost" onclick="revisarSC()">🔍 Revisar esta SC</button>
+    </div>
+    <div id="scRes" style="margin-top:14px"></div>
+  </div>
+
+  <div class="card" id="cardRep" style="display:none">
+    <h2>3 · Reparar los enlaces</h2>
+    <p style="font-size:13px;margin-top:0">Si los archivos <b>están en el depósito</b> pero la solicitud no los muestra, es porque perdió los enlaces. Esto los reconstruye leyendo el depósito.</p>
+    <button class="btn green" onclick="repararSC()" id="btn-rep">🔧 Reconstruir enlaces de esta SC</button>
+    <div id="repRes" style="margin-top:12px"></div>
+  </div>
+
+</div>
+
+<script>
+var _SB_URL = 'https://qivvewvgqlsptydftlhx.supabase.co';
+var _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+var _SB_BUCKET = 'nielsen-archivos';
+var _H = { apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY };
+
+var _fallaBucket = false, _fallaPolitica = false;
+
+function chk(estado, titulo, detalle){
+  var ic = estado==='ok'?'✅':(estado==='bad'?'❌':'⚠️');
+  return '<div class="chk '+estado+'"><span class="ic">'+ic+'</span><span><b>'+titulo+'</b>'
+    + (detalle?'<span class="det">'+String(detalle).replace(/</g,'&lt;')+'</span>':'') + '</span></div>';
+}
+
+async function revisar(){
+  var box=document.getElementById('checks'), sol=document.getElementById('solucion');
+  var btn=document.getElementById('btn-rev'); btn.disabled=true;
+  box.innerHTML='<div class="muted">Revisando...</div>'; sol.innerHTML='';
+  var out=''; _fallaBucket=false; _fallaPolitica=false;
+
+  // 1) ¿Existe el bucket?
+  try{
+    var r = await fetch(_SB_URL+'/storage/v1/bucket/'+_SB_BUCKET, {headers:_H, cache:'no-store'});
+    if(r.ok){
+      var b = await r.json();
+      out += chk('ok','El depósito de archivos existe', 'bucket: '+b.name+' · público: '+(b.public?'sí':'NO'));
+      if(!b.public){ out += chk('warn','El depósito NO es público', 'Los enlaces no se van a poder abrir sin permisos.'); _fallaPolitica=true; }
+    } else {
+      var t = await r.text();
+      out += chk('bad','El depósito de archivos NO existe', 'HTTP '+r.status+' — '+t.slice(0,140));
+      _fallaBucket = true;
+    }
+  }catch(e){ out += chk('bad','No se pudo consultar el depósito', e.message); _fallaBucket=true; }
+
+  // 2) Prueba real de subida
+  if(!_fallaBucket){
+    try{
+      var testPath = '_diagnostico/test_'+Date.now()+'.txt';
+      var blob = new Blob(['prueba de diagnostico Nielsen'], {type:'text/plain'});
+      var r2 = await fetch(_SB_URL+'/storage/v1/object/'+_SB_BUCKET+'/'+testPath, {
+        method:'POST', headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, 'x-upsert':'true', 'Content-Type':'text/plain' },
+        body: blob
+      });
+      if(r2.ok){
+        out += chk('ok','Se pueden SUBIR archivos', 'prueba subida correctamente');
+        // 3) Prueba de lectura pública
+        var url = _SB_URL+'/storage/v1/object/public/'+_SB_BUCKET+'/'+testPath;
+        try{
+          var r3 = await fetch(url, {cache:'no-store'});
+          if(r3.ok) out += chk('ok','Se pueden LEER los archivos', 'lectura pública correcta');
+          else { out += chk('bad','NO se pueden leer los archivos', 'HTTP '+r3.status+' — falta la política de lectura pública'); _fallaPolitica=true; }
+        }catch(e){ out += chk('bad','NO se pueden leer los archivos', e.message); _fallaPolitica=true; }
+        // limpiar
+        fetch(_SB_URL+'/storage/v1/object/'+_SB_BUCKET+'/'+testPath, {method:'DELETE', headers:_H}).catch(function(){});
+      } else {
+        var t2 = await r2.text();
+        out += chk('bad','NO se pueden subir archivos', 'HTTP '+r2.status+' — '+t2.slice(0,180));
+        _fallaPolitica = true;
+      }
+    }catch(e){ out += chk('bad','Error al probar la subida', e.message); _fallaPolitica=true; }
+  }
+
+  // 4) ¿Cuántos archivos hay guardados?
+  if(!_fallaBucket){
+    try{
+      var r4 = await fetch(_SB_URL+'/storage/v1/object/list/'+_SB_BUCKET, {
+        method:'POST', headers:Object.assign({'Content-Type':'application/json'},_H),
+        body: JSON.stringify({prefix:'sc/', limit:1000})
+      });
+      if(r4.ok){
+        var arr = await r4.json();
+        out += chk(arr.length?'ok':'warn', 'Carpetas de solicitudes en el depósito: '+arr.length,
+          arr.length? arr.slice(0,8).map(function(x){return x.name;}).join(', ') : 'Todavía no se guardó ningún archivo de SC.');
+      }
+    }catch(e){}
+  }
+
+  box.innerHTML = out;
+
+  // Solución sugerida
+  if(_fallaBucket || _fallaPolitica){
+    sol.innerHTML = '<div class="fix"><h3>🔧 Cómo solucionarlo</h3>'
+      + '<p style="margin:0">'+(_fallaBucket
+          ? 'El <b>depósito de archivos no existe</b>. Nunca se creó, por eso las fotos y presupuestos no se guardan en ningún lado.'
+          : 'El depósito existe pero <b>le faltan los permisos</b> para subir o leer archivos.')+'</p>'
+      + '<ol>'
+      + '<li>Entrá a <b>Supabase</b> → tu proyecto → <b>SQL Editor</b>.</li>'
+      + '<li>Abrí el archivo <code>SUPABASE_storage.sql</code> (viene en el ZIP del sistema).</li>'
+      + '<li>Copiá todo su contenido, pegalo en el SQL Editor y tocá <b>Run</b>.</li>'
+      + '<li>Volvé acá y tocá <b>Revisar ahora</b> otra vez: los tres puntos deben quedar en verde.</li>'
+      + '</ol>'
+      + '<p style="margin:10px 0 0"><b>Importante:</b> las fotos cargadas <u>antes</u> de este arreglo no se pueden recuperar (nunca llegaron a guardarse). A partir de que quede en verde, todas las nuevas se van a ver bien.</p>'
+      + '</div>';
+  } else {
+    sol.innerHTML = '<div class="fix" style="background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.4)">'
+      + '<h3 style="color:#7ee2a4">✅ El sistema de archivos funciona</h3>'
+      + '<p style="margin:0">Se puede subir y leer sin problemas. Si una solicitud puntual no muestra sus archivos, revisala abajo: puede que se haya cargado antes de que esto estuviera configurado.</p></div>';
+  }
+  btn.disabled=false;
+}
+
+// ── Revisar una SC puntual ──
+var _ultimaSC = null, _archivosSC = null;
+async function revisarSC(){
+  var num = (document.getElementById('numSC').value||'').trim().toUpperCase();
+  var box = document.getElementById('scRes');
+  if(!num){ box.innerHTML='<div class="muted">Escribí el número de la solicitud.</div>'; return; }
+  box.innerHTML='<div class="muted">Revisando '+num+'...</div>';
+  document.getElementById('cardRep').style.display='none';
+  var out='';
+
+  // 1) ¿Existe la SC?
+  var sc=null;
+  try{
+    var r = await fetch(_SB_URL+'/rest/v1/solicitudes_compra?num_sc=eq.'+encodeURIComponent(num)+'&select=num_sc,fotos_items,presup_items,fotos_map,presup_map', {headers:_H, cache:'no-store'});
+    if(r.ok){ var arr=await r.json(); if(arr.length) sc=arr[0]; }
+  }catch(e){}
+  if(!sc){
+    out += chk('bad','La solicitud no existe con ese número exacto','Revisá mayúsculas, guiones y ceros. Ej: SCTL-2026-0059');
+    box.innerHTML=out; return;
+  }
+  out += chk('ok','La solicitud existe', num);
+
+  // 2) ¿Tiene ítems marcados con adjuntos?
+  var fi = sc.fotos_items||[], pi = sc.presup_items||[];
+  var marcados = (fi.length||0)+(pi.length||0);
+  out += chk(marcados?'ok':'warn','Ítems marcados con archivos: '+marcados,
+    marcados? ('fotos en ítems: ['+fi.join(', ')+'] · presupuestos en ítems: ['+pi.join(', ')+']') : 'Esta solicitud no marcó ningún ítem con foto o presupuesto.');
+
+  // 3) ¿Tiene enlaces guardados?
+  var fmap = sc.fotos_map||{}, pmap = sc.presup_map||{};
+  var nEnlaces = 0;
+  Object.keys(fmap).forEach(function(k){ nEnlaces += (fmap[k]||[]).length; });
+  Object.keys(pmap).forEach(function(k){ nEnlaces += (pmap[k]||[]).length; });
+  out += chk(nEnlaces?'ok':'bad','Enlaces guardados en la solicitud: '+nEnlaces,
+    nEnlaces? 'La solicitud sabe dónde están sus archivos.' : 'La solicitud NO tiene los enlaces. Por eso no se ven.');
+
+  // 4) ¿Hay archivos en el depósito para esta SC?
+  _archivosSC = { fotos:[], presupuestos:[] };
+  for (const sub of ['fotos','presupuestos']){
+    try{
+      var rl = await fetch(_SB_URL+'/storage/v1/object/list/'+_SB_BUCKET, {
+        method:'POST', headers:Object.assign({'Content-Type':'application/json'},_H),
+        body: JSON.stringify({prefix:'sc/'+num+'/'+sub+'/', limit:200})
+      });
+      if(rl.ok){ var a=await rl.json(); _archivosSC[sub] = (a||[]).filter(function(x){ return x.name && x.id!==null; }); }
+    }catch(e){}
+  }
+  var totalArch = _archivosSC.fotos.length + _archivosSC.presupuestos.length;
+  out += chk(totalArch?'ok':'bad','Archivos hallados en el depósito: '+totalArch,
+    totalArch ? (_archivosSC.fotos.length+' foto(s), '+_archivosSC.presupuestos.length+' presupuesto(s)')
+              : 'No hay ningún archivo guardado para esta solicitud.');
+
+  // Conclusión
+  if(totalArch && !nEnlaces){
+    out += '<div class="fix"><h3>🔧 Se puede reparar</h3><p style="margin:0">Los archivos <b>están guardados</b>, pero la solicitud perdió los enlaces. Usá el botón de abajo para reconstruirlos.</p></div>';
+    document.getElementById('cardRep').style.display='';
+    _ultimaSC = num;
+  } else if(!totalArch && marcados){
+    out += '<div class="fix"><h3>⚠️ Los archivos nunca se guardaron</h3><p style="margin:0">Esta solicitud marcó ítems con archivos, pero no hay nada en el depósito. Se cargó cuando el sistema de archivos todavía no estaba configurado. <b>Hay que volver a cargar esos archivos</b>: pedile al solicitante que los reenvíe, o cargalos de nuevo desde el Formulario SC.</p></div>';
+  } else if(totalArch && nEnlaces){
+    out += '<div class="fix" style="background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.4)"><h3 style="color:#7ee2a4">✅ Todo correcto</h3><p style="margin:0">Los archivos están guardados y la solicitud tiene sus enlaces. Deberían verse en el Centro de Control.</p></div>';
+  }
+
+  // Listado de archivos con enlace
+  if(totalArch){
+    out += '<table><thead><tr><th>Tipo</th><th>Archivo</th><th>Abrir</th></tr></thead><tbody>';
+    ['fotos','presupuestos'].forEach(function(sub){
+      _archivosSC[sub].forEach(function(f){
+        var url = _SB_URL+'/storage/v1/object/public/'+_SB_BUCKET+'/'+('sc/'+num+'/'+sub+'/'+f.name).split('/').map(encodeURIComponent).join('/');
+        out += '<tr><td>'+(sub==='fotos'?'📷 Foto':'📄 Presup.')+'</td><td style="font-size:11px">'+String(f.name).replace(/</g,'&lt;')+'</td>'
+             + '<td><a href="'+url+'" target="_blank" rel="noopener">Abrir ↗</a></td></tr>';
+      });
+    });
+    out += '</tbody></table>';
+  }
+  box.innerHTML = out;
+}
+
+// Si llega ?sc=NUMERO desde el Centro de Control, revisar automáticamente
+(function(){
+  try{
+    var p = new URLSearchParams(location.search);
+    var n = p.get('sc');
+    if(n){
+      var el = document.getElementById('numSC');
+      if(el) el.value = n;
+      window.addEventListener('load', function(){ revisar().then(function(){ revisarSC(); }); });
+    }
+  }catch(e){}
+})();
+
+async function repararSC(){
+  if(!_ultimaSC || !_archivosSC) return;
+  var btn=document.getElementById('btn-rep'); btn.disabled=true;
+  var res=document.getElementById('repRes');
+  res.innerHTML='<div class="muted">Reconstruyendo enlaces...</div>';
+  var num=_ultimaSC;
+  var mk = function(sub){
+    var m = {};
+    _archivosSC[sub].forEach(function(f){
+      var url = _SB_URL+'/storage/v1/object/public/'+_SB_BUCKET+'/'+('sc/'+num+'/'+sub+'/'+f.name).split('/').map(encodeURIComponent).join('/');
+      // Sin saber a qué ítem correspondía, se asignan al ítem 0 para que sean visibles
+      if(!m['0']) m['0']=[];
+      m['0'].push({ name:String(f.name).replace(/^\d+_/,''), url:url });
+    });
+    return m;
+  };
+  var body = {};
+  if(_archivosSC.fotos.length)        body.fotos_map  = mk('fotos');
+  if(_archivosSC.presupuestos.length) body.presup_map = mk('presupuestos');
+  try{
+    var r = await fetch(_SB_URL+'/rest/v1/solicitudes_compra?num_sc=eq.'+encodeURIComponent(num), {
+      method:'PATCH', headers:Object.assign({'Content-Type':'application/json','Prefer':'return=minimal'},_H),
+      body: JSON.stringify(body)
+    });
+    if(!r.ok){ var t=await r.text(); throw new Error('HTTP '+r.status+' — '+t.slice(0,160)); }
+    res.innerHTML='<div class="chk ok"><span class="ic">✅</span><span><b>Enlaces reconstruidos</b><span class="det">Abrí el Centro de Control y refrescá (Ctrl+Shift+R) para ver los archivos.</span></span></div>';
+  }catch(e){
+    res.innerHTML='<div class="chk bad"><span class="ic">❌</span><span><b>No se pudo reparar</b><span class="det">'+e.message+'</span></span></div>';
+  }
+  btn.disabled=false;
+}
+</script>
+</body>
+</html>

@@ -7398,7 +7398,8 @@ function diagnosticarAdjuntosSC(){
   if(!sc){ showToast('No hay SC abierta','error'); return; }
   const num = sc.numSC || sc.num || '';
   if(!num){ showToast('La SC no tiene número','error'); return; }
-  window.open(MAIL_WEBAPP_URL + '?a=diag&sc=' + encodeURIComponent(num), '_blank');
+  // Diagnóstico real del depósito de archivos (Supabase Storage), no de Drive
+  window.open('diagnostico_archivos.html?sc=' + encodeURIComponent(num), '_blank');
 }
 
 function _scAdjuntosPanel(sc){
