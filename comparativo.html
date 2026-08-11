@@ -1406,32 +1406,48 @@ function toggleSinSC() {
 
 // ─── SC ASOCIADA: lista desplegable desde el Historial de SC ───
 var _scListaCache = null;
+var _scListaErr = '';
 async function _cargarListaSC(){
   if (_scListaCache) return _scListaCache;
   try {
-    var r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra?select=num_sc,asunto,os_asunto,area,subarea,solicitante,fecha,motivo,items&order=fecha.desc&limit=3000', {
+    var r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra?select=num_sc,num_op,os_asunto,area,subarea,solicitante,fecha,motivo,items,destino&order=fecha.desc&limit=3000', {
       headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY }, cache:'no-store'
     });
-    if (!r.ok) throw new Error('HTTP '+r.status);
+    if (!r.ok) { var t = await r.text(); throw new Error('HTTP '+r.status+' — '+t.slice(0,160)); }
     _scListaCache = await r.json();
     return _scListaCache;
-  } catch(e){ console.warn('cargar SC:', e.message); return null; }
+  } catch(e){ console.warn('cargar SC:', e.message); _scListaErr = e.message; return null; }
 }
 async function _poblarSelectSC(){
   var sel = document.getElementById('scAsociadaSel');
   if (!sel) return;
   var scs = await _cargarListaSC();
   if (!scs){
-    sel.innerHTML = '<option value="">— No se pudo cargar el Historial de SC —</option>';
+    sel.innerHTML = '<option value="">— No se pudo cargar el Historial de SC (escribí el número abajo) —</option>';
     // permitir carga manual como respaldo
     var inp = document.getElementById('scAsociada');
     if (inp) inp.style.display = '';
+    // Mostrar el motivo y ofrecer reintentar
+    var cont = sel.parentNode;
+    if (cont && !document.getElementById('scListaErrBox')){
+      var d = document.createElement('div');
+      d.id = 'scListaErrBox';
+      d.style.cssText = 'margin-top:6px;font-size:11px;color:#f0a35e;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+      d.innerHTML = '<span>⚠️ ' + String(_scListaErr||'sin conexión').replace(/</g,'&lt;').slice(0,150) + '</span>'
+        + '<button type="button" onclick="_reintentarListaSC()" style="padding:3px 10px;border-radius:6px;border:1px solid var(--orange-border,#E8611A55);background:transparent;color:#E8611A;font-size:11px;font-weight:700;cursor:pointer">🔄 Reintentar</button>';
+      cont.appendChild(d);
+    }
     return;
   }
+  // Si venía de un error, limpiar el aviso
+  var errBox = document.getElementById('scListaErrBox');
+  if (errBox) errBox.remove();
   var opts = '<option value="">— Elegí una Solicitud de Compra —</option>';
   scs.forEach(function(s){
     if (!s.num_sc) return;
-    var desc = (s.asunto || s.os_asunto || s.motivo || '').toString().slice(0,45);
+    var desc = (s.os_asunto || s.motivo || '').toString().trim();
+    if (!desc && s.items) desc = String(s.items).split('\n')[0].replace(/\s+/g,' ').trim();
+    desc = desc.slice(0,45);
     opts += '<option value="'+_escAttr(s.num_sc)+'">'+_escAttr(s.num_sc)
           + (s.area ? ' · '+_escAttr(s.area) : '')
           + (desc ? ' · '+_escAttr(desc) : '') + '</option>';
@@ -1444,6 +1460,13 @@ async function _poblarSelectSC(){
     var existe = Array.prototype.some.call(sel.options, function(o){ return o.value===inp.value; });
     if (existe) sel.value = inp.value; else { sel.value='__manual__'; inp.style.display=''; }
   }
+}
+function _reintentarListaSC(){
+  _scListaCache = null; _scListaErr = '';
+  var b = document.getElementById('scListaErrBox'); if (b) b.remove();
+  var sel = document.getElementById('scAsociadaSel');
+  if (sel) sel.innerHTML = '<option value="">— Cargando solicitudes... —</option>';
+  _poblarSelectSC();
 }
 function _escAttr(v){ return String(v==null?'':v).replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
@@ -1460,11 +1483,13 @@ function _scAsociadaElegir(num){
   if (!sc) return;
   // Asunto / descripción del pedido
   var asuntoEl = document.getElementById('asunto');
-  var textoAsunto = sc.asunto || sc.os_asunto || sc.motivo || '';
+  var textoAsunto = (sc.os_asunto || '').trim();
   if (!textoAsunto && sc.items){
-    // Si no hay asunto, usar la primera línea de ítems como referencia
-    textoAsunto = String(sc.items).split('\n')[0].trim().slice(0,80);
+    // Sin asunto de OS: armar una referencia con los primeros ítems del pedido
+    var lineas = String(sc.items).split('\n').map(function(l){ return l.replace(/\s+/g,' ').trim(); }).filter(Boolean);
+    textoAsunto = lineas.slice(0,3).join(' · ').slice(0,120);
   }
+  if (!textoAsunto) textoAsunto = (sc.motivo || '').trim();
   if (asuntoEl && textoAsunto) asuntoEl.value = textoAsunto;
   // Área / departamento (match tolerante con las opciones del select)
   var areaEl = document.getElementById('area');
