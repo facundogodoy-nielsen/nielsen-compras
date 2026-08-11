@@ -1907,6 +1907,20 @@ async function showSuccess(numSC, numOP) {
   if (!guardadoOk) {
     toast('⚠️ Guardada en este dispositivo pero el servidor no confirmó. Avisá a Compras.', true);
   }
+  // Aviso específico si los ARCHIVOS no se pudieron guardar (la SC sí se guardó)
+  if (window._huboFalloAdjuntos) {
+    const cont = document.getElementById('success');
+    if (cont && !document.getElementById('suc-adj-warning')) {
+      const d = document.createElement('div');
+      d.id = 'suc-adj-warning';
+      d.style.cssText = 'margin:16px auto 0;max-width:420px;padding:13px 16px;background:rgba(239,68,68,.12);'
+        + 'border:1px solid rgba(239,68,68,.5);border-radius:10px;color:#f87171;font-size:13px;text-align:left';
+      d.innerHTML = '⚠️ <strong>Los archivos adjuntos no se guardaron.</strong><br>'
+        + 'La solicitud <strong>' + numSC + '</strong> quedó registrada, pero <u>sin las fotos ni los presupuestos</u>.<br>'
+        + '<span style="font-size:12px;opacity:.9">Avisale a Compras para que los cargue de nuevo.</span>';
+      cont.appendChild(d);
+    }
+  }
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -2840,7 +2854,15 @@ async function _subirArchivosSC(numSC, presupuestos, fotos){
       done++;
       if(typeof toast==='function') toast('⏳ Subiendo archivo '+done+' de '+total+'...');
       const path = 'sc/'+numSC+'/'+g.sub+'/'+Date.now()+'_'+_slugArchivo(a.name);
-      const url = await _storageUpload(path, a.dataUrl);
+      // Hasta 3 intentos por archivo (una senal intermitente no debe hacer perder el adjunto)
+      let url = null;
+      for(let intento=1; intento<=3 && !url; intento++){
+        if(intento>1){
+          if(typeof toast==='function') toast('\uD83D\uDD04 Reintentando archivo '+done+' de '+total+' ('+intento+'/3)...');
+          await new Promise(res=>setTimeout(res, 900*intento));
+        }
+        url = await _storageUpload(path, a.dataUrl);
+      }
       if(url){
         ok++;
         const idxs = (a.itemsIdx && a.itemsIdx.length) ? a.itemsIdx : [0];
@@ -3164,6 +3186,40 @@ async function _guardarSCenCC(numSC, numOP, mapasAdj) {
 
 
 init();
+
+// ══ Verificación temprana del depósito de archivos ══
+// Comprueba al abrir el formulario que se puedan guardar adjuntos.
+// Si algo falla, avisa ANTES de que la persona cargue fotos o presupuestos.
+(async function _verificarStorage(){
+  try{
+    const r = await fetch(_SB_URL + '/storage/v1/bucket/' + _SB_BUCKET, {
+      headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY }, cache:'no-store'
+    });
+    if(r.ok){
+      const b = await r.json();
+      if(b && b.public) { window._storageOK = true; return; }
+      window._storageOK = false;
+      _avisoStorage('El depósito de archivos no es público: los adjuntos se guardarían pero no se podrían ver.');
+      return;
+    }
+    window._storageOK = false;
+    _avisoStorage('No se encontró el depósito de archivos (HTTP ' + r.status + ').');
+  }catch(e){
+    window._storageOK = false;
+    _avisoStorage('No se pudo verificar el depósito de archivos: ' + e.message);
+  }
+})();
+
+function _avisoStorage(motivo){
+  const d = document.createElement('div');
+  d.id = 'aviso-storage';
+  d.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9998;background:#7f1d1d;color:#fff;'
+    + 'padding:11px 16px;font-size:13px;font-weight:600;text-align:center;box-shadow:0 3px 14px rgba(0,0,0,.4)';
+  d.innerHTML = '⚠️ Los archivos adjuntos NO se van a poder guardar. ' + motivo
+    + ' <span style="font-weight:400;opacity:.9">— Avisá a Compras antes de cargar fotos o presupuestos.</span>';
+  document.body.appendChild(d);
+  document.body.style.paddingTop = '44px';
+}
 </script>
 
 <!-- Reset confirm PIN modal -->
