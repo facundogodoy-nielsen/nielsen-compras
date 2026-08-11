@@ -92,51 +92,61 @@ async function revisar(){
   var btn=document.getElementById('btn-rev'); btn.disabled=true;
   box.innerHTML='<div class="muted">Revisando...</div>'; sol.innerHTML='';
   var out=''; _fallaBucket=false; _fallaPolitica=false;
+  var detalleError='';
 
-  // 1) ¿Existe el bucket?
+  // ── PRUEBA REAL DE SUBIDA (es la unica que importa: es lo que hace la app) ──
+  var testPath = '_diagnostico/test_'+Date.now()+'.txt';
+  var subioOk = false;
   try{
-    var r = await fetch(_SB_URL+'/storage/v1/bucket/'+_SB_BUCKET, {headers:_H, cache:'no-store'});
-    if(r.ok){
-      var b = await r.json();
-      out += chk('ok','El depósito de archivos existe', 'bucket: '+b.name+' · público: '+(b.public?'sí':'NO'));
-      if(!b.public){ out += chk('warn','El depósito NO es público', 'Los enlaces no se van a poder abrir sin permisos.'); _fallaPolitica=true; }
+    var blob = new Blob(['prueba de diagnostico Nielsen'], {type:'text/plain'});
+    var r2 = await fetch(_SB_URL+'/storage/v1/object/'+_SB_BUCKET+'/'+testPath, {
+      method:'POST',
+      headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, 'x-upsert':'true', 'Content-Type':'text/plain' },
+      body: blob
+    });
+    if(r2.ok){
+      subioOk = true;
+      out += chk('ok','El depósito existe y se pueden SUBIR archivos', 'bucket: '+_SB_BUCKET);
     } else {
-      var t = await r.text();
-      out += chk('bad','El depósito de archivos NO existe', 'HTTP '+r.status+' — '+t.slice(0,140));
-      _fallaBucket = true;
-    }
-  }catch(e){ out += chk('bad','No se pudo consultar el depósito', e.message); _fallaBucket=true; }
-
-  // 2) Prueba real de subida
-  if(!_fallaBucket){
-    try{
-      var testPath = '_diagnostico/test_'+Date.now()+'.txt';
-      var blob = new Blob(['prueba de diagnostico Nielsen'], {type:'text/plain'});
-      var r2 = await fetch(_SB_URL+'/storage/v1/object/'+_SB_BUCKET+'/'+testPath, {
-        method:'POST', headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, 'x-upsert':'true', 'Content-Type':'text/plain' },
-        body: blob
-      });
-      if(r2.ok){
-        out += chk('ok','Se pueden SUBIR archivos', 'prueba subida correctamente');
-        // 3) Prueba de lectura pública
-        var url = _SB_URL+'/storage/v1/object/public/'+_SB_BUCKET+'/'+testPath;
-        try{
-          var r3 = await fetch(url, {cache:'no-store'});
-          if(r3.ok) out += chk('ok','Se pueden LEER los archivos', 'lectura pública correcta');
-          else { out += chk('bad','NO se pueden leer los archivos', 'HTTP '+r3.status+' — falta la política de lectura pública'); _fallaPolitica=true; }
-        }catch(e){ out += chk('bad','NO se pueden leer los archivos', e.message); _fallaPolitica=true; }
-        // limpiar
-        fetch(_SB_URL+'/storage/v1/object/'+_SB_BUCKET+'/'+testPath, {method:'DELETE', headers:_H}).catch(function(){});
+      var t2 = await r2.text();
+      detalleError = 'HTTP '+r2.status+' — '+t2.slice(0,200);
+      var low = (t2||'').toLowerCase();
+      if(low.indexOf('not found')>=0 || low.indexOf('nosuchbucket')>=0){
+        out += chk('bad','El depósito NO existe', detalleError);
+        _fallaBucket = true;
+      } else if(low.indexOf('row-level security')>=0 || low.indexOf('policy')>=0 || r2.status===403 || low.indexOf('unauthorized')>=0){
+        out += chk('bad','El depósito existe, pero NO tiene permiso de subida', detalleError);
+        _fallaPolitica = true;
       } else {
-        var t2 = await r2.text();
-        out += chk('bad','NO se pueden subir archivos', 'HTTP '+r2.status+' — '+t2.slice(0,180));
+        out += chk('bad','No se pudieron subir archivos', detalleError);
         _fallaPolitica = true;
       }
-    }catch(e){ out += chk('bad','Error al probar la subida', e.message); _fallaPolitica=true; }
+    }
+  }catch(e){
+    detalleError = e.message;
+    out += chk('bad','Error al probar la subida', e.message);
+    _fallaPolitica = true;
   }
 
-  // 4) ¿Cuántos archivos hay guardados?
-  if(!_fallaBucket){
+  // ── PRUEBA DE LECTURA PUBLICA ──
+  if(subioOk){
+    var url = _SB_URL+'/storage/v1/object/public/'+_SB_BUCKET+'/'+testPath;
+    try{
+      var r3 = await fetch(url, {cache:'no-store'});
+      if(r3.ok){
+        out += chk('ok','Se pueden LEER los archivos', 'lectura pública correcta');
+      } else {
+        out += chk('bad','NO se pueden leer los archivos', 'HTTP '+r3.status+' — el depósito no está marcado como público');
+        _fallaPolitica = true;
+        detalleError = detalleError || ('lectura HTTP '+r3.status);
+      }
+    }catch(e){ out += chk('bad','NO se pueden leer los archivos', e.message); _fallaPolitica=true; }
+    // limpiar el archivo de prueba
+    fetch(_SB_URL+'/storage/v1/object/'+_SB_BUCKET+'/'+testPath, {method:'DELETE', headers:_H}).catch(function(){});
+  }
+
+  // ── ARCHIVOS YA GUARDADOS ──
+  if(subioOk){
     try{
       var r4 = await fetch(_SB_URL+'/storage/v1/object/list/'+_SB_BUCKET, {
         method:'POST', headers:Object.assign({'Content-Type':'application/json'},_H),
@@ -144,34 +154,51 @@ async function revisar(){
       });
       if(r4.ok){
         var arr = await r4.json();
-        out += chk(arr.length?'ok':'warn', 'Carpetas de solicitudes en el depósito: '+arr.length,
-          arr.length? arr.slice(0,8).map(function(x){return x.name;}).join(', ') : 'Todavía no se guardó ningún archivo de SC.');
+        out += chk(arr.length?'ok':'warn', 'Solicitudes con archivos guardados: '+arr.length,
+          arr.length? arr.slice(0,8).map(function(x){return x.name;}).join(', ') : 'Todavía no se guardó ningún archivo (normal si recién configurás).');
       }
     }catch(e){}
   }
 
   box.innerHTML = out;
-
-  // Solución sugerida
-  if(_fallaBucket || _fallaPolitica){
-    sol.innerHTML = '<div class="fix"><h3>🔧 Cómo solucionarlo</h3>'
-      + '<p style="margin:0">'+(_fallaBucket
-          ? 'El <b>depósito de archivos no existe</b>. Nunca se creó, por eso las fotos y presupuestos no se guardan en ningún lado.'
-          : 'El depósito existe pero <b>le faltan los permisos</b> para subir o leer archivos.')+'</p>'
-      + '<ol>'
-      + '<li>Entrá a <b>Supabase</b> → tu proyecto → <b>SQL Editor</b>.</li>'
-      + '<li>Abrí el archivo <code>SUPABASE_storage.sql</code> (viene en el ZIP del sistema).</li>'
-      + '<li>Copiá todo su contenido, pegalo en el SQL Editor y tocá <b>Run</b>.</li>'
-      + '<li>Volvé acá y tocá <b>Revisar ahora</b> otra vez: los tres puntos deben quedar en verde.</li>'
-      + '</ol>'
-      + '<p style="margin:10px 0 0"><b>Importante:</b> las fotos cargadas <u>antes</u> de este arreglo no se pueden recuperar (nunca llegaron a guardarse). A partir de que quede en verde, todas las nuevas se van a ver bien.</p>'
-      + '</div>';
-  } else {
-    sol.innerHTML = '<div class="fix" style="background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.4)">'
-      + '<h3 style="color:#7ee2a4">✅ El sistema de archivos funciona</h3>'
-      + '<p style="margin:0">Se puede subir y leer sin problemas. Si una solicitud puntual no muestra sus archivos, revisala abajo: puede que se haya cargado antes de que esto estuviera configurado.</p></div>';
-  }
+  _mostrarSolucion(sol, detalleError);
   btn.disabled=false;
+}
+
+function _mostrarSolucion(sol, detalleError){
+  if(_fallaBucket){
+    sol.innerHTML = '<div class="fix"><h3>\uD83D\uDD27 Falta crear el dep\u00f3sito</h3>'
+      + '<ol>'
+      + '<li>Supabase \u2192 <b>Storage</b> \u2192 <b>New bucket</b>.</li>'
+      + '<li>Name: <code>nielsen-archivos</code> \u00b7 activ\u00e1 <b>Public bucket</b> \u00b7 <b>Save</b>.</li>'
+      + '<li>Volv\u00e9 ac\u00e1 y toc\u00e1 <b>Revisar ahora</b>.</li>'
+      + '</ol></div>';
+    return;
+  }
+  if(_fallaPolitica){
+    sol.innerHTML = '<div class="fix"><h3>\uD83D\uDD27 El dep\u00f3sito existe, pero le faltan los permisos</h3>'
+      + '<p style="margin:0 0 10px">Es lo \u00fanico que falta. Se carga desde la pantalla de Supabase (con SQL no funciona: el editor no tiene permisos sobre Storage).</p>'
+      + '<div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.4);border-radius:8px;padding:11px 13px">'
+      + '<b style="color:#7ee2a4">Pasos exactos</b>'
+      + '<ol style="margin:8px 0 0 18px">'
+      + '<li>Supabase \u2192 <b>Storage</b> \u2192 <b>Policies</b> (dentro del men\u00fa Storage).</li>'
+      + '<li>Busc\u00e1 el bloque de <code>nielsen-archivos</code> y toc\u00e1 <b>New policy</b>.</li>'
+      + '<li>Eleg\u00ed <b>For full customization</b>.</li>'
+      + '<li>Policy name: <code>nielsen_archivos_todo</code></li>'
+      + '<li>Allowed operations: marc\u00e1 las cuatro \u2192 <b>SELECT, INSERT, UPDATE, DELETE</b>.</li>'
+      + '<li>Target roles: eleg\u00ed <b>anon</b> y <b>authenticated</b>.</li>'
+      + '<li>Policy definition, escrib\u00ed exactamente:<br><code>bucket_id = &#39;nielsen-archivos&#39;</code></li>'
+      + '<li><b>Review</b> \u2192 <b>Save policy</b>.</li>'
+      + '<li>Verific\u00e1 tambi\u00e9n que el dep\u00f3sito sea p\u00fablico: Storage \u2192 los tres puntos junto a <code>nielsen-archivos</code> \u2192 <b>Make public</b> (si ya dice "Public", est\u00e1 bien).</li>'
+      + '<li>Volv\u00e9 ac\u00e1 y toc\u00e1 <b>Revisar ahora</b>.</li>'
+      + '</ol></div>'
+      + (detalleError ? '<p style="margin:10px 0 0;font-size:11px;color:var(--muted)">Detalle t\u00e9cnico: '+String(detalleError).replace(/</g,'&lt;')+'</p>' : '')
+      + '</div>';
+    return;
+  }
+  sol.innerHTML = '<div class="fix" style="background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.4)">'
+    + '<h3 style="color:#7ee2a4">\u2705 Todo funciona</h3>'
+    + '<p style="margin:0">Se pueden subir y leer archivos. Carg\u00e1 una SC de prueba con una foto y un presupuesto: se van a ver en el Centro de Control.</p></div>';
 }
 
 // ── Revisar una SC puntual ──
