@@ -563,7 +563,10 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
           <label>Solicitud de Compra Asociada <span style="color:var(--orange)">*</span></label>
           <div class="sc-assoc-row">
             <div class="sc-assoc-field">
-              <input type="text" id="scAsociada" placeholder="Ej: SCTL-202605-0001" style="width:100%"/>
+              <select id="scAsociadaSel" onchange="_scAsociadaElegir(this.value)" style="width:100%">
+                <option value="">— Cargando solicitudes... —</option>
+              </select>
+              <input type="text" id="scAsociada" placeholder="Ej: SCTL-202605-0001" style="width:100%;margin-top:6px;display:none"/>
             </div>
             <label class="sc-assoc-check">
               <input type="checkbox" id="sinSC" onchange="toggleSinSC()"> S/SC Asociada
@@ -1387,11 +1390,98 @@ function confirmarPinComp() {
 function toggleSinSC() {
   var cb  = document.getElementById('sinSC');
   var inp = document.getElementById('scAsociada');
+  var sel = document.getElementById('scAsociadaSel');
   if (!inp) return;
   inp.disabled = cb.checked;
   inp.style.opacity = cb.checked ? '.4' : '';
   inp.style.pointerEvents = cb.checked ? 'none' : '';
+  if (sel) {
+    sel.disabled = cb.checked;
+    sel.style.opacity = cb.checked ? '.4' : '';
+    sel.style.pointerEvents = cb.checked ? 'none' : '';
+    if (cb.checked) sel.value = '';
+  }
   if (cb.checked) inp.value = '';
+}
+
+// ─── SC ASOCIADA: lista desplegable desde el Historial de SC ───
+var _scListaCache = null;
+async function _cargarListaSC(){
+  if (_scListaCache) return _scListaCache;
+  try {
+    var r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra?select=num_sc,asunto,os_asunto,area,subarea,solicitante,fecha,motivo,items&order=fecha.desc&limit=3000', {
+      headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY }, cache:'no-store'
+    });
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    _scListaCache = await r.json();
+    return _scListaCache;
+  } catch(e){ console.warn('cargar SC:', e.message); return null; }
+}
+async function _poblarSelectSC(){
+  var sel = document.getElementById('scAsociadaSel');
+  if (!sel) return;
+  var scs = await _cargarListaSC();
+  if (!scs){
+    sel.innerHTML = '<option value="">— No se pudo cargar el Historial de SC —</option>';
+    // permitir carga manual como respaldo
+    var inp = document.getElementById('scAsociada');
+    if (inp) inp.style.display = '';
+    return;
+  }
+  var opts = '<option value="">— Elegí una Solicitud de Compra —</option>';
+  scs.forEach(function(s){
+    if (!s.num_sc) return;
+    var desc = (s.asunto || s.os_asunto || s.motivo || '').toString().slice(0,45);
+    opts += '<option value="'+_escAttr(s.num_sc)+'">'+_escAttr(s.num_sc)
+          + (s.area ? ' · '+_escAttr(s.area) : '')
+          + (desc ? ' · '+_escAttr(desc) : '') + '</option>';
+  });
+  opts += '<option value="__manual__">✎ Escribir manualmente...</option>';
+  sel.innerHTML = opts;
+  // Si ya había un valor cargado (edición), seleccionarlo
+  var inp = document.getElementById('scAsociada');
+  if (inp && inp.value){
+    var existe = Array.prototype.some.call(sel.options, function(o){ return o.value===inp.value; });
+    if (existe) sel.value = inp.value; else { sel.value='__manual__'; inp.style.display=''; }
+  }
+}
+function _escAttr(v){ return String(v==null?'':v).replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+// Al elegir una SC: completar el campo y autocompletar Asunto y Área
+function _scAsociadaElegir(num){
+  var inp = document.getElementById('scAsociada');
+  if (num === '__manual__'){
+    if (inp){ inp.style.display=''; inp.value=''; inp.focus(); }
+    return;
+  }
+  if (inp){ inp.value = num || ''; inp.style.display='none'; }
+  if (!num || !_scListaCache) return;
+  var sc = _scListaCache.find(function(x){ return x.num_sc === num; });
+  if (!sc) return;
+  // Asunto / descripción del pedido
+  var asuntoEl = document.getElementById('asunto');
+  var textoAsunto = sc.asunto || sc.os_asunto || sc.motivo || '';
+  if (!textoAsunto && sc.items){
+    // Si no hay asunto, usar la primera línea de ítems como referencia
+    textoAsunto = String(sc.items).split('\n')[0].trim().slice(0,80);
+  }
+  if (asuntoEl && textoAsunto) asuntoEl.value = textoAsunto;
+  // Área / departamento (match tolerante con las opciones del select)
+  var areaEl = document.getElementById('area');
+  if (areaEl && sc.area){
+    var buscada = String(sc.area).trim().toUpperCase();
+    var encontrada = '';
+    for (var i=0;i<areaEl.options.length;i++){
+      var v = String(areaEl.options[i].value || areaEl.options[i].text).trim().toUpperCase();
+      if (!v) continue;
+      if (v === buscada || v.indexOf(buscada)===0 || buscada.indexOf(v)===0){ encontrada = areaEl.options[i].value || areaEl.options[i].text; break; }
+    }
+    if (encontrada) areaEl.value = encontrada;
+  }
+  // Solicitante, si está vacío
+  var solEl = document.getElementById('solicitante');
+  if (solEl && !solEl.value.trim() && sc.solicitante) solEl.value = sc.solicitante;
+  if (typeof showToast==='function') showToast('✔️ Datos completados desde '+num,'ok');
 }
 
 
@@ -1653,6 +1743,8 @@ document.addEventListener('DOMContentLoaded', function() {
   setCompMode(false);
   // Load provider DB from Supabase
   sbLoadProvDB();
+  // Cargar la lista de Solicitudes de Compra para el desplegable
+  _poblarSelectSC();
   // Autocompletar N° CCP con el siguiente correlativo (MAX de comparativas = lo que ve el CC)
   autoNumCCP();
   ['pageshow','focus'].forEach(function(ev){ window.addEventListener(ev, function(){ autoNumCCP(); }); });
@@ -2134,12 +2226,19 @@ function renderProviders() {
     el.addEventListener('input', function() {
       providers[parseInt(this.dataset.pidx)][this.dataset.pfield] = this.value;
       updatePDFList();
+      // El nombre encabeza la columna en la Matriz de Precios: mantenerla al día
+      if (this.dataset.pfield === 'name' && typeof renderPriceMatrix === 'function') renderPriceMatrix();
     });
   });
   grid.querySelectorAll('.prov-del').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      providers.splice(parseInt(this.dataset.idx), 1);
+      var idx = parseInt(this.dataset.idx);
+      var nom = (providers[idx] && providers[idx].name) ? providers[idx].name : ('Proveedor ' + (idx+1));
+      if (!confirm('¿Quitar a "' + nom + '" del comparativo?\n\nTambién se quitará su columna de la Matriz de Precios.')) return;
+      providers.splice(idx, 1);
       renderProviders();
+      renderPriceMatrix();   // mantener la matriz sincronizada
+      if (typeof renderAnalysis === 'function') { try { renderAnalysis(); } catch(e){} }
     });
   });
 }
@@ -3475,7 +3574,10 @@ async function renderHistCCP(){
       +'<td style="padding:7px 10px;color:#ddd">'+_escH(c.proveedor_elegido||'—')+'</td>'
       +'<td style="padding:7px 10px;text-align:right;color:#4ade80;font-weight:700">'+(Number(c.ahorro)>0?fmt(c.ahorro):'—')+'</td>'
       +'<td style="padding:7px 10px;text-align:center"><button class="btn btn-orange btn-sm" style="font-size:10px;padding:4px 10px" onclick="cargarComparativaPorId(\''+_jsArg(c.id)+'\')">🔍 Consultar</button></td>'
-      +'<td style="padding:7px 10px;text-align:center">'+(_compEsEditor()?'<button class="btn btn-outline btn-sm" style="font-size:10px;padding:4px 10px;color:#f87171;border-color:#f8717155" onclick="eliminarCCP(\''+_jsArg(c.id)+'\',\''+_jsArg(c.num_comp||'')+'\')">🗑 Eliminar</button>':'<span style="color:#666;font-size:11px">—</span>')+'</td></tr>';
+      +'<td style="padding:7px 10px;text-align:center;white-space:nowrap">'
+        +'<button class="btn btn-outline btn-sm" style="font-size:10px;padding:4px 10px;color:#4ade80;border-color:#4ade8055;margin-right:4px" onclick="solicitarAutorizacionCCP(\''+_jsArg(c.id)+'\')">📧 Solicitar autorización</button>'
+        +(_compEsEditor()?'<button class="btn btn-outline btn-sm" style="font-size:10px;padding:4px 10px;color:#f87171;border-color:#f8717155" onclick="eliminarCCP(\''+_jsArg(c.id)+'\',\''+_jsArg(c.num_comp||'')+'\')">🗑 Eliminar</button>':'')
+      +'</td></tr>';
   });
   html+='</tbody></table></div><div style="font-size:11px;color:#888;margin-top:10px">'+rows.length+' comparativa(s)</div>';
   cont.innerHTML=html;
@@ -3516,6 +3618,180 @@ async function cargarComparativaPorId(id){
     if (r.ok) { var arr=await r.json(); if (arr && arr.length) { await cargarComparativaDesdeRow(arr[0]); return; } }
     showToast('No se encontró el CCP', 'err');
   } catch(e){ showToast('Error al cargar: '+e.message, 'err'); }
+}
+
+// ══════════════════════════════════════════════════
+// SOLICITAR AUTORIZACIÓN — muestra el borrador y luego envía
+// ══════════════════════════════════════════════════
+var AUTH_DEST_C = {
+  castano:  { email:'facundo.castano@nielsenexpediciones.com.ar',  nombre:'Facundo Castaño' },
+  pablo:    { email:'pablo.nielsen@nielsenexpediciones.com.ar',    nombre:'Pablo Nielsen' },
+  mercedes: { email:'mercedes@nielsenexpediciones.com.ar',         nombre:'Mercedes' }
+};
+// Nivel segun monto en USD (mismos umbrales que el Centro de Control)
+function _authNivelC(montoUsd){
+  if (montoUsd > 500) return { nivel:'DIRECCION', tipo:'SOLICITUD', requeridas:2,
+    aprobadores:[AUTH_DEST_C.castano, AUTH_DEST_C.pablo, AUTH_DEST_C.mercedes],
+    nivelLbl:'Alta Direccion (mas de USD 500)' };
+  if (montoUsd >= 200) return { nivel:'GERENCIA', tipo:'SOLICITUD', requeridas:1,
+    aprobadores:[AUTH_DEST_C.castano], copia:[AUTH_DEST_C.pablo, AUTH_DEST_C.mercedes],
+    nivelLbl:'Gerencia General (USD 200 a 500)' };
+  return { nivel:'COMPRAS', tipo:'NOTIFICACION', requeridas:0,
+    aprobadores:[AUTH_DEST_C.castano, AUTH_DEST_C.pablo, AUTH_DEST_C.mercedes],
+    nivelLbl:'Compras autoriza (menos de USD 500) - se notifica' };
+}
+var _authCCPActual = null;
+
+async function solicitarAutorizacionCCP(id){
+  showToast('Preparando el borrador...','ok');
+  var c=null;
+  try{
+    var r=await fetch(_SB_URL+'/rest/v1/comparativas?id=eq.'+encodeURIComponent(id)+'&select=*',
+      {headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY},cache:'no-store'});
+    if(r.ok){ var arr=await r.json(); if(arr&&arr.length) c=arr[0]; }
+  }catch(e){}
+  if(!c){ showToast('No se pudo leer la comparativa','err'); return; }
+
+  var divisa = c.divisa || 'ARS';
+  var monto  = Number(c.precio_elegido)||0;
+  // Estimar el monto en USD para determinar el nivel (si esta en ARS se usa el TC guardado si existe)
+  var tc = Number(c.tc_usado)||0;
+  var montoUsd = (divisa==='USD') ? monto : (tc>0 ? monto/tc : monto/1000);
+  var plan = _authNivelC(montoUsd);
+  var esSolicitud = plan.tipo==='SOLICITUD';
+
+  var fmtM=function(n){ return (divisa==='USD'?'USD ':'$')+Math.round(Number(n)||0).toLocaleString('es-AR'); };
+  var itemsArr=[];
+  try{ var it=(typeof c.items==='string'?JSON.parse(c.items):c.items)||[]; itemsArr=it.map(function(x){ return (x.qty||1)+' '+(x.unit||'')+' - '+(x.desc||''); }).slice(0,20); }catch(e){}
+
+  var destinatarios = plan.aprobadores.map(function(a){ return a.nombre+' <'+a.email+'>'; }).join(', ');
+  var copias = (plan.copia||[]).map(function(a){ return a.nombre+' <'+a.email+'>'; }).join(', ');
+  var asuntoMail = (esSolicitud?'[AUTORIZACION REQUERIDA] ':'[NOTIFICACION DE COMPRA] ')
+    + (c.num_comp||'CCP') + ' - ' + (c.asunto||'Analisis comparativo');
+
+  // ── Cuerpo del mensaje (borrador editable) ──
+  var cuerpo = ''
+    + (esSolicitud
+        ? 'Estimados,\n\nSe solicita la autorizacion para avanzar con la siguiente compra, conforme al analisis comparativo de presupuestos realizado por el area de Compras y Abastecimiento.\n'
+        : 'Estimados,\n\nSe informa la siguiente compra, autorizada por el area de Compras y Abastecimiento conforme al monto involucrado.\n')
+    + '\nCOMPARATIVO N: ' + (c.num_comp||'-')
+    + '\nSolicitud de Compra: ' + (c.num_sc||'S/SC')
+    + '\nAsunto: ' + (c.asunto||'-')
+    + '\nArea solicitante: ' + (c.area||'-')
+    + '\nFecha: ' + (c.fecha||String(c.creado_at||'').slice(0,10))
+    + '\n\n--- RESULTADO DEL ANALISIS ---'
+    + '\nProveedor recomendado: ' + (c.proveedor_elegido||'-')
+    + '\nMonto adjudicado: ' + fmtM(monto) + ' ' + divisa
+    + (Number(c.ahorro)>0 ? '\nAhorro obtenido: ' + fmtM(c.ahorro) : '')
+    + (c.condicion_pago ? '\nCondicion de pago: ' + c.condicion_pago : '')
+    + (itemsArr.length ? '\n\n--- ITEMS ---\n' + itemsArr.join('\n') : '')
+    + '\n\nNivel de aprobacion: ' + plan.nivelLbl
+    + (esSolicitud ? '\nFirmas requeridas: ' + plan.requeridas : '')
+    + '\n\nQuedo a disposicion por cualquier consulta.'
+    + '\n\nSaludos cordiales,'
+    + '\nFacundo Godoy Iramain'
+    + '\nResponsable de Compras y Abastecimiento'
+    + '\nNielsen Logistica y Expediciones S.A.';
+
+  _authCCPActual = { id:id, c:c, plan:plan, esSolicitud:esSolicitud, montoUsd:montoUsd };
+
+  // ── Modal con el borrador para revisar antes de enviar ──
+  var esc=function(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  var m=document.getElementById('authDraftModal');
+  if(!m){
+    m=document.createElement('div');
+    m.id='authDraftModal';
+    m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(m);
+  }
+  m.innerHTML =
+    '<div style="background:#1b1f2a;border:1px solid #2f3546;border-radius:14px;max-width:760px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">'
+    + '<div style="padding:16px 20px;border-bottom:1px solid #2f3546;display:flex;align-items:center;gap:10px">'
+      + '<span style="font-size:20px">📧</span>'
+      + '<div><div style="font-weight:800;color:#E8611A;font-size:15px">Borrador del correo</div>'
+      + '<div style="font-size:11px;color:#8b93a7">Revisalo antes de enviar. Podés editar el texto.</div></div></div>'
+    + '<div style="padding:18px 20px">'
+      + '<div style="background:rgba(232,97,26,.08);border:1px solid rgba(232,97,26,.35);border-radius:9px;padding:11px 13px;margin-bottom:14px;font-size:12px;color:#f0a35e">'
+        + '<b>Nivel:</b> ' + esc(plan.nivelLbl)
+        + (esSolicitud ? ' · <b>Requiere ' + plan.requeridas + ' firma(s)</b>' : ' · <b>Solo notificación</b>') + '</div>'
+      + '<div style="font-size:11px;font-weight:700;color:#8b93a7;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Para</div>'
+      + '<div style="background:#222736;border:1px solid #2f3546;border-radius:8px;padding:9px 12px;font-size:12px;color:#e9ebf0;margin-bottom:12px">' + esc(destinatarios) + '</div>'
+      + (copias ? '<div style="font-size:11px;font-weight:700;color:#8b93a7;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Copia</div>'
+        + '<div style="background:#222736;border:1px solid #2f3546;border-radius:8px;padding:9px 12px;font-size:12px;color:#e9ebf0;margin-bottom:12px">' + esc(copias) + '</div>' : '')
+      + '<div style="font-size:11px;font-weight:700;color:#8b93a7;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Asunto</div>'
+      + '<input id="authDraftAsunto" value="' + esc(asuntoMail) + '" style="width:100%;background:#222736;border:1px solid #2f3546;border-radius:8px;padding:9px 12px;font-size:12px;color:#e9ebf0;margin-bottom:12px;font-family:inherit">'
+      + '<div style="font-size:11px;font-weight:700;color:#8b93a7;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Mensaje</div>'
+      + '<textarea id="authDraftCuerpo" style="width:100%;height:300px;background:#222736;border:1px solid #2f3546;border-radius:8px;padding:11px 13px;font-size:12px;color:#e9ebf0;font-family:ui-monospace,Menlo,monospace;line-height:1.6;resize:vertical">' + esc(cuerpo) + '</textarea>'
+    + '</div>'
+    + '<div style="padding:14px 20px;border-top:1px solid #2f3546;display:flex;gap:10px;justify-content:flex-end">'
+      + '<button onclick="_cerrarAuthDraft()" style="padding:10px 18px;border-radius:9px;border:1px solid #2f3546;background:#222736;color:#e9ebf0;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Cancelar</button>'
+      + '<button onclick="_confirmarEnvioAuth()" style="padding:10px 20px;border-radius:9px;border:none;background:#2f9e6b;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✔ Confirmar y enviar</button>'
+    + '</div></div>';
+  m.style.display='flex';
+}
+
+function _cerrarAuthDraft(){
+  var m=document.getElementById('authDraftModal');
+  if(m) m.style.display='none';
+}
+
+async function _confirmarEnvioAuth(){
+  if(!_authCCPActual){ _cerrarAuthDraft(); return; }
+  var d=_authCCPActual, c=d.c, plan=d.plan;
+  var asuntoMail=(document.getElementById('authDraftAsunto')||{}).value||'';
+  var cuerpo=(document.getElementById('authDraftCuerpo')||{}).value||'';
+  var now=new Date().toISOString();
+
+  var payload = {
+    tipo:'CCP_AUTH',
+    modo: plan.tipo,
+    comp_id: String(d.id),
+    num_comp: c.num_comp||'',
+    num_sc: c.num_sc||'',
+    asunto: c.asunto||'',
+    area: c.area||'',
+    nivel: plan.nivel,
+    nivel_label: plan.nivelLbl,
+    requeridas: plan.requeridas,
+    monto: String(c.precio_elegido||''),
+    monto_num: Number(c.precio_elegido)||0,
+    divisa: c.divisa||'ARS',
+    proveedor: c.proveedor_elegido||'',
+    ahorro: Number(c.ahorro)||0,
+    destinatarios: plan.aprobadores.map(function(a){ return a.email; }),
+    copias: (plan.copia||[]).map(function(a){ return a.email; }),
+    mail_asunto: asuntoMail,
+    mail_cuerpo: cuerpo
+  };
+
+  // Marcar el estado en Supabase
+  try{
+    await fetch(_SB_URL+'/rest/v1/comparativas?id=eq.'+encodeURIComponent(d.id), {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=minimal'},
+      body: JSON.stringify(d.esSolicitud
+        ? { estado_autorizacion:'PENDIENTE', nivel_autorizacion:plan.nivel, aprob_requeridas:plan.requeridas, aprob_contadas:0, solicitado_en:now }
+        : { estado_autorizacion:'APROBADA', nivel_autorizacion:plan.nivel, aprob_requeridas:0, aprob_contadas:0,
+            autorizado_por:'Facundo Godoy (Responsable de Compras)', autorizado_en:now, solicitado_en:now })
+    });
+  }catch(e){ console.warn('estado autorizacion', e); }
+
+  // Enviar el correo por el Apps Script
+  try{
+    await fetch(MAIL_WEBAPP_URL, {
+      method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify(payload)
+    });
+    showToast(d.esSolicitud
+      ? '📧 Solicitud enviada a ' + plan.aprobadores.map(function(a){return a.nombre;}).join(', ')
+      : '✅ Notificación enviada a Dirección', 'ok');
+  }catch(e){
+    showToast('⚠️ No se pudo enviar el correo: '+e.message, 'err');
+  }
+  _cerrarAuthDraft();
+  _authCCPActual=null;
+  try{ renderHistCCP(); }catch(e){}
 }
 
 async function eliminarCCP(id, numComp){
