@@ -749,48 +749,15 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
 <!-- ── PASO 2: PAÑOL ── -->
 <div class="panel" id="p-1">
 
-  <!-- Card 1: Acceso al inventario -->
+  <!-- Card unificada: disponibilidad + reservas desde el Stock Global -->
   <div class="card">
-    <div class="card-title">📦 Tablero de Inventario</div>
+    <div class="card-title">📦 Pañol — Disponibilidad y Reservas</div>
     <div class="info-box">
-      Antes de generar la SC <strong>consultá el inventario</strong> para verificar existencias.
-      Los ítems disponibles se descontarán de la SC y se generará un <strong>Vale de Retiro de Pañol</strong> numerado para la entrega.
+      Para cada ítem del pedido, tocá <strong>📦 Cargar stock</strong> y buscalo en el inventario del pañol.
+      Lo que reserves <strong>no se incluirá en la Solicitud de Compra</strong> y quedará en un
+      <strong>Vale de Retiro de Pañol</strong> numerado para retirar del depósito.
     </div>
 
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px">
-      <button class="btn btn-primary btn-sm" onclick="abrirInventario()" style="white-space:nowrap">
-        📦 Abrir Stock Global
-      </button>
-
-      <span style="font-size:11px;color:var(--muted)" id="inv-url-status">—</span>
-    </div>
-  </div>
-
-  <!-- Card 1b: Reserva directa del Stock Global -->
-  <div class="card">
-    <div class="card-title">🛒 Reservar del Stock Global</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.55">
-      Buscá artículos en el inventario y reservá directamente desde acá.
-      La reserva queda <strong>pendiente de aprobación del pañolero</strong> y se registra en la Central de Depósitos con el N° de esta SC.
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-      <button class="btn btn-sm" type="button" onclick="invCargarStock()" id="inv-cargar-btn"
-        style="background:var(--s3);border:1.5px solid var(--border);color:var(--text);white-space:nowrap">🔄 Cargar stock</button>
-      <input type="text" id="inv-buscar" oninput="invRenderLista()" placeholder="Buscar artículo, herramienta, insumo..."
-        style="flex:1;min-width:180px;padding:9px 12px;background:var(--s3);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--ff);font-size:13px;outline:none;text-transform:none">
-    </div>
-    <div id="inv-lista" style="display:none;max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>
-    <div id="inv-carrito" style="margin-top:10px"></div>
-  </div>
-
-  <!-- Card 2: Verificación ítem por ítem -->
-  <div class="card">
-    <div class="card-title">✅ Disponibilidad en Depósito</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.55">
-      Tildá los artículos que encontraste <strong style="color:var(--green)">en existencia</strong>.
-      Completá la cantidad disponible y el depósito de origen.
-      Si no hay existencias, dejá todo sin tildar y continuá.
-    </div>
     <div id="stock-check-wrap">
       <div style="padding:16px;color:var(--muted);font-size:12px;font-style:italic;text-align:center;background:var(--s2);border:1px solid var(--border);border-radius:8px">
         Completá el listado del pedido en el Paso 1 para ver los ítems acá.
@@ -801,10 +768,10 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
     <div class="reserva-panel" id="reserva-panel">
       <div class="reserva-panel-hdr">
         <div class="reserva-panel-title">
-          <span>✅</span> Reserva de Pañol registrada
+          <span>✅</span> Artículos reservados del pañol
         </div>
         <button class="btn btn-green btn-sm" onclick="abrirModalVale()" style="white-space:nowrap;flex-shrink:0">
-          🖨️ Generar Vale de Retiro
+          🎫 Generar Vale de Retiro de Pañol
         </button>
       </div>
       <div class="reserva-tbl">
@@ -817,7 +784,7 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
         <div id="reserva-tbl-body"></div>
       </div>
       <div class="reserva-nota">
-        📋 Estos artículos <strong>no se incluirán en la SC</strong>. Generá el Vale de Retiro para entregar al pañolero.
+        📋 Estos artículos <strong>no se incluirán en la SC</strong>. Generá el Vale de Retiro con todos ellos para entregar al pañolero.
       </div>
     </div>
   </div>
@@ -1161,6 +1128,28 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
   </div>
 </div>
 </main>
+
+<!-- ══ MODAL STOCK GLOBAL (elegir artículo del pañol para un ítem) ══ -->
+<div class="vale-ov" id="stockpick-ov" onclick="if(event.target===this)cerrarStockPick()">
+  <div class="vale-box" style="max-width:720px">
+    <button class="vale-box-close" onclick="cerrarStockPick()">✕</button>
+    <div style="padding:20px 22px 0">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or);margin-bottom:4px">Stock Global del Pañol</div>
+      <div id="sp-item-ref" style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">—</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">Solo se muestran los artículos de tipo <strong>Stock (reservable)</strong>.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <input type="text" id="sp-buscar" oninput="spRender()" placeholder="Buscar artículo..."
+          style="flex:1;min-width:180px;padding:9px 12px;background:var(--s3);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--ff);font-size:13px;outline:none;text-transform:none">
+        <button class="btn btn-sm" type="button" onclick="spRecargar()" id="sp-recargar-btn"
+          style="background:var(--s3);border:1.5px solid var(--border);color:var(--text);white-space:nowrap">🔄 Actualizar</button>
+      </div>
+    </div>
+    <div id="sp-lista" style="max-height:52vh;overflow-y:auto;padding:0 22px 8px"></div>
+    <div class="vale-doc-footer">
+      <button class="btn btn-ghost btn-sm" onclick="cerrarStockPick()">Cerrar</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══ MODAL VALE DE PAÑOL ══ -->
 <div class="vale-ov" id="vale-ov" onclick="if(event.target===this)this.classList.remove('open')">
@@ -1719,12 +1708,27 @@ function buildPreview() {
   const prevVale = document.getElementById('prev-vale-info');
   if (prevVale) {
     const enStock = Object.entries(stockItems).filter(([,v]) => v.checked);
-    if (enStock.length > 0 && valeNumActual) {
+    if (enStock.length > 0) {
       prevVale.style.display = 'block';
-      prevVale.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:rgba(34,197,94,.07);border:1.5px solid rgba(34,197,94,.3);border-radius:8px;padding:10px 14px;margin-top:4px;flex-wrap:wrap;">
-        <span style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.8px">✅ Vale de Pañol generado</span>
-        <span style="font-family:var(--fm);font-size:14px;font-weight:700;color:var(--or);letter-spacing:1px">${escHtml(valeNumActual)}</span>
-        <span style="font-size:11px;color:var(--muted)">${enStock.length} ítem${enStock.length!==1?'s':''} reservados del depósito</span>
+      const filas = enStock.map(([idx, s], n) => {
+        const it = pedidoItems[parseInt(idx)] || {};
+        const unit = parseCantUnit(it.cant) || (s.invUnidad || '');
+        return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(34,197,94,.15);font-size:12px">
+          <span style="font-family:var(--fm);font-size:10px;color:var(--or);font-weight:700;flex:none">${String(n+1).padStart(2,'0')}</span>
+          <span style="flex:1;color:var(--text)">${escHtml(s.invNombre || it.art || '—')}</span>
+          <span style="font-weight:700;color:var(--green);flex:none">${escHtml(String(s.cantDisp||'—'))}${unit?' '+escHtml(unit):''}</span>
+          ${s.deposito?`<span style="font-size:10.5px;color:var(--muted);flex:none">${escHtml(s.deposito)}</span>`:''}
+        </div>`;
+      }).join('');
+      prevVale.innerHTML = `<div style="background:rgba(34,197,94,.07);border:1.5px solid rgba(34,197,94,.3);border-radius:9px;padding:12px 14px;margin-top:4px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+          <span style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.8px">🎫 Vale de Retiro de Pañol</span>
+          ${valeNumActual?`<span style="font-family:var(--fm);font-size:14px;font-weight:700;color:var(--or);letter-spacing:1px">${escHtml(valeNumActual)}</span>`
+            :`<span style="font-size:11px;color:var(--muted)">Se numera al confirmar</span>`}
+          <span style="font-size:11px;color:var(--muted);margin-left:auto">${enStock.length} artículo${enStock.length!==1?'s':''} del depósito</span>
+        </div>
+        ${filas}
+        <div style="font-size:10.5px;color:var(--muted);margin-top:8px">Estos artículos se retiran del pañol y no se incluyen en la compra.</div>
       </div>`;
     } else {
       prevVale.style.display = 'none';
@@ -1874,6 +1878,12 @@ async function enviar() {
 }
 
 async function showSuccess(numSC, numOP) {
+  // ── Si hay artículos reservados del pañol, asegurar el N° de vale ──
+  const _hayReservas = Object.values(stockItems).some(v => v && v.checked);
+  if (_hayReservas && !valeNumActual) {
+    try { valeNumActual = await generarNumVP(); } catch(e){ console.warn('num vale', e); }
+  }
+
   // ── Armar los payloads de archivos ACÁ (antes se construían en otra función,
   //    por lo que no existían en este alcance y la subida nunca llegaba a ejecutarse) ──
   const _presupPayload = (presupuestos || []).filter(p => p.data && p.name).map(p => ({
@@ -2138,13 +2148,7 @@ function actualizarInvUrlStatus() {
   el.style.color = 'var(--green)';
 }
 
-function abrirInventario() {
-  let url = getInvURL();
-  const urlObj = (() => { try { return new URL(url); } catch { return null; } })();
-  if (urlObj) { urlObj.hash = 'stock-global'; url = urlObj.href; }
-  else { url = url.replace(/#.*$/,'') + '#stock-global'; }
-  window.open(url, '_blank');
-}
+
 
 // ══════════════════════════════════════════════════
 // RESERVA DIRECTA DEL STOCK GLOBAL (Nielsen Inventario)
@@ -2191,66 +2195,237 @@ function _invListaUnificada(st){
   });
   return items.filter(x=>x.nombre);
 }
-async function invCargarStock(){
-  const btn=document.getElementById('inv-cargar-btn');
-  if(btn){ btn.disabled=true; btn.textContent='⏳ Cargando...'; }
-  try{
-    _invState = await _invFetchState();
-    _invItems = _invListaUnificada(_invState);
-    invRenderLista();
-    if(typeof toast==='function') toast('✅ Stock cargado: '+_invItems.length+' ítems');
-  }catch(e){
-    console.warn('inv stock', e);
-    if(typeof toast==='function') toast('⚠️ No se pudo cargar el inventario', true);
+
+// ══════════════════════════════════════════════════════════════
+// SELECTOR DE STOCK GLOBAL POR ÍTEM (secciones + subsecciones, tipo STOCK)
+// ══════════════════════════════════════════════════════════════
+let _spItemIdx = null;        // índice del ítem de la SC que se está cubriendo
+let _spSecciones = [];        // [{key,label,subs:[{nombre,items:[...]}]}]
+let _spAbiertas = {};         // secciones desplegadas
+
+// Tipo de stock: 'stock' (reservable) o 'patrimonial' — mismos criterios que Inventario
+function _spTipoDe(st, itemKey, secKey){
+  const t = st && st.stockTipos && st.stockTipos[itemKey];
+  if (t) return t;
+  if (secKey==='herramientas' || secKey==='indumentaria' || secKey==='epp') return 'patrimonial';
+  return 'stock';
+}
+
+// Arma el árbol del Stock Global igual que la pantalla de Inventario
+function _spArbol(st){
+  const secs = [];
+  const actMap = {};
+  (st.reservas||[]).forEach(r=>{ if(r.estado==='pendiente'||r.estado==='aprobada'){ actMap[r.itemKey]=(actMap[r.itemKey]||0)+(r.cantidad||0); } });
+  const depNom = id => { const d=(st.depositos||[]).find(x=>x.id===id); return d?d.nombre:id; };
+
+  // 1) Artículos
+  const arts = (st.articulos||[]).map(a=>{
+    let total=0; Object.values(a.stock||{}).forEach(v=>total+=(v||0));
+    return { key:'art:'+a.id, sub:(a.categoria||'Sin categoría'), nombre:a.nombre, unidad:a.unidad||'u',
+             total, reservado:actMap['art:'+a.id]||0,
+             ubic:Object.entries(a.stock||{}).filter(e=>e[1]>0).map(e=>({dep:depNom(e[0]),qty:e[1]})) };
+  });
+  secs.push({ key:'articulos', label:'📦 Artículos', items:arts });
+
+  // 2) Indumentaria y EPP
+  ['indumentaria','epp'].forEach(grupo=>{
+    const prendas=((st.ropa&&st.ropa.prendas)||[]).filter(p=>(p.grupo||'indumentaria')===grupo);
+    const items=prendas.map(p=>{
+      let total=0; const ubic=[];
+      Object.entries(p.tallas||{}).forEach(([talla,td])=>{ const q=(td&&td.stock)||0; total+=q; if(q>0) ubic.push({dep:'Talle '+talla,qty:q}); });
+      return { key:grupo+':'+p.id, sub:(p.categoria||'Sin categoría'), nombre:p.nombre, unidad:'u',
+               total, reservado:actMap[grupo+':'+p.id]||0, ubic };
+    });
+    secs.push({ key:grupo, label: grupo==='epp'?'🦺 EPP':'👕 Indumentaria Laboral', items });
+  });
+
+  // 3) Herramientas
+  const herr=((st.herramientas&&st.herramientas.items)||[]).map(h=>{
+    let total=0; Object.values(h.stock||{}).forEach(v=>total+=(v||0));
+    if(!total && typeof h.cantidad==='number') total=h.cantidad;
+    return { key:'herr:'+h.id, sub:(h.area||'Sin área'), nombre:h.nombre, unidad:h.unidad||'u',
+             total, reservado:actMap['herr:'+h.id]||0, ubic:[{dep:h.area||'Sin área',qty:total}] };
+  });
+  secs.push({ key:'herramientas', label:'🔧 Herramientas', items:herr });
+
+  // 4) Insumos
+  const ins=((st.insumos&&st.insumos.items)||[]).map(i2=>{
+    const area=((st.insumos&&st.insumos.areas)||[]).find(a=>a.id===i2.areaId);
+    let total=0; Object.values(i2.stock||{}).forEach(v=>total+=(v||0));
+    if(!total && typeof i2.stock==='number') total=i2.stock;
+    if(!total && typeof i2.cantidad==='number') total=i2.cantidad;
+    return { key:'ins:'+i2.id, sub:(area?area.nombre:'Sin área'), nombre:i2.nombre, unidad:i2.unidad||'u',
+             total, reservado:actMap['ins:'+i2.id]||0, ubic:[{dep:area?area.nombre:'Sin área',qty:total}] };
+  });
+  secs.push({ key:'insumos', label:'🧴 Insumos', items:ins });
+
+  // 5) Agua y Gas
+  const ag=[];
+  ((st.aguagas&&st.aguagas.items)||[]).forEach(it=>{
+    const epc = it.estadosPorCamp || (it.estados ? {'base-sj':it.estados} : {});
+    let total=0; const ubic=[];
+    Object.keys(epc).forEach(cid=>{
+      const e=epc[cid]||{}; const sub=(e.enUso||0)+(e.lleno||0)+(e.vacio||0);
+      total+=sub;
+      if(sub>0){ const camp=((st.aguagas.campamentos)||[]).find(c=>c.id===cid); ubic.push({dep:(camp?camp.nombre:cid),qty:sub}); }
+    });
+    ag.push({ key:'ag:'+it.id, sub:(it.tipo==='gas'?'🔥 Gas':'💧 Agua'), nombre:it.nombre, unidad:it.unidad||'u',
+              total, reservado:actMap['ag:'+it.id]||0, ubic });
+  });
+  secs.push({ key:'aguagas', label:'💧 Agua y Gas', items:ag });
+
+  // Filtrar SOLO tipo stock (reservable) y agrupar por subsección
+  return secs.map(sec=>{
+    const items=sec.items.filter(x=> x.nombre && _spTipoDe(st, x.key, sec.key)==='stock');
+    const subsMap={};
+    items.forEach(x=>{ (subsMap[x.sub]=subsMap[x.sub]||[]).push(x); });
+    const subs=Object.keys(subsMap).sort().map(nom=>({ nombre:nom, items:subsMap[nom].sort((a,b)=>a.nombre.localeCompare(b.nombre)) }));
+    return { key:sec.key, label:sec.label, subs, n:items.length };
+  }).filter(sec=>sec.n>0);
+}
+
+async function abrirStockPick(idx){
+  _spItemIdx = idx;
+  const it = pedidoItems[idx] || {};
+  const ref = document.getElementById('sp-item-ref');
+  if(ref) ref.textContent = (it.art||'—') + (it.cant?('  ·  pedido: '+it.cant):'');
+  const bus = document.getElementById('sp-buscar'); if(bus) bus.value='';
+  document.getElementById('stockpick-ov').classList.add('open');
+  const box=document.getElementById('sp-lista');
+  if(!_invState){
+    box.innerHTML='<div style="padding:22px;text-align:center;color:var(--muted);font-size:13px">⏳ Cargando el stock del pañol...</div>';
+    try{
+      _invState = await _invFetchState();
+      _spSecciones = _spArbol(_invState);
+      // Abrir la primera sección por defecto
+      if(_spSecciones.length) _spAbiertas[_spSecciones[0].key]=true;
+    }catch(e){
+      box.innerHTML='<div style="padding:22px;text-align:center;color:#eab308;font-size:13px">⚠️ No se pudo cargar el inventario.<br><span style="font-size:11.5px;color:var(--muted)">'+(e.message||'')+'</span></div>';
+      return;
+    }
+  } else if(!_spSecciones.length){
+    _spSecciones = _spArbol(_invState);
+    if(_spSecciones.length) _spAbiertas[_spSecciones[0].key]=true;
   }
-  if(btn){ btn.disabled=false; btn.textContent='🔄 Cargar stock'; }
+  spRender();
 }
-function invRenderLista(){
-  const box=document.getElementById('inv-lista'); if(!box) return;
-  if(!_invItems.length){ box.style.display='none'; return; }
-  const q=(document.getElementById('inv-buscar')?.value||'').toLowerCase().trim();
-  let list=_invItems;
-  if(q) list=list.filter(x=>(x.nombre+' '+x.seccion).toLowerCase().includes(q));
-  list=list.slice(0,60);
-  box.style.display='block';
-  if(!list.length){ box.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12px;text-align:center">Sin resultados</div>'; return; }
-  box.innerHTML=list.map(x=>{
-    const disp=Math.max(0,(x.total||0)-(x.reservado||0));
-    const yaEnCarrito=invReservas.find(r=>r.itemKey===x.key);
-    const badge=disp>0?'<span style="color:#22c55e;font-weight:700">'+disp+' '+x.unidad+'</span>':'<span style="color:#ef4444;font-weight:700">Sin stock</span>';
-    const accion=disp>0
-      ? (yaEnCarrito
-          ? '<span style="font-size:11px;color:#22c55e;font-weight:700">✓ En reserva ('+yaEnCarrito.cantidad+')</span>'
-          : '<span style="display:inline-flex;gap:6px;align-items:center"><input type="number" min="1" max="'+disp+'" value="1" id="invq-'+x.key.replace(/[^a-zA-Z0-9]/g,'_')+'" style="width:58px;padding:5px 7px;background:var(--s3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;text-align:center">'
-            +'<button type="button" class="btn btn-sm" onclick="invAgregarReserva(\''+x.key+'\')" style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#22c55e;font-size:11px;padding:5px 10px">🛒 Reservar</button></span>')
-      : '';
-    return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border)">'
-      +'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+x.nombre+'</div>'
-      +'<div style="font-size:10px;color:var(--muted)">'+x.seccion+' · Disponible: '+badge+(x.reservado?(' <span style="color:var(--muted)">('+x.reservado+' ya reservados)</span>'):'')+'</div></div>'
-      +accion+'</div>';
-  }).join('');
+function cerrarStockPick(){ document.getElementById('stockpick-ov').classList.remove('open'); }
+async function spRecargar(){
+  const btn=document.getElementById('sp-recargar-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳...'; }
+  try{ _invState = await _invFetchState(); _spSecciones=_spArbol(_invState); spRender(); if(typeof toast==='function') toast('✅ Stock actualizado'); }
+  catch(e){ if(typeof toast==='function') toast('⚠️ No se pudo actualizar', true); }
+  if(btn){ btn.disabled=false; btn.textContent='🔄 Actualizar'; }
 }
-function invAgregarReserva(key){
-  const it=_invItems.find(x=>x.key===key); if(!it) return;
-  const inp=document.getElementById('invq-'+key.replace(/[^a-zA-Z0-9]/g,'_'));
-  const cant=Math.max(1, parseInt(inp?.value||'1')||1);
-  const disp=Math.max(0,(it.total||0)-(it.reservado||0));
-  if(cant>disp){ if(typeof toast==='function') toast('Solo hay '+disp+' disponibles', true); return; }
-  invReservas.push({ itemKey:it.key, nombre:it.nombre, cantidad:cant, unidad:it.unidad });
-  invRenderLista(); invRenderCarrito();
+function spToggleSec(key){ _spAbiertas[key]=!_spAbiertas[key]; spRender(); }
+
+function spRender(){
+  const box=document.getElementById('sp-lista'); if(!box) return;
+  const q=(document.getElementById('sp-buscar')?.value||'').toLowerCase().trim();
+  const abrirTodo = !!q;
+  let html='';
+  let hallados=0;
+  _spSecciones.forEach(sec=>{
+    // filtrar por búsqueda
+    const subs = sec.subs.map(sb=>({
+      nombre: sb.nombre,
+      items: q ? sb.items.filter(x=>(x.nombre+' '+sb.nombre).toLowerCase().includes(q)) : sb.items
+    })).filter(sb=>sb.items.length);
+    if(!subs.length) return;
+    const nItems = subs.reduce((a,sb)=>a+sb.items.length,0);
+    hallados += nItems;
+    const abierta = abrirTodo || !!_spAbiertas[sec.key];
+    html += '<div style="border:1px solid var(--border);border-radius:9px;margin-bottom:9px;overflow:hidden">'
+      + '<div onclick="spToggleSec(\''+sec.key+'\')" style="display:flex;align-items:center;gap:9px;padding:11px 13px;background:var(--s3);cursor:pointer;user-select:none">'
+      + '<span style="font-size:12px;color:var(--muted);width:12px">'+(abierta?'▾':'▸')+'</span>'
+      + '<span style="font-size:13px;font-weight:700;color:var(--text);flex:1">'+sec.label+'</span>'
+      + '<span style="font-size:11px;color:var(--muted)">'+nItems+' artículo'+(nItems!==1?'s':'')+'</span></div>';
+    if(abierta){
+      subs.forEach(sb=>{
+        html += '<div style="padding:7px 13px 4px;background:var(--s2);border-top:1px solid var(--border)">'
+          + '<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--or)">'+_escSP(sb.nombre)+'</span></div>';
+        sb.items.forEach(x=>{
+          const disp=Math.max(0,(x.total||0)-(x.reservado||0));
+          const idSafe=x.key.replace(/[^a-zA-Z0-9]/g,'_');
+          const ubicTxt=(x.ubic||[]).filter(u=>u.qty>0).map(u=>u.dep+': '+u.qty).join(' · ');
+          const accion = disp>0
+            ? '<span style="display:inline-flex;gap:6px;align-items:center;flex:none">'
+              + '<input type="number" min="1" max="'+disp+'" value="1" id="spq-'+idSafe+'" style="width:62px;padding:6px 7px;background:var(--s3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;text-align:center">'
+              + '<button type="button" class="btn btn-sm" onclick="spReservar(\''+x.key+'\')" style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.45);color:#22c55e;font-size:11px;padding:6px 11px;white-space:nowrap">✓ Reservar</button></span>'
+            : '<span style="font-size:11px;color:#ef4444;font-weight:700;flex:none">Sin stock</span>';
+          html += '<div style="display:flex;align-items:center;gap:10px;padding:9px 13px;border-top:1px solid var(--border)">'
+            + '<div style="flex:1;min-width:0">'
+              + '<div style="font-size:13px;color:var(--text)">'+_escSP(x.nombre)+'</div>'
+              + '<div style="font-size:10.5px;color:var(--muted)">Disponible: <strong style="color:'+(disp>0?'#22c55e':'#ef4444')+'">'+disp+' '+_escSP(x.unidad)+'</strong>'
+              + (x.reservado?(' · '+x.reservado+' ya reservados'):'')
+              + (ubicTxt?(' · '+_escSP(ubicTxt)):'') + '</div>'
+            + '</div>' + accion + '</div>';
+        });
+      });
+    }
+    html += '</div>';
+  });
+  if(!hallados) html='<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">Sin resultados'+(q?' para «'+_escSP(q)+'»':'')+'.</div>';
+  box.innerHTML=html;
 }
-function invQuitarReserva(idx){ invReservas.splice(idx,1); invRenderLista(); invRenderCarrito(); }
-function invRenderCarrito(){
-  const box=document.getElementById('inv-carrito'); if(!box) return;
-  if(!invReservas.length){ box.innerHTML=''; return; }
-  box.innerHTML='<div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:10px 12px">'
-    +'<div style="font-size:11px;font-weight:700;color:#22c55e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🛒 Reservas a registrar ('+invReservas.length+')</div>'
-    +invReservas.map((r,i)=>'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(34,197,94,.15)">'
-      +'<span style="flex:1;font-size:12px;color:var(--text)">'+r.nombre+'</span>'
-      +'<span style="font-size:12px;font-weight:700;color:#22c55e">'+r.cantidad+' '+r.unidad+'</span>'
-      +'<button type="button" onclick="invQuitarReserva('+i+')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">✕</button></div>').join('')
-    +'<div style="font-size:10px;color:var(--muted);margin-top:8px">Se registran en la Central de Depósitos al enviar la SC, con el N° de solicitud, pendientes de aprobación del pañolero.</div></div>';
+function _escSP(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Reservar un artículo del pañol para el ítem de la SC en curso
+function spReservar(itemKey){
+  if(_spItemIdx==null) return;
+  let art=null, secLabel='', subLabel='';
+  _spSecciones.forEach(sec=>sec.subs.forEach(sb=>sb.items.forEach(x=>{ if(x.key===itemKey){ art=x; secLabel=sec.label; subLabel=sb.nombre; } })));
+  if(!art) return;
+  const idSafe=itemKey.replace(/[^a-zA-Z0-9]/g,'_');
+  const inp=document.getElementById('spq-'+idSafe);
+  let cant=parseFloat(inp?inp.value:1);
+  const disp=Math.max(0,(art.total||0)-(art.reservado||0));
+  if(isNaN(cant)||cant<=0) cant=1;
+  if(cant>disp) cant=disp;
+
+  const i=_spItemIdx;
+  const pedNum=parseCantNum(pedidoItems[i]?.cant);
+  if(pedNum!==null && cant>pedNum){
+    cant=pedNum;
+    if(typeof toast==='function') toast('Ajustado a lo pedido ('+pedNum+')', true);
+  }
+
+  // Depósito sugerido: la ubicación con más stock
+  let dep='';
+  if(art.ubic && art.ubic.length){ const mejor=art.ubic.slice().sort((a,b)=>b.qty-a.qty)[0]; dep=mejor?mejor.dep:''; }
+
+  // Marcar el ítem de la SC como cubierto por pañol
+  if(!stockItems[i]) stockItems[i]={ checked:false, cantDisp:'', deposito:'' };
+  stockItems[i].checked=true;
+  stockItems[i].cantDisp=String(cant);
+  stockItems[i].deposito=dep||stockItems[i].deposito||'';
+  stockItems[i].invKey=itemKey;
+  stockItems[i].invNombre=art.nombre;
+  stockItems[i].invSeccion=secLabel+(subLabel?(' · '+subLabel):'');
+  stockItems[i].invUnidad=art.unidad||'u';
+  enStockSet.add(i);
+
+  // Carrito de reservas que se registran en la Central de Depósitos
+  const yaIdx=invReservas.findIndex(r=>r.scItemIdx===i);
+  const reserva={ scItemIdx:i, itemKey:itemKey, nombre:art.nombre, cantidad:cant, unidad:art.unidad||'u' };
+  if(yaIdx>=0) invReservas[yaIdx]=reserva; else invReservas.push(reserva);
+
+  cerrarStockPick();
+  renderStockCheck();
+  if(typeof toast==='function') toast('✅ '+cant+' '+(art.unidad||'u')+' de '+art.nombre+' reservado');
 }
+
+// Quitar la reserva de un ítem
+function spQuitar(i){
+  if(stockItems[i]){ stockItems[i].checked=false; stockItems[i].cantDisp=''; stockItems[i].invKey=null; stockItems[i].invNombre=null; }
+  enStockSet.delete(i);
+  const k=invReservas.findIndex(r=>r.scItemIdx===i);
+  if(k>=0) invReservas.splice(k,1);
+  renderStockCheck();
+}
+
+
+
 // Registra las reservas del carrito en el inventario (al enviar la SC)
 async function invRegistrarReservas(numSC, solicitante){
   if(!invReservas.length) return { ok:true, n:0 };
@@ -2307,75 +2482,55 @@ function renderStockCheck() {
   if (!wrap) return;
   if (!pedidoItems.length) {
     wrap.innerHTML = '<div style="padding:16px;color:var(--muted);font-size:12px;font-style:italic;text-align:center;background:var(--s2);border:1px solid var(--border);border-radius:8px">Completá el listado del pedido en el Paso 1 para ver los ítems acá.</div>';
+    actualizarResumenVale();
     return;
   }
-  const depOpts = sel => DEPOSITOS.map(d =>
-    `<option value="${d}"${sel===d?' selected':''}>${d}</option>`
-  ).join('');
 
   const rows = pedidoItems.map((it, i) => {
-    const s     = stockItems[i] || { checked:false, cantDisp:'', deposito:'' };
-    const on    = s.checked;
+    const s = stockItems[i] || { checked:false, cantDisp:'', deposito:'' };
+    const on = s.checked;
     const pedNum  = parseCantNum(it.cant);
     const dispNum = parseCantNum(s.cantDisp);
+    const unit    = parseCantUnit(it.cant) || (s.invUnidad||'');
     const saldo   = (on && dispNum !== null && pedNum !== null) ? Math.max(0, pedNum - dispNum) : null;
-    const esParcial = on && saldo !== null && saldo > 0;
-    const esTotal   = on && saldo !== null && saldo === 0;
-    const chkClass  = on ? (esParcial ? 'on parcial' : 'on total') : '';
-    const rowClass  = on ? (esParcial ? ' en-stock-parcial' : ' en-stock-total') : '';
-    const chkLabel  = on ? (esParcial ? '½' : '✓') : '';
 
-    let saldoHTML = '<span class="sr-saldo vacio">—</span>';
-    if (on && saldo !== null) {
-      const unit = parseCantUnit(it.cant);
-      saldoHTML = saldo === 0
-        ? '<span class="sr-saldo cero">✓ Cubierto</span>'
-        : `<span class="sr-saldo positivo">SC: ${saldo}${unit?' '+unit:''}</span>`;
+    let estado;
+    if (on) {
+      const cubierto = saldo === 0;
+      estado = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+        + '<span style="font-size:11px;font-weight:700;color:#22c55e;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);border-radius:999px;padding:3px 10px;white-space:nowrap">✓ '
+          + escHtml(String(dispNum!==null?dispNum:'')) + (unit?' '+escHtml(unit):'') + ' del pañol</span>'
+        + (cubierto
+            ? '<span style="font-size:11px;color:#22c55e;font-weight:600">Cubierto</span>'
+            : (saldo!==null ? '<span style="font-size:11px;color:#ca9010;font-weight:600">Va a la SC: '+saldo+(unit?' '+escHtml(unit):'')+'</span>' : ''))
+        + '</div>'
+        + (s.invNombre
+            ? '<div style="font-size:10.5px;color:var(--muted);margin-top:3px">📦 '+escHtml(s.invNombre)+(s.invSeccion?(' · '+escHtml(s.invSeccion)):'')+(s.deposito?(' · '+escHtml(s.deposito)):'')+'</div>'
+            : '');
+    } else {
+      estado = '<span style="font-size:11.5px;color:var(--muted);font-style:italic">Sin reserva — se compra completo</span>';
     }
 
-    const inputVal = (on && dispNum !== null) ? dispNum : '';
+    const acciones = on
+      ? '<button type="button" class="btn btn-sm" onclick="abrirStockPick('+i+')" style="background:var(--s3);border:1px solid var(--border);color:var(--text);font-size:11px;padding:6px 10px;white-space:nowrap">✎ Cambiar</button>'
+        + '<button type="button" class="btn btn-sm" onclick="spQuitar('+i+')" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#f87171;font-size:11px;padding:6px 10px;white-space:nowrap">✕</button>'
+      : '<button type="button" class="btn btn-sm" onclick="abrirStockPick('+i+')" style="background:rgba(232,93,37,.14);border:1px solid rgba(232,93,37,.45);color:var(--or);font-size:11.5px;padding:7px 13px;white-space:nowrap;font-weight:700">📦 Cargar stock</button>';
 
-    return `<div class="stock-row${rowClass}" id="sr-${i}">
-      <div class="sr">
-        <div class="sr-chk ${chkClass}" id="sr-chk-${i}" onclick="toggleStockItem(${i})">${chkLabel}</div>
-      </div>
-      <div class="sr sr-left sr-art" id="sr-art-${i}">
-        ${escHtml(it.art)}
-        ${it.cant?`<span style="font-size:10px;color:var(--muted);margin-left:4px">(${escHtml(it.cant)})</span>`:''}
-      </div>
-      <div class="sr">
-        <div class="sr-cant-wrap">
-          <input type="number"
-            class="sr-cant-input${on && dispNum !== null && pedNum !== null && dispNum > pedNum ? ' over-limit' : ''}"
-            value="${inputVal}"
-            placeholder="${pedNum !== null ? pedNum : '—'}"
-            min="1" ${pedNum !== null ? 'max="'+pedNum+'"' : ''}
-            id="sr-cant-${i}" ${on?'':'disabled'}
-            oninput="updateStockCant(${i},this.value,${pedNum})">
-          <span class="sr-cant-ref">${pedNum !== null ? 'máx. '+pedNum : ''}</span>
-        </div>
-      </div>
-      <div class="sr">${saldoHTML}</div>
-      <div class="sr">
-        <select id="sr-dep-${i}" ${on?'':'disabled'}
-          onchange="updateStock(${i},'deposito',this.value)">
-          <option value="">— Depósito —</option>
-          ${depOpts(s.deposito)}
-        </select>
-      </div>
-    </div>`;
+    return '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 13px;border-bottom:1px solid var(--border);'
+      + (on?'background:rgba(34,197,94,.045)':'') + '">'
+      + '<div style="font-family:var(--fm);font-size:11px;color:var(--or);font-weight:700;padding-top:2px;flex:none">'+String(i+1).padStart(2,'0')+'</div>'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:13px;color:var(--text);font-weight:600">'+escHtml(it.art)
+          + (it.cant?'<span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">('+escHtml(it.cant)+')</span>':'')+'</div>'
+        + '<div style="margin-top:5px">'+estado+'</div>'
+      + '</div>'
+      + '<div style="display:flex;gap:6px;flex:none;align-items:flex-start">'+acciones+'</div>'
+      + '</div>';
   }).join('');
 
-  wrap.innerHTML = `<div class="stock-tbl">
-    <div class="stock-tbl-hdr">
-      <div></div>
-      <div>Artículo</div>
-      <div style="text-align:center">Reservado</div>
-      <div style="text-align:center">Saldo SC</div>
-      <div>Depósito</div>
-    </div>
-    ${rows}
-  </div>`;
+  wrap.innerHTML = '<div style="border:1px solid var(--border);border-radius:9px;overflow:hidden">'
+    + '<div style="padding:9px 13px;background:var(--s3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Ítems del pedido — reservá del pañol lo que haya en existencia</div>'
+    + rows + '</div>';
   actualizarResumenVale();
 }
 
@@ -2466,6 +2621,27 @@ async function generarNumVP() {
     'VP-' + anio + mes + '-',
     4
   );
+}
+
+// Detalle del vale: artículos reservados del pañol (para email, Supabase y CC)
+function _valeDetalle(){
+  return Object.entries(stockItems).filter(([,v]) => v.checked).map(([idx,s])=>{
+    const it = pedidoItems[parseInt(idx)] || {};
+    const unit = parseCantUnit(it.cant) || (s.invUnidad || '');
+    return {
+      art: s.invNombre || it.art || '',
+      pedido: it.art || '',
+      cantidad: s.cantDisp || '',
+      unidad: unit,
+      deposito: s.deposito || '',
+      seccion: s.invSeccion || ''
+    };
+  });
+}
+function _valeDetalleTexto(){
+  return _valeDetalle().map((v,i)=>
+    String(i+1).padStart(2,'0')+'. '+v.art+' — '+v.cantidad+(v.unidad?' '+v.unidad:'')+(v.deposito?' ('+v.deposito+')':'')
+  ).join('\n');
 }
 
 function buildValeHTML(numVP, light) {
@@ -3011,6 +3187,8 @@ async function _enviarEmailSC(numSC, numOP) {
     items:        itemsTxt,
     obs:          obs || '—',
     vale_num:     valeNumActual || '—',
+    vale_items:   _valeDetalle(),
+    vale_texto:   _valeDetalleTexto(),
     n_fotos:      (fotosPayload||[]).length,
     n_presup:     (presupuestosPayload||[]).length,
     link_historial: 'https://nielsen-compras.vercel.app/#historial'
@@ -3147,6 +3325,7 @@ async function _guardarSCenCC(numSC, numOP, mapasAdj) {
       proyecto_asociado: proyectoAsoc || null,
       reservas_inv: invReservas.length ? invReservas.map(r => ({ nombre: r.nombre, cantidad: r.cantidad, unidad: r.unidad })) : null,
       vale_num:     valeNumActual || '',
+      vale_items:   _valeDetalle(),
       estado:       'PENDIENTE',
       origen:       'FORMULARIO_SC'
     };

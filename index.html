@@ -5698,6 +5698,7 @@ function verSC(idx) {
         ${sc.solicitante ? '<div class="vale-detail-item"><strong>Solicitante</strong>'+sc.solicitante+'</div>' : ''}
         ${sc.destino ? '<div class="vale-detail-item"><strong>Destino</strong>'+sc.destino+'</div>' : ''}
       </div>
+      ${_valeItemsCC(sc)}
       ${sc.stockItems && Object.keys(sc.stockItems).length ? '<div style="margin-top:10px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Ítems en stock para retiro</div>'
         + Object.entries(sc.stockItems).filter(([,v])=>v&&v.checked).map(([k,v])=>
           '<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><span>'+k+'</span><span style="color:var(--accent2);font-weight:600">'+( v.cant||'—')+'</span></div>'
@@ -7400,6 +7401,34 @@ function diagnosticarAdjuntosSC(){
   if(!num){ showToast('La SC no tiene número','error'); return; }
   // Diagnóstico real del depósito de archivos (Supabase Storage), no de Drive
   window.open('diagnostico_archivos.html?sc=' + encodeURIComponent(num), '_blank');
+}
+
+// Tabla de artículos del Vale de Retiro de Pañol (dentro del Ver SC)
+function _valeItemsCC(sc){
+  let items = sc.valeItems;
+  if(!items) return '';
+  if(typeof items==='string'){ try{ items=JSON.parse(items); }catch(e){ return ''; } }
+  if(!Array.isArray(items) || !items.length) return '';
+  var esc=function(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;'); };
+  var filas = items.map(function(v,i){
+    return '<tr>'
+      + '<td style="padding:6px 9px;border-bottom:1px solid var(--border);font-family:var(--fm);font-size:10px;color:var(--or);font-weight:700">'+String(i+1).padStart(2,'0')+'</td>'
+      + '<td style="padding:6px 9px;border-bottom:1px solid var(--border);font-size:12px">'+esc(v.art||'')
+        + (v.seccion?'<div style="font-size:10px;color:var(--muted)">'+esc(v.seccion)+'</div>':'') + '</td>'
+      + '<td style="padding:6px 9px;border-bottom:1px solid var(--border);text-align:center;font-size:12px;font-weight:700;color:var(--green)">'
+        + esc(v.cantidad||'') + (v.unidad?' '+esc(v.unidad):'') + '</td>'
+      + '<td style="padding:6px 9px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted)">'+esc(v.deposito||'—')+'</td>'
+      + '</tr>';
+  }).join('');
+  return '<div style="margin-top:12px">'
+    + '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px">Artículos retirados del pañol ('+items.length+')</div>'
+    + '<table style="width:100%;border-collapse:collapse;background:var(--s2);border:1px solid var(--border);border-radius:8px;overflow:hidden">'
+    + '<thead><tr style="background:var(--s3)">'
+    + '<th style="padding:6px 9px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">#</th>'
+    + '<th style="padding:6px 9px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Artículo</th>'
+    + '<th style="padding:6px 9px;text-align:center;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Cantidad</th>'
+    + '<th style="padding:6px 9px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Depósito</th>'
+    + '</tr></thead><tbody>'+filas+'</tbody></table></div>';
 }
 
 function _scAdjuntosPanel(sc){
@@ -10072,6 +10101,7 @@ async function recargarSCsDesdeLS() {
       proyectoAsociado: r.proyecto_asociado || '',
       reservasInv: r.reservas_inv ? (typeof r.reservas_inv==='string' ? JSON.parse(r.reservas_inv) : r.reservas_inv) : null,
       valeNum:    r.vale_num || '',
+      valeItems:  r.vale_items ? (typeof r.vale_items==='string' ? JSON.parse(r.vale_items) : r.vale_items) : null,
       estado:     r.estado || 'PENDIENTE',
       origen:     r.origen || '',
       creado:     r.creado_at || '',

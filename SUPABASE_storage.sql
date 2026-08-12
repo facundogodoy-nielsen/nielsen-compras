@@ -68,6 +68,7 @@ create policy "nielsen_arch_delete" on storage.objects for delete using  (bucket
 
 alter table public.solicitudes_compra add column if not exists fotos_map   jsonb;
 alter table public.solicitudes_compra add column if not exists presup_map  jsonb;
+alter table public.solicitudes_compra add column if not exists vale_items  jsonb;   -- artículos del Vale de Retiro de Pañol
 alter table public.comparativas       add column if not exists fotos_map   jsonb;
 alter table public.proyectos          add column if not exists planos_urls jsonb;   -- [{name,url}]
 
