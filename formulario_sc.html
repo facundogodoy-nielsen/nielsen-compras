@@ -1874,13 +1874,33 @@ async function enviar() {
 }
 
 async function showSuccess(numSC, numOP) {
+  // ── Armar los payloads de archivos ACÁ (antes se construían en otra función,
+  //    por lo que no existían en este alcance y la subida nunca llegaba a ejecutarse) ──
+  const _presupPayload = (presupuestos || []).filter(p => p.data && p.name).map(p => ({
+    name: p.name, type: p.type, dataUrl: p.data,
+    item: _itemsRefTexto(p.items), itemsIdx: _resolveItemIdxs(p.items)
+  }));
+  const _fotosPayload = (fotosMuestra || []).filter(f => f.data && f.name).map(f => ({
+    name: f.name, type: f.type, dataUrl: f.data,
+    item: f.itemIdx === '__all' ? 'General / varios ítems'
+        : (f.itemIdx !== '' && itemsParsed[f.itemIdx]
+            ? ('Ítem ' + (Number(f.itemIdx)+1) + ': ' + (itemsParsed[f.itemIdx].desc || ''))
+            : 'Sin asignar'),
+    itemsIdx: (f.itemIdx === '__all') ? (itemsParsed||[]).map((_, i) => i)
+            : (f.itemIdx !== '' && f.itemIdx != null && !isNaN(Number(f.itemIdx)) ? [Number(f.itemIdx)] : [])
+  }));
+
   // ── Subir PRIMERO los archivos a Storage, para guardar sus URLs junto con la SC ──
   let _mapasAdj = null;
-  const _hayAdjuntosPre = (presupuestos||[]).some(x=>x.data) || (fotosMuestra||[]).some(x=>x.data);
+  const _hayAdjuntosPre = _presupPayload.length > 0 || _fotosPayload.length > 0;
   if (_hayAdjuntosPre) {
     if (typeof toast === 'function') toast('⏳ Subiendo archivos adjuntos...');
-    try { _mapasAdj = await _subirArchivosSC(numSC, presupuestosPayload, fotosPayload); }
-    catch(e){ console.warn('subir adjuntos (pre)', e); }
+    try { _mapasAdj = await _subirArchivosSC(numSC, _presupPayload, _fotosPayload); }
+    catch(e){
+      console.error('subir adjuntos (pre)', e);
+      window._huboFalloAdjuntos = true;
+      try{ alert('⚠️ No se pudieron guardar los archivos adjuntos.\n\nMotivo: ' + (e.message||e) + '\n\nLa solicitud se registra igual, pero sin las fotos ni los presupuestos.\nAvisá a Compras.'); }catch(_){}
+    }
   }
   // ── Guardar la SC en Supabase (con los mapas de adjuntos ya incluidos) ──
   const guardadoOk = await _guardarSCenCC(numSC, numOP, _mapasAdj);   // Supabase + localStorage
@@ -3188,22 +3208,29 @@ async function _guardarSCenCC(numSC, numOP, mapasAdj) {
 init();
 
 // ══ Verificación temprana del depósito de archivos ══
-// Comprueba al abrir el formulario que se puedan guardar adjuntos.
-// Si algo falla, avisa ANTES de que la persona cargue fotos o presupuestos.
+// Hace una prueba REAL de subida (el endpoint /storage/v1/bucket/ es
+// administrativo y con la clave de la app siempre responde "no existe",
+// aunque el depósito esté perfecto).
 (async function _verificarStorage(){
   try{
-    const r = await fetch(_SB_URL + '/storage/v1/bucket/' + _SB_BUCKET, {
-      headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY }, cache:'no-store'
+    const testPath = '_diagnostico/form_' + Date.now() + '.txt';
+    const blob = new Blob(['check'], {type:'text/plain'});
+    const r = await fetch(_SB_URL + '/storage/v1/object/' + _SB_BUCKET + '/' + testPath, {
+      method:'POST',
+      headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, 'x-upsert':'true', 'Content-Type':'text/plain' },
+      body: blob
     });
     if(r.ok){
-      const b = await r.json();
-      if(b && b.public) { window._storageOK = true; return; }
-      window._storageOK = false;
-      _avisoStorage('El depósito de archivos no es público: los adjuntos se guardarían pero no se podrían ver.');
+      window._storageOK = true;
+      // limpiar el archivo de prueba
+      fetch(_SB_URL + '/storage/v1/object/' + _SB_BUCKET + '/' + testPath,
+        { method:'DELETE', headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY } }).catch(()=>{});
       return;
     }
+    const t = await r.text().catch(()=> '');
     window._storageOK = false;
-    _avisoStorage('No se encontró el depósito de archivos (HTTP ' + r.status + ').');
+    _avisoStorage('No se pudieron guardar archivos de prueba (HTTP ' + r.status + ').');
+    console.warn('storage check:', r.status, t);
   }catch(e){
     window._storageOK = false;
     _avisoStorage('No se pudo verificar el depósito de archivos: ' + e.message);
