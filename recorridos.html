@@ -596,15 +596,20 @@ async function cargarDesdeNube(){
     catch(e){ console.warn('fetch items', e); items = null; }
 
     if(items !== null){
-      // Migración automática: si el JSON viejo tiene recorridos que aún no están
-      // como fila individual, subirlos una vez (sin pisar nada).
-      const idsEnItems = new Set(items.map(x=>x && x.id).filter(Boolean));
-      const porMigrar = (DB.historial||[]).filter(rec => rec && rec.id && !idsEnItems.has(rec.id));
-      if(porMigrar.length){
-        _recSetStatus('⏳ Migrando '+porMigrar.length+' recorrido(s)...', 'var(--muted)');
-        for(const rec of porMigrar){ await _recItemUpsert(rec); items.push(rec); }
+      // Migración por única vez: pasa el historial viejo (guardado en la fila de config)
+      // a filas individuales. Después se marca como migrado y NUNCA se repite, para que
+      // un recorrido eliminado no vuelva a aparecer.
+      if(!DB.histMigrado){
+        const idsEnItems = new Set(items.map(x=>x && x.id).filter(Boolean));
+        const porMigrar = (DB.historial||[]).filter(rec => rec && rec.id && !idsEnItems.has(rec.id));
+        if(porMigrar.length){
+          _recSetStatus('⏳ Migrando '+porMigrar.length+' recorrido(s)...', 'var(--muted)');
+          for(const rec of porMigrar){ await _recItemUpsert(rec); items.push(rec); }
+        }
+        DB.histMigrado = true;
+        await _recPush();   // deja la fila de config sin historial y con la marca
       }
-      // El historial ahora sale de las filas individuales
+      // El historial sale SIEMPRE de las filas individuales (única fuente de verdad)
       items.sort((a,b)=> String(b.fecha||'').localeCompare(String(a.fecha||'')));
       DB.historial = items;
     }
@@ -622,6 +627,17 @@ function save(inmediato){
   if(inmediato){ _recPush(); }
   else { _recSaveTimer = setTimeout(_recPush, 500); }
 }
+// La fila de configuración guarda SOLO la config: vehículos, choferes, proveedores, base, cfg.
+// El historial vive en filas individuales (recorridos_items). Si el historial se guardara
+// también acá, al borrar un recorrido volvería a aparecer en la próxima carga.
+function _dbConfigSola(){
+  const cfgOnly = {};
+  Object.keys(DB||{}).forEach(k=>{ if(k!=='historial') cfgOnly[k]=DB[k]; });
+  cfgOnly.historial = [];          // explícito: el historial no se guarda acá
+  cfgOnly.histMigrado = true;      // marca que la migración ya se hizo
+  return cfgOnly;
+}
+
 async function _recPush(){
   _recSaveTimer = null;
   try{
@@ -629,7 +645,7 @@ async function _recPush(){
       method:'POST',
       headers:{ 'Content-Type':'application/json', apikey:REC_SB_KEY, Authorization:'Bearer '+REC_SB_KEY,
                 Prefer:'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ id:REC_ROW_ID, data:DB, updated_at:new Date().toISOString() })
+      body: JSON.stringify({ id:REC_ROW_ID, data:_dbConfigSola(), updated_at:new Date().toISOString() })
     });
     if(!r.ok) throw new Error('HTTP ' + r.status);
     _recSetStatus('✅ Sincronizado', '#22c55e');
@@ -1403,7 +1419,9 @@ function renderHistorial(){
         ? '<span class="pill ok">✔ Completado</span>'
         : ((r.estado==='EN_CURSO'||r.realKm!=null||r.salida||r.kmIni!=null) ? '<span class="pill warn">En curso</span>' : '<span class="pill" style="background:#3a3a3a;color:#bbb">Enviado</span>');
       return `<tr>
-        <td><b style="color:#E8611A">${r.codigo||'—'}</b></td>
+        <td>${esEditor()
+          ? `<b style="color:#E8611A;cursor:pointer;border-bottom:1px dashed #E8611A" onclick="editarCodigoRec('${r.id}')" title="Tocá para modificar el código">${r.codigo||'—'} ✎</b>`
+          : `<b style="color:#E8611A">${r.codigo||'—'}</b>`}</td>
         <td>${r.fecha||'-'}</td><td>${r.vehiculo}</td><td>${r.chofer}</td>
         <td>${r.paradas.length}${(r.paradas||[]).some(p=>p.extra)?' <span title="Incluye proveedores fuera del plan" style="color:#3e7cb1;font-weight:700">+</span>':''}</td>
         <td>${r.estKm} / ${r.realKm??'—'}</td>
@@ -1714,7 +1732,21 @@ function _barrasDobles(series, unidad){
         <span class="muted" style="margin-left:auto">Unidad: ${unidad}</span>
       </div>`;
 }
-function delRec(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar recorrido?')){ DB.historial=DB.historial.filter(r=>r.id!==id); _recItemDelete(id); renderHistorial(); } }
+async function delRec(id){
+  if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; }
+  const r = DB.historial.find(x=>x.id===id);
+  if(!confirm('¿Eliminar el recorrido '+((r&&r.codigo)||'')+'?\n\nSe borra definitivamente y no se puede deshacer.')) return;
+  _recSetStatus('⏳ Eliminando...', 'var(--muted)');
+  const ok = await _recItemDelete(id);      // borrar primero en la nube
+  if(!ok){
+    _recSetStatus('⚠️ No se pudo eliminar', '#ef4444');
+    alert('No se pudo eliminar el recorrido en el servidor. Revisá la conexión y probá de nuevo.');
+    return;
+  }
+  DB.historial = DB.historial.filter(x=>x.id!==id);
+  _recSetStatus('✅ Sincronizado', '#22c55e');
+  renderHistorial();
+}
 
 // ══════════════════════════════════════════════════════════════
 // CARGA DE DATOS REALES POR EL CHOFER (sobre un recorrido del historial)
@@ -1850,6 +1882,7 @@ function consultarRecorrido(id){
         <span style="width:22px;height:22px;border-radius:50%;background:${p.extra?'#3e7cb1':'var(--or,#E8611A)'};color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none">${i+1}</span>
         <span style="flex:1;font-size:13px;font-weight:600">${_escRec(p.nombre)} ${p.extra?'<span class="pill" style="background:#3e7cb1;color:#fff;font-size:10px;margin-left:4px">➕ fuera del plan</span>':''}</span>
         ${p.arribo?`<span class="pill ok">arribo ${p.arribo}</span>`:'<span class="muted" style="font-size:11px">sin arribo</span>'}
+        ${esEditor()?`<button class="btn danger sm" onclick="quitarParadaRec('${r.id}','${p.id}')" title="Quitar este proveedor del recorrido" style="padding:2px 8px;font-size:11px;flex:none">✕</button>`:''}
       </div>
       ${p.dir?`<div style="font-size:11px;color:var(--muted);margin-left:32px">${_escRec(p.dir)}</div>`:''}
       <div style="margin-left:32px">${extra}</div>
@@ -1890,6 +1923,7 @@ function consultarRecorrido(id){
     <div id="mini-map" style="height:260px;border-radius:10px;margin-top:6px;border:1px solid var(--border,#333);background:var(--s2,#1f1b16)"></div>
 
     <div style="margin-top:16px;text-align:right">
+      ${esEditor()?`<button class="btn" onclick="editarCodigoRec('${r.id}')" style="background:#6b7280;margin-right:6px" title="Modificar el código del recorrido">✎ Código</button>`:''}
       <button class="btn" onclick="abrirNavegacion('${r.id}')" style="background:#E8611A;margin-right:6px" title="Abrir la ruta en Google Maps para navegar">🧭 Abrir navegación</button>
       <button class="btn" onclick="recalcularConRetorno('${r.id}')" style="background:#eab308;color:#1a1a1a;margin-right:6px" title="Recalcular la distancia y el tiempo estimados incluyendo el regreso">🔄 Recalcular con retorno</button>
       <button class="btn" onclick="compartirRecorridoGuardado('${r.id}')" style="background:#3e7cb1;margin-right:6px">📤 Compartir</button>
@@ -1948,6 +1982,38 @@ function _armarTextoRecorrido(r){
   return t;
 }
 // Abre la navegación del recorrido en Google Maps (ruta por calles con waypoints)
+// ══ MODO EDITOR: editar el código del recorrido ══
+async function editarCodigoRec(id){
+  if(!esEditor()){ alert('🔒 Activá el Modo Editor para modificar el código.'); return; }
+  const r=DB.historial.find(x=>x.id===id); if(!r) return;
+  const nuevo=prompt('Código del recorrido:\n\nFormato sugerido: RC-2026-0001', r.codigo||'');
+  if(nuevo===null) return;
+  const cod=String(nuevo).trim().toUpperCase();
+  if(!cod){ alert('El código no puede quedar vacío.'); return; }
+  const dup=DB.historial.find(x=>x.id!==id && String(x.codigo||'').toUpperCase()===cod);
+  if(dup && !confirm('⚠️ Ya existe otro recorrido con el código '+cod+' (del '+(dup.fecha||'—')+').\n\n¿Guardar igual?')) return;
+  r.codigo=cod;
+  await guardarRecorridoItem(r);
+  renderHistorial();
+  if(typeof closeModal==='function') closeModal();
+  alert('✅ Código actualizado a '+cod);
+}
+
+// ══ MODO EDITOR: quitar un proveedor (parada) de un recorrido guardado ══
+async function quitarParadaRec(id, paradaId){
+  if(!esEditor()){ alert('🔒 Activá el Modo Editor para quitar proveedores.'); return; }
+  const r=DB.historial.find(x=>x.id===id); if(!r) return;
+  const p=(r.paradas||[]).find(x=>x.id===paradaId); if(!p) return;
+  const nSC=(Array.isArray(p.scs)?p.scs.length:(p.scNum?1:0));
+  let msg='¿Quitar a "'+p.nombre+'" de este recorrido?';
+  if(nSC) msg+='\n\nTiene '+nSC+' solicitud(es) asignada(s); esa asignación se pierde.';
+  if(!confirm(msg)) return;
+  r.paradas=(r.paradas||[]).filter(x=>x.id!==paradaId);
+  await guardarRecorridoItem(r);
+  renderHistorial();
+  consultarRecorrido(id);   // reabrir el detalle actualizado
+}
+
 function abrirNavegacion(id){
   const r=DB.historial.find(x=>x.id===id); if(!r) return;
   const link=_mapsLinkDe(r);
