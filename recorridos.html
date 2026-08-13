@@ -164,7 +164,8 @@
 
 <nav class="tabs">
   <button data-tab="recorrido" class="active">🗺️ Recorrido del día</button>
-  <button data-tab="historial">📊 Historial y análisis</button>
+  <button data-tab="historial">📊 Historial</button>
+  <button data-tab="analisis">📈 Análisis</button>
   <button data-tab="proveedores">🏭 Proveedores</button>
   <button data-tab="vehiculos">🚗 Vehículos</button>
   <button data-tab="choferes">👤 Choferes</button>
@@ -194,6 +195,19 @@
               <div>
                 <label>Km inicial (odómetro) <span style="color:#E8611A">*</span></label>
                 <input type="number" id="real-km-ini" placeholder="km al salir">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label>Nivel de combustible inicial <span style="color:#E8611A">*</span></label>
+                <select id="nivel-comb-ini">
+                  <option value="">— Elegí el nivel —</option>
+                  <option value="0.25">1/4 de tanque</option>
+                  <option value="0.5">1/2 tanque</option>
+                  <option value="0.75">3/4 de tanque</option>
+                  <option value="1">Tanque lleno (FULL)</option>
+                </select>
+                <div class="muted" id="nivel-ini-litros" style="font-size:11px;margin-top:3px"></div>
               </div>
             </div>
             <div class="row">
@@ -313,7 +327,7 @@
   <!-- ===================== HISTORIAL ===================== -->
   <section id="tab-historial" style="display:none">
     <div class="card">
-      <h2>📊 Historial de recorridos y análisis</h2>
+      <h2>📊 Historial de recorridos</h2>
       <div class="body">
         <div class="metrics" style="grid-template-columns:repeat(4,1fr)" id="kpis-hist"></div>
 
@@ -349,15 +363,40 @@
           </table>
         </div>
 
-        <!-- Gráfico de análisis (debajo del listado) -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ANÁLISIS ===================== -->
+  <section id="tab-analisis" style="display:none">
+    <div class="card">
+      <h2>📈 Análisis de recorridos</h2>
+      <div class="body">
+        <div class="metrics" style="grid-template-columns:repeat(4,1fr)" id="kpis-analisis"></div>
+
+        <!-- Costo logístico -->
+        <div style="margin-top:18px;border-top:1px solid var(--border,#3a332b);padding-top:16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <span style="font-size:13px;font-weight:700;color:var(--text,#ece7e1)">💰 Costo logístico</span>
+            <span style="font-size:11px;color:var(--muted)">Parámetros de costeo:</span>
+            <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px">$/hora chofer
+              <input type="number" id="cst-hora" value="12000" oninput="_cstGuardar();renderAnalisis()" style="width:88px;padding:5px 7px;font-size:12px"></label>
+            <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px">$/km vehículo
+              <input type="number" id="cst-km" value="180" oninput="_cstGuardar();renderAnalisis()" style="width:78px;padding:5px 7px;font-size:12px"></label>
+          </div>
+          <div id="costo-cont"></div>
+        </div>
+
+        <!-- Gráficos -->
         <div style="margin-top:22px;border-top:1px solid var(--border,#3a332b);padding-top:18px">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-            <span style="font-size:13px;font-weight:700;color:var(--text,#ece7e1)">📈 Análisis</span>
+            <span style="font-size:13px;font-weight:700;color:var(--text,#ece7e1)">📊 Comparativas</span>
             <select id="graf-tipo" onchange="renderGrafico()" style="width:auto;margin-left:auto;padding:5px 10px;font-size:12px">
               <option value="km">Km · estimado vs real</option>
               <option value="tiempo">Tiempo · estimado vs real</option>
               <option value="rend">Rendimiento km/L</option>
               <option value="chofer">Km totales por chofer</option>
+              <option value="costo">Costo por recorrido</option>
             </select>
           </div>
           <div id="graf-cont" style="width:100%;overflow-x:auto"></div>
@@ -394,7 +433,7 @@
       <h2>🚗 Vehículos <button class="btn sm" id="btn-add-veh" style="margin-left:auto;display:none">+ Nuevo vehículo</button></h2>
       <div class="body">
         <table id="tabla-veh">
-          <thead><tr><th>Patente</th><th>Descripción</th><th>Tipo</th><th>Consumo (L/100km)</th><th></th></tr></thead>
+          <thead><tr><th>Patente</th><th>Descripción</th><th>Tipo</th><th>Consumo (L/100km)</th><th>Tanque (L)</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -1195,6 +1234,12 @@ function guardarRecorrido(){
     document.getElementById('real-km-ini').focus();
     return;
   }
+  const nivelIniVal = _gv('nivel-comb-ini');
+  if(!nivelIniVal){
+    alert('⚠️ Falta el NIVEL DE COMBUSTIBLE INICIAL.\n\nEs obligatorio: con ese dato se calcula el consumo y el costo real del recorrido.');
+    const _n=document.getElementById('nivel-comb-ini'); if(_n) _n.focus();
+    return;
+  }
   const est=calcEstimado();
   const v=vehSel(), c=DB.choferes.find(x=>x.id===document.getElementById('sel-chofer').value);
   const salida=_gv('hora-salida'), regreso=_gv('real-regreso');
@@ -1211,6 +1256,8 @@ function guardarRecorrido(){
     fin:(()=>{ const f=ruta.find(x=>x.tipo==='fin'); return f?{nombre:f.nombre,lat:f.lat,lng:f.lng}:null; })(),
     estKm:+est.km.toFixed(1), estMin:Math.round(est.minTot), estLitros:+est.litros.toFixed(1),
     kmIni:+document.getElementById('real-km-ini').value||null,
+    nivelCombIni:+_gv('nivel-comb-ini')||null,
+    tanqueL:(v&&v.tanque)?+v.tanque:null,
     kmFin:+_gv('real-km-fin')||null,
     realKm:realKmCalc()||null,
     realLitros:+_gv('real-litros')||null,
@@ -1312,6 +1359,7 @@ function limpiarRecorrido(){
   document.getElementById('real-km-ini').value='';
   ['real-km-fin','real-litros','real-regreso'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('hora-salida').value='';
+  const _ni=document.getElementById('nivel-comb-ini'); if(_ni) _ni.value='';
   const _kmR2=document.getElementById('km-recorridos'); if(_kmR2) _kmR2.textContent='Km recorridos: —';
   // Borrar el borrador en la nube: al entrar de nuevo NO debe precargarse
   DB.rutaActual = [];
@@ -1414,6 +1462,184 @@ function _histFiltrado(){
     return true;
   });
 }
+// ══════════════════════════════════════════════════════════════
+// COSTO LOGÍSTICO — medido con datos reales del recorrido
+// Combustible: por niveles de tanque + litros cargados (o litros declarados)
+// Chofer: minutos reales × $/hora   ·   Vehículo: km reales × $/km
+// ══════════════════════════════════════════════════════════════
+function _cstParam(id, def){ const el=document.getElementById(id); const v=el?parseFloat(el.value):NaN; return isNaN(v)?def:v; }
+function _cstGuardar(){
+  if(!DB.cfg) DB.cfg={};
+  DB.cfg.costoHora=_cstParam('cst-hora',12000);
+  DB.cfg.costoKm=_cstParam('cst-km',180);
+  save();
+}
+function _cstRestaurar(){
+  const h=document.getElementById('cst-hora'), k=document.getElementById('cst-km');
+  if(h && DB.cfg && DB.cfg.costoHora!=null) h.value=DB.cfg.costoHora;
+  if(k && DB.cfg && DB.cfg.costoKm!=null) k.value=DB.cfg.costoKm;
+}
+
+// Litros consumidos en un recorrido. Devuelve {litros, metodo}
+function _litrosConsumidos(r){
+  const tanque = r.tanqueL || _tanqueDe(r.vehiculo);
+  // 1) Método preciso: niveles de tanque (inicial y final) + lo cargado en el camino
+  if(tanque>0 && r.nivelCombIni!=null && r.nivelCombFin!=null){
+    const ini = r.nivelCombIni*tanque;
+    const fin = r.nivelCombFin*tanque;
+    const carg = r.realLitros||0;
+    const cons = (ini + carg) - fin;
+    if(cons>=0) return { litros:+cons.toFixed(1), metodo:'niveles de tanque' };
+  }
+  // 2) Litros declarados (asume que lo cargado equivale a lo consumido)
+  if(r.realLitros>0) return { litros:+r.realLitros, metodo:'litros cargados' };
+  // 3) Estimado por consumo del vehículo
+  const km = r.realKm || r.estKm || 0;
+  const cons100 = _consumoDe(r.vehiculo);
+  if(km>0 && cons100>0) return { litros:+(km/100*cons100).toFixed(1), metodo:'estimado por consumo' };
+  return { litros:0, metodo:'sin dato' };
+}
+function _tanqueDe(vehTxt){
+  const v=(DB.vehiculos||[]).find(x=>vehTxt && String(vehTxt).indexOf(x.patente)>=0);
+  return v && v.tanque ? +v.tanque : 0;
+}
+function _consumoDe(vehTxt){
+  const v=(DB.vehiculos||[]).find(x=>vehTxt && String(vehTxt).indexOf(x.patente)>=0);
+  return v && v.consumo ? +v.consumo : 0;
+}
+
+// Costo completo de un recorrido
+function costoRecorrido(r){
+  const costoHora=_cstParam('cst-hora', (DB.cfg&&DB.cfg.costoHora)||12000);
+  const costoKm  =_cstParam('cst-km',   (DB.cfg&&DB.cfg.costoKm)||180);
+  const precio = (r.cfg && r.cfg.precio) ? r.cfg.precio : ((DB.cfg&&DB.cfg.precio)||0);
+  const L=_litrosConsumidos(r);
+  const km = r.realKm || 0;
+  const min = r.realMin || 0;
+  const cComb = L.litros*precio;
+  const cCho  = (min/60)*costoHora;
+  const cVeh  = km*costoKm;
+  const total = cComb + cCho + cVeh;
+  const paradas = (r.paradas||[]).length || 1;
+  return { total, cComb, cCho, cVeh, litros:L.litros, metodoComb:L.metodo,
+           km, min, porParada: total/paradas, paradas,
+           medido: !!(r.realKm && r.realMin) };
+}
+
+// Atribuye el costo del recorrido a cada SC (reparto por parada)
+function costoPorSC(r){
+  const c=costoRecorrido(r);
+  const mapa={};
+  (r.paradas||[]).forEach(p=>{
+    const scs = Array.isArray(p.scs)&&p.scs.length ? p.scs.map(x=>x.num)
+              : (p.scNum ? [p.scNum] : []);
+    if(!scs.length) return;
+    const porSC = c.porParada / scs.length;   // si una parada cubre 2 SC, se divide
+    scs.forEach(n=>{ mapa[n]=(mapa[n]||0)+porSC; });
+  });
+  return mapa;
+}
+
+function _fmt$(n){ return '$'+Math.round(n||0).toLocaleString('es-AR'); }
+
+function renderCostos(){
+  const cont=document.getElementById('costo-cont'); if(!cont) return;
+  const lista=_histFiltrado();
+  if(!lista.length){ cont.innerHTML='<div class="muted" style="padding:14px">Sin recorridos en el período.</div>'; return; }
+
+  let totG=0, totKm=0, totMin=0, totL=0, nMed=0;
+  const filas=lista.map(r=>{
+    const c=costoRecorrido(r);
+    if(c.medido){ nMed++; totG+=c.total; totKm+=c.km; totMin+=c.min; totL+=c.litros; }
+    return {r,c};
+  });
+
+  // Costo acumulado por SC
+  const scMap={};
+  lista.forEach(r=>{ const m=costoPorSC(r); Object.keys(m).forEach(n=>{ scMap[n]=(scMap[n]||0)+m[n]; }); });
+  const scArr=Object.keys(scMap).map(n=>({n:n,v:scMap[n]})).sort((a,b)=>b.v-a.v);
+
+  let h='';
+  // KPIs de costo
+  h+='<div class="metrics" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">'
+    +'<div class="metric"><div class="mv">'+_fmt$(totG)+'</div><div class="ml">Costo total medido</div></div>'
+    +'<div class="metric"><div class="mv">'+_fmt$(totKm>0?totG/totKm:0)+'</div><div class="ml">Costo por km</div></div>'
+    +'<div class="metric"><div class="mv">'+_fmt$(scArr.length?totG/scArr.length:0)+'</div><div class="ml">Costo logístico por SC</div></div>'
+    +'<div class="metric"><div class="mv">'+nMed+'/'+lista.length+'</div><div class="ml">Recorridos con datos reales</div></div>'
+    +'</div>';
+
+  if(nMed<lista.length){
+    h+='<div style="padding:9px 12px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.35);border-radius:8px;font-size:11.5px;color:#f4d160;margin-bottom:12px">'
+      +'⚠️ '+(lista.length-nMed)+' recorrido(s) sin km o tiempo real cargado no se incluyen en el costo. El chofer los completa desde Historial → ✏️ Cargar datos.</div>';
+  }
+
+  // Detalle por recorrido
+  h+='<div style="overflow:auto"><table><thead><tr>'
+    +'<th>Código</th><th>Fecha</th><th>Paradas</th><th>Km</th><th>Litros</th><th>Combustible</th><th>Chofer</th><th>Vehículo</th><th>TOTAL</th><th>Por parada</th></tr></thead><tbody>';
+  filas.forEach(f=>{
+    const c=f.c;
+    h+='<tr'+(c.medido?'':' style="opacity:.45"')+'>'
+      +'<td><b>'+(f.r.codigo||'—')+'</b></td>'
+      +'<td>'+(f.r.fecha||'—')+'</td>'
+      +'<td style="text-align:center">'+c.paradas+'</td>'
+      +'<td>'+(c.km||'—')+'</td>'
+      +'<td>'+(c.litros||'—')+'<div class="muted" style="font-size:9.5px">'+c.metodoComb+'</div></td>'
+      +'<td>'+_fmt$(c.cComb)+'</td>'
+      +'<td>'+_fmt$(c.cCho)+'</td>'
+      +'<td>'+_fmt$(c.cVeh)+'</td>'
+      +'<td style="font-weight:800;color:var(--or,#E8611A)">'+_fmt$(c.total)+'</td>'
+      +'<td>'+_fmt$(c.porParada)+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+
+  // Costo por SC
+  if(scArr.length){
+    h+='<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:var(--text,#ece7e1);margin-bottom:8px">💸 Costo logístico atribuido a cada Solicitud de Compra</div>'
+      +'<div class="muted" style="font-size:11px;margin-bottom:8px">El costo de cada recorrido se reparte entre sus paradas, y cada SC recibe el de las paradas donde se retiró su material.</div>'
+      +'<div style="overflow:auto;max-height:320px"><table><thead><tr><th>N° SC</th><th>Costo de retiro</th><th></th></tr></thead><tbody>';
+    const max=scArr[0].v||1;
+    scArr.forEach(x=>{
+      h+='<tr><td><b>'+x.n+'</b></td><td style="font-weight:700">'+_fmt$(x.v)+'</td>'
+        +'<td style="width:180px"><div style="height:7px;background:var(--s3,#2a251e);border-radius:4px;overflow:hidden">'
+        +'<i style="display:block;height:100%;width:'+Math.round(x.v/max*100)+'%;background:#E8611A"></i></div></td></tr>';
+    });
+    h+='</tbody></table></div></div>';
+  }
+
+  // Recorridos que salieron por una sola SC (los más caros por unidad)
+  const solos=filas.filter(f=>{ const m=costoPorSC(f.r); return Object.keys(m).length===1 && f.c.medido; })
+                   .sort((a,b)=>b.c.total-a.c.total);
+  if(solos.length){
+    h+='<div style="margin-top:16px;padding:12px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:9px;font-size:12px;color:#f87171">'
+      +'<strong>🚨 Recorridos que salieron por una sola SC ('+solos.length+')</strong><br>'
+      +'<span style="font-size:11.5px">Cuando un vehículo sale a buscar el material de una única solicitud, esa SC absorbe el costo completo del viaje. '
+      +'Son los casos donde más rinde tener stock de seguridad.</span>'
+      +'<div style="margin-top:8px">'
+      + solos.slice(0,6).map(f=>{ const m=costoPorSC(f.r); const sc=Object.keys(m)[0];
+          return '<div style="font-size:11.5px">· '+(f.r.codigo||'')+' → SC '+sc+' — <strong>'+_fmt$(f.c.total)+'</strong></div>'; }).join('')
+      +'</div></div>';
+  }
+  cont.innerHTML=h;
+}
+
+function renderAnalisis(){
+  _cstRestaurar();
+  const lista=_histFiltrado();
+  // KPIs generales del análisis
+  const k=document.getElementById('kpis-analisis');
+  if(k){
+    let km=0,min=0,l=0,n=0;
+    lista.forEach(r=>{ if(r.realKm){km+=r.realKm;n++;} if(r.realMin)min+=r.realMin; const L=_litrosConsumidos(r); l+=L.litros; });
+    const rend = l>0 ? (km/l) : 0;
+    k.innerHTML='<div class="metric"><div class="mv">'+lista.length+'</div><div class="ml">Recorridos</div></div>'
+      +'<div class="metric"><div class="mv">'+Math.round(km)+'</div><div class="ml">Km totales</div></div>'
+      +'<div class="metric"><div class="mv">'+l.toFixed(1)+'</div><div class="ml">Litros consumidos</div></div>'
+      +'<div class="metric"><div class="mv">'+(rend?rend.toFixed(1):'—')+'</div><div class="ml">Rendimiento km/L</div></div>';
+  }
+  renderCostos();
+  renderGrafico();
+}
+
 function renderGrafico(){
   const cont=document.getElementById('graf-cont'); if(!cont) return;
   const tipo=(document.getElementById('graf-tipo')||{}).value||'km';
@@ -1521,6 +1747,14 @@ function cargarDatosChofer(id){
     </div>
     <div class="row" style="margin-top:8px">
       <div><label>Litros cargados</label><input type="number" step="0.1" id="cd-litros" value="${r.realLitros??''}" placeholder="Ej: 18.5"></div>
+      <div><label>Nivel combustible final</label>
+        <select id="cd-nivel-fin">
+          <option value="">— Elegí el nivel —</option>
+          <option value="0.25" ${r.nivelCombFin==0.25?'selected':''}>1/4 de tanque</option>
+          <option value="0.5" ${r.nivelCombFin==0.5?'selected':''}>1/2 tanque</option>
+          <option value="0.75" ${r.nivelCombFin==0.75?'selected':''}>3/4 de tanque</option>
+          <option value="1" ${r.nivelCombFin==1?'selected':''}>Tanque lleno (FULL)</option>
+        </select></div>
       <div><label>&nbsp;</label><div class="muted" style="font-size:11px;padding-top:8px">KM recorridos y tiempo real se calculan solos.</div></div>
     </div>
 
@@ -1539,6 +1773,7 @@ function _guardarDatosChofer(){
   r.kmFin = +g('cd-kmfin').value || null;
   r.realKm = (r.kmIni!=null && r.kmFin!=null && r.kmFin>=r.kmIni) ? (r.kmFin - r.kmIni) : (r.realKm||null);
   r.realLitros = +g('cd-litros').value || null;
+  const _nf = g('cd-nivel-fin'); r.nivelCombFin = _nf && _nf.value ? +_nf.value : null;
   r.realMin = minutosEntre(r.salida, r.regreso);
   // Solo se considera COMPLETADO cuando hay hora de regreso cargada.
   r.estado = r.regreso ? 'COMPLETADO' : 'EN_CURSO';
@@ -2228,7 +2463,7 @@ function pickBaseCoord(){
 function renderVeh(){
   const tb=document.querySelector('#tabla-veh tbody');
   tb.innerHTML=DB.vehiculos.map(v=>`<tr>
-    <td><b>${v.patente}</b></td><td>${v.desc}</td><td>${v.tipo}</td><td>${v.consumo}</td>
+    <td><b>${v.patente}</b></td><td>${v.desc}</td><td>${v.tipo}</td><td>${v.consumo}</td><td>${v.tanque||'<span class="muted">—</span>'}</td>
     <td><button class="btn gray sm" onclick="editVeh('${v.id}')" style="${esEditor()?'':'display:none'}">✎</button> <button class="btn danger sm" onclick="delVeh('${v.id}')" style="${esEditor()?'':'display:none'}">✕</button><span class="muted" style="${esEditor()?'display:none':''};font-size:11px">—</span></td>
   </tr>`).join('');
 }
@@ -2319,9 +2554,10 @@ function editVeh(id){
     <label>Patente</label><input type="text" id="m-pat" value="${v.patente}">
     <label>Descripción</label><input type="text" id="m-desc" value="${v.desc}">
     <label>Tipo</label><input type="text" id="m-tipo" value="${v.tipo}">
-    <label>Consumo (L/100 km)</label><input type="number" step="0.1" id="m-cons" value="${v.consumo}">`,
+    <label>Consumo (L/100 km)</label><input type="number" step="0.1" id="m-cons" value="${v.consumo}">
+    <label>Capacidad del tanque (litros)</label><input type="number" step="1" id="m-tanque" value="${v.tanque||''}" placeholder="Ej: 80">`,
   ()=>{
-    const o={patente:mval('m-pat').toUpperCase(),desc:mval('m-desc'),tipo:mval('m-tipo'),consumo:+mval('m-cons')||9};
+    const o={patente:mval('m-pat').toUpperCase(),desc:mval('m-desc'),tipo:mval('m-tipo'),consumo:+mval('m-cons')||9,tanque:+mval('m-tanque')||0};
     if(!o.patente){ alert('Poné patente'); return; }
     if(id) Object.assign(v,o); else DB.vehiculos.push({id:uid(),...o});
     save(true); renderVeh(); fillSelects(); closeModal();
@@ -2348,11 +2584,13 @@ function delCho(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para el
 /* ============================ TABS ============================ */
 function switchTab(name){
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
-  ['recorrido','historial','proveedores','vehiculos','choferes'].forEach(t=>{
-    document.getElementById('tab-'+t).style.display = (t===name)?'block':'none';
+  ['recorrido','historial','analisis','proveedores','vehiculos','choferes'].forEach(t=>{
+    const el=document.getElementById('tab-'+t);
+    if(el) el.style.display = (t===name)?'block':'none';
   });
   if(name==='recorrido' && map) setTimeout(()=>map.invalidateSize(),100);
   if(name==='historial') renderHistorial();
+  if(name==='analisis') renderAnalisis();
 }
 document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 
@@ -2381,6 +2619,21 @@ document.getElementById('btn-compartir').onclick=compartirRecorrido;
 document.getElementById('share-copy').onclick=copiarShare;
 document.getElementById('btn-limpiar').onclick=limpiarRecorrido;
 document.getElementById('btn-add-prov').onclick=()=>editProv(null);
+// Al elegir nivel de combustible o vehículo, mostrar a cuántos litros equivale
+function _nivelIniInfo(){
+  const el=document.getElementById('nivel-comb-ini'), out=document.getElementById('nivel-ini-litros');
+  if(!el||!out) return;
+  const v=vehSel(); const tanque=v&&v.tanque?+v.tanque:0;
+  const frac=parseFloat(el.value);
+  if(!frac){ out.textContent=''; return; }
+  out.textContent = tanque>0
+    ? ('≈ '+Math.round(frac*tanque)+' litros (tanque de '+tanque+' L)')
+    : 'Cargá la capacidad del tanque en Vehículos para estimar los litros.';
+}
+(function(){
+  const n=document.getElementById('nivel-comb-ini'); if(n) n.addEventListener('change',_nivelIniInfo);
+  const sv=document.getElementById('sel-vehiculo'); if(sv) sv.addEventListener('change',_nivelIniInfo);
+})();
 document.getElementById('btn-import-cc').onclick=function(){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para importar.'); return; } importarProveedoresCC(); };
 document.getElementById('btn-add-veh').onclick=()=>editVeh(null);
 document.getElementById('btn-add-cho').onclick=()=>editCho(null);
