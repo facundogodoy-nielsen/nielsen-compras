@@ -5427,7 +5427,8 @@ function _ahoDrawCharts(data, divisa){
   var cM=document.getElementById('aho-chart-mes');
   if(cM) _ahoCharts.mes=new Chart(cM,{type:'bar',data:{labels:mKeys,datasets:[{data:mKeys.map(function(k){return Math.round(porMes[k]);}),backgroundColor:'#22c55e',borderRadius:6}]},options:baseOpts});
 }
-async // ══════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
 // ANÁLISIS ESTRATÉGICO — Pareto (Ley 80/20)
 // Se calcula SOLO con datos reales ya cargados: detalleData (facturación
 // de la planilla COMPRAS) y scs (Solicitudes de Compra). Nada estimado.
