@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditoría de Datos — Nielsen</title>
+<style>
+  :root{ --or:#E8611A; --navy:#13161E; --bg:#14171f; --s1:#1b1f2a; --s2:#222736; --s3:#2a3040; --border:#2f3546; --text:#e9ebf0; --muted:#8b93a7; --green:#22c55e; --yellow:#eab308; --red:#ef4444; --blue:#60a5fa; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55}
+  header{background:linear-gradient(135deg,var(--navy),#1e2433);padding:20px 24px;border-bottom:3px solid var(--or)}
+  h1{margin:0;font-size:19px;font-weight:800}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px 18px 60px}
+  .card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+  .card h2{margin:0 0 4px;font-size:15px;color:var(--or)}
+  .card .hint{font-size:12px;color:var(--muted);margin-bottom:14px}
+  .btn{background:var(--or);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:11px;margin-bottom:14px}
+  .kpi{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+  .kpi .v{font-size:22px;font-weight:800;color:var(--or);line-height:1.2}
+  .kpi .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
+  .kpi.ok .v{color:var(--green)} .kpi.warn .v{color:var(--yellow)} .kpi.bad .v{color:var(--red)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--border);text-align:left}
+  th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.6px;background:var(--s2)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .bar{height:7px;background:var(--s3);border-radius:4px;overflow:hidden;min-width:70px}
+  .bar>i{display:block;height:100%;background:var(--or)}
+  .verd{padding:12px 15px;border-radius:9px;margin-top:12px;font-size:13px;border:1px solid}
+  .verd.ok{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.4);color:#7ee2a4}
+  .verd.warn{background:rgba(234,179,8,.08);border-color:rgba(234,179,8,.4);color:#f4d160}
+  .verd.bad{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.4);color:#f87171}
+  .verd b{display:block;margin-bottom:4px;font-size:13.5px}
+  .muted{color:var(--muted)}
+  .tbl-wrap{max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-top:8px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700}
+  .p-ok{background:rgba(34,197,94,.15);color:#7ee2a4}
+  .p-warn{background:rgba(234,179,8,.15);color:#f4d160}
+  .p-bad{background:rgba(239,68,68,.15);color:#f87171}
+  .sec-t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:16px 0 6px}
+  #estado{font-size:13px;color:var(--muted);margin-top:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 Auditoría de Datos — preparación para Pareto y Kraljic</h1>
+  <div class="sub">Mide qué porcentaje de la gestión es analizable hoy. No modifica nada.</div>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <h2>Ejecutar auditoría</h2>
+    <div class="hint">Lee la planilla COMPRAS (gasto facturado), las Solicitudes de Compra y las Comparativas. Tarda unos segundos.</div>
+    <button class="btn" onclick="auditar()" id="btn-run">▶️ Auditar mis datos</button>
+    <div id="estado"></div>
+  </div>
+
+  <div id="salida"></div>
+
+</div>
+
+<script>
+var _SB_URL='https://qivvewvgqlsptydftlhx.supabase.co';
+var _SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+var _H={apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY};
+var SHEET_CSV='https://docs.google.com/spreadsheets/d/e/2PACX-1vR2Q48MbSwVmddoCDaF1aTEjbIJj364NENqrsliZw8dP_ZJVhV7XbKVYc5bZaWjgM7WZAjExDV1PN5A/pub?gid=696441563&single=true&output=csv';
+
+// ── Utilidades (misma lógica que el Centro de Control) ──
+function _parseCSV(text){
+  var rows=[],row=[],field='',inQ=false;
+  for(var i=0;i<text.length;i++){var c=text[i];
+    if(inQ){ if(c==='"'){ if(text[i+1]==='"'){field+='"';i++;} else inQ=false; } else field+=c; }
+    else { if(c==='"')inQ=true; else if(c===','){row.push(field);field='';}
+      else if(c==='\n'){row.push(field);rows.push(row);row=[];field='';}
+      else if(c==='\r'){} else field+=c; } }
+  if(field!==''||row.length){row.push(field);rows.push(row);}
+  return rows;
+}
+function _parseMonto(v){
+  if(typeof v==='number')return v;
+  if(v==null)return 0;
+  var s=String(v).trim(); if(!s)return 0;
+  var neg=/^\(.*\)$/.test(s)||/-/.test(s);
+  s=s.replace(/[^0-9.,]/g,'');
+  if(s.indexOf(',')>-1){ s=s.replace(/\./g,'').replace(',','.'); }
+  else { var p=s.split('.'); if(p.length>2)s=p.join(''); else if(p.length===2&&p[1].length===3)s=p.join(''); }
+  var n=parseFloat(s)||0; return neg?-Math.abs(n):n;
+}
+function _serialAFecha(n){ var d=new Date(Date.UTC(1899,11,30)+Math.round(n)*86400000);
+  return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0'); }
+function _fechaNorm(f){
+  if(f==null||f==='')return '';
+  var s=String(f).trim(); if(!s)return '';
+  if(/^\d{4,6}(\.\d+)?$/.test(s)){var n=parseFloat(s); if(n>=20000&&n<=60000)return _serialAFecha(n);}
+  var dm=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if(dm){var yy=dm[3].length===2?'20'+dm[3]:dm[3];return yy+'-'+dm[2].padStart(2,'0')+'-'+dm[1].padStart(2,'0');}
+  var ymd=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(ymd)return ymd[1]+'-'+ymd[2].padStart(2,'0')+'-'+ymd[3].padStart(2,'0');
+  return '';
+}
+function _esNC(comp,extra){ var t=((comp||'')+' '+(extra||'')).toUpperCase();
+  return /\bNC\b/.test(t)||/\bN\.?C\.?\b/.test(t)||/NOTA\s*DE\s*CR[EÉ]DITO/.test(t); }
+function esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function fmt(n){ return Math.round(n||0).toLocaleString('es-AR'); }
+function pct(a,b){ return b>0?Math.round(a/b*100):0; }
+
+// Normaliza un nombre para detectar duplicados (mayúsculas, sin puntos ni sufijos societarios)
+function normProv(s){
+  return String(s||'').toUpperCase()
+    .replace(/[.,;:'"()]/g,' ')
+    .replace(/\b(S\s*R\s*L|SRL|S\s*A|SA|SAS|SACIFI|SACIF|SCA|LTDA|CIA|Y\s*CIA|E\s*HIJOS|HNOS)\b/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+
+async function auditar(){
+  var btn=document.getElementById('btn-run'); btn.disabled=true;
+  var est=document.getElementById('estado'); var out=document.getElementById('salida');
+  out.innerHTML=''; est.textContent='Leyendo la planilla COMPRAS...';
+  var R={};
+
+  // ══ 1) PLANILLA COMPRAS — gasto facturado real ══
+  try{
+    var r=await fetch(SHEET_CSV,{cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    var rows=_parseCSV(await r.text());
+    R.compras=analizarCompras(rows);
+  }catch(e){ R.comprasErr=e.message; }
+
+  // ══ 2) SOLICITUDES DE COMPRA ══
+  est.textContent='Leyendo las Solicitudes de Compra...';
+  try{
+    var scs=[]; 
+    for(var g=0;g<10;g++){
+      var rs=await fetch(_SB_URL+'/rest/v1/solicitudes_compra?select=num_sc,num_op,area,subarea,criticidad,destino,fecha,items,estado,solicitante&limit=1000&offset='+(g*1000),{headers:_H,cache:'no-store'});
+      if(!rs.ok) throw new Error('HTTP '+rs.status);
+      var a=await rs.json(); if(!a.length)break; scs=scs.concat(a); if(a.length<1000)break;
+    }
+    R.sc=analizarSC(scs);
+  }catch(e){ R.scErr=e.message; }
+
+  // ══ 3) COMPARATIVAS ══
+  est.textContent='Leyendo las Comparativas...';
+  try{
+    var cps=[];
+    for(var g2=0;g2<10;g2++){
+      var rc=await fetch(_SB_URL+'/rest/v1/comparativas?select=num_comp,num_sc,area,proveedor_elegido,precio_elegido,divisa,ahorro,fecha,creado_at&limit=1000&offset='+(g2*1000),{headers:_H,cache:'no-store'});
+      if(!rc.ok) throw new Error('HTTP '+rc.status);
+      var b=await rc.json(); if(!b.length)break; cps=cps.concat(b); if(b.length<1000)break;
+    }
+    R.cp=analizarComparativas(cps, R.sc);
+  }catch(e){ R.cpErr=e.message; }
+
+  est.textContent='';
+  render(R);
+  btn.disabled=false;
+}
+
+// ── Análisis de la planilla de compras ──
+function analizarCompras(rows){
+  if(!rows.length) return {vacio:true};
+  var hdr=(rows[0]||[]).map(function(h){return String(h||'').toLowerCase().trim();});
+  var find=function(){ var c=[].slice.call(arguments);
+    return hdr.findIndex(function(h){ return c.some(function(x){ return h.indexOf(x)>=0; }); }); };
+  var cComp=hdr.findIndex(function(h){ return (h.indexOf('comprobante')>=0||h.indexOf('comprob')>=0)&&h.indexOf('fecha')<0; });
+  if(cComp<0)cComp=find('n° comp','nº comp','nro comp'); if(cComp<0)cComp=3;
+  var cMonto=hdr.findIndex(function(h){ return h.indexOf('precio total')>=0&&(h.indexOf('iva')>=0||h.indexOf('otros')>=0||h.indexOf('impuest')>=0); });
+  if(cMonto<0)cMonto=find('total + iva','importe total','total c/iva','total con iva');
+  if(cMonto<0)cMonto=find('precio total');
+  var cCat=find('categoria','categoría'), cArea=find('area','área'),
+      cProv=find('proveedor','razon social','razón social'), cFecha=find('fecha'),
+      cCamp=find('campamento'), cTipo=find('tipo comprob','tipo de comp','tipo');
+
+  var tot=0, n=0, sinMonto=0, sinFecha=0, sinCat=0, sinProv=0, sinArea=0, nc=0;
+  var porCat={}, porProv={}, porAnio={}, porArea={}, provRaw={};
+  var minF='9999', maxF='0000';
+
+  for(var i=1;i<rows.length;i++){
+    var r=rows[i]; if(!r)continue;
+    var comp=String(r[cComp]||'').trim();
+    var cat=cCat>=0?String(r[cCat]||'').trim():'';
+    var area=cArea>=0?String(r[cArea]||'').trim():'';
+    var prov=cProv>=0?String(r[cProv]||'').trim():'';
+    var monto=_parseMonto(r[cMonto]);
+    if(!comp&&!cat&&!area&&!monto&&!prov)continue;
+    var tipo=cTipo>=0?String(r[cTipo]||''):'';
+    if(_esNC(comp,tipo)){ monto=-Math.abs(monto); nc++; }
+    var f=cFecha>=0?_fechaNorm(r[cFecha]):'';
+    n++;
+    if(!monto)sinMonto++;
+    if(!f)sinFecha++; else { if(f<minF)minF=f; if(f>maxF)maxF=f; }
+    if(!cat)sinCat++;
+    if(!prov)sinProv++; else { provRaw[prov]=(provRaw[prov]||0)+monto;
+      var k=normProv(prov); porProv[k]=porProv[k]||{monto:0,n:0,variantes:{}};
+      porProv[k].monto+=monto; porProv[k].n++; porProv[k].variantes[prov]=1; }
+    if(!area)sinArea++; else porArea[area]=(porArea[area]||0)+monto;
+    tot+=monto;
+    var key=cat||'(sin categoría)';
+    porCat[key]=porCat[key]||{monto:0,n:0}; porCat[key].monto+=monto; porCat[key].n++;
+    if(f) porAnio[f.slice(0,4)]=(porAnio[f.slice(0,4)]||0)+monto;
+  }
+  // Gasto clasificado (con categoría)
+  var gastoClasif=0;
+  Object.keys(porCat).forEach(function(k){ if(k!=='(sin categoría)') gastoClasif+=porCat[k].monto; });
+
+  // Proveedores con variantes de nombre (posibles duplicados)
+  var dupProv=Object.keys(porProv).filter(function(k){ return Object.keys(porProv[k].variantes).length>1; })
+    .map(function(k){ return {canon:k, variantes:Object.keys(porProv[k].variantes), monto:porProv[k].monto}; })
+    .sort(function(a,b){ return b.monto-a.monto; });
+
+  return { n:n, tot:tot, sinMonto:sinMonto, sinFecha:sinFecha, sinCat:sinCat, sinProv:sinProv, sinArea:sinArea, nc:nc,
+    minF:minF==='9999'?'':minF, maxF:maxF==='0000'?'':maxF,
+    porCat:porCat, porProv:porProv, porAnio:porAnio, porArea:porArea,
+    gastoClasif:gastoClasif, nCat:Object.keys(porCat).filter(function(k){return k!=='(sin categoría)';}).length,
+    nProv:Object.keys(porProv).length, nProvRaw:Object.keys(provRaw).length, dupProv:dupProv,
+    tieneCat:cCat>=0, tieneProv:cProv>=0, tieneArea:cArea>=0, tieneFecha:cFecha>=0, tieneCamp:cCamp>=0 };
+}
+
+// ── Análisis de las Solicitudes de Compra ──
+function analizarSC(scs){
+  var n=scs.length, sinArea=0, sinCrit=0, sinFecha=0, sinDestino=0, sinItems=0, urgentes=0;
+  var porArea={}, porCrit={}, porAnio={}, nums={};
+  scs.forEach(function(s){
+    if(!s.area)sinArea++; else porArea[s.area]=(porArea[s.area]||0)+1;
+    var c=(s.criticidad||'').toUpperCase();
+    if(!c)sinCrit++; else { porCrit[c]=(porCrit[c]||0)+1; if(c==='URGENTE'||c==='ALTA')urgentes++; }
+    if(!s.fecha)sinFecha++; else porAnio[String(s.fecha).slice(0,4)]=(porAnio[String(s.fecha).slice(0,4)]||0)+1;
+    if(!s.destino)sinDestino++;
+    var it=String(s.items||'').trim();
+    if(!it)sinItems++;
+    if(s.num_sc)nums[s.num_sc]=1;
+  });
+  // Cantidad de líneas de ítem (para dimensionar la clasificación por familia)
+  var lineas=0;
+  scs.forEach(function(s){ lineas += String(s.items||'').split('\n').map(function(l){return l.trim();}).filter(Boolean).length; });
+  return { n:n, sinArea:sinArea, sinCrit:sinCrit, sinFecha:sinFecha, sinDestino:sinDestino, sinItems:sinItems,
+    urgentes:urgentes, porArea:porArea, porCrit:porCrit, porAnio:porAnio, lineas:lineas, nums:nums };
+}
+
+// ── Análisis de las Comparativas ──
+function analizarComparativas(cps, scR){
+  var n=cps.length, sinPrecio=0, sinProv=0, sinSC=0, conAhorro=0, ahorroTot=0;
+  var porDivisa={}, provs={};
+  cps.forEach(function(c){
+    if(!c.precio_elegido||!parseFloat(c.precio_elegido))sinPrecio++;
+    if(!c.proveedor_elegido)sinProv++; else provs[normProv(c.proveedor_elegido)]=1;
+    if(!c.num_sc)sinSC++;
+    var d=(c.divisa||'ARS').toUpperCase(); porDivisa[d]=(porDivisa[d]||0)+1;
+    var a=parseFloat(c.ahorro)||0; if(a>0){conAhorro++; ahorroTot+=a;}
+  });
+  // ¿Qué proporción de SC pasó por comparativa?
+  var scConCP=0;
+  if(scR&&scR.nums){ var vistos={}; cps.forEach(function(c){ if(c.num_sc&&scR.nums[c.num_sc]&&!vistos[c.num_sc]){vistos[c.num_sc]=1;scConCP++;} }); }
+  return { n:n, sinPrecio:sinPrecio, sinProv:sinProv, sinSC:sinSC, porDivisa:porDivisa,
+    conAhorro:conAhorro, ahorroTot:ahorroTot, nProv:Object.keys(provs).length, scConCP:scConCP };
+}
+
+// ══════════ RENDER ══════════
+function render(R){
+  var h='';
+
+  // ── BLOQUE 1: gasto facturado ──
+  h+='<div class="card"><h2>1 · Gasto facturado (planilla COMPRAS)</h2>';
+  if(R.comprasErr){
+    h+='<div class="verd bad"><b>No se pudo leer la planilla</b>'+esc(R.comprasErr)+'</div>';
+  } else if(!R.compras||R.compras.vacio){
+    h+='<div class="verd bad"><b>La planilla no devolvió datos</b>Verificá que siga publicada.</div>';
+  } else {
+    var C=R.compras;
+    var covCat=pct(C.n-C.sinCat, C.n);
+    var covGasto=C.tot>0?pct(C.gastoClasif,C.tot):0;
+    h+='<div class="kpis">'
+      +kpi(fmt(C.n),'Registros')
+      +kpi('$'+fmt(C.tot),'Gasto total (neto de NC)')
+      +kpi((C.minF||'—')+' → '+(C.maxF||'—'),'Período con datos')
+      +kpi(fmt(C.nProv),'Proveedores distintos')
+      +kpi(fmt(C.nCat),'Categorías usadas')
+      +kpi(covGasto+'%','Gasto con categoría', covGasto>=80?'ok':covGasto>=50?'warn':'bad')
+      +'</div>';
+
+    h+='<div class="sec-t">Completitud de campos</div><table>'
+      +'<tr><th>Campo</th><th>Existe</th><th>Vacíos</th><th>Completitud</th></tr>'
+      +filaComp('Monto', true, C.sinMonto, C.n)
+      +filaComp('Fecha', C.tieneFecha, C.sinFecha, C.n)
+      +filaComp('Proveedor', C.tieneProv, C.sinProv, C.n)
+      +filaComp('Categoría', C.tieneCat, C.sinCat, C.n)
+      +filaComp('Área', C.tieneArea, C.sinArea, C.n)
+      +'</table>';
+
+    // Top categorías
+    var cats=Object.keys(C.porCat).map(function(k){return {k:k,v:C.porCat[k].monto,n:C.porCat[k].n};})
+      .sort(function(a,b){return b.v-a.v;});
+    h+='<div class="sec-t">Categorías por gasto (así están hoy en la planilla)</div><div class="tbl-wrap"><table>'
+      +'<tr><th>Categoría</th><th class="num">Gasto</th><th class="num">% del total</th><th class="num">Comprob.</th><th>Acum.</th></tr>';
+    var acum=0;
+    cats.slice(0,25).forEach(function(c){
+      acum+=c.v; var pa=C.tot>0?Math.round(acum/C.tot*100):0;
+      h+='<tr><td>'+esc(c.k)+'</td><td class="num">$'+fmt(c.v)+'</td><td class="num">'+pct(c.v,C.tot)+'%</td>'
+        +'<td class="num">'+fmt(c.n)+'</td><td><div class="bar"><i style="width:'+pa+'%"></i></div></td></tr>';
+    });
+    h+='</table></div>';
+    if(cats.length>25) h+='<div class="muted" style="font-size:11px;margin-top:5px">Se muestran las 25 primeras de '+cats.length+'.</div>';
+
+    // Duplicados de proveedor
+    if(C.dupProv.length){
+      h+='<div class="sec-t">Proveedores escritos de varias formas (a unificar)</div><div class="tbl-wrap"><table>'
+        +'<tr><th>Nombre unificado</th><th>Variantes encontradas</th><th class="num">Gasto</th></tr>';
+      C.dupProv.slice(0,20).forEach(function(d){
+        h+='<tr><td>'+esc(d.canon)+'</td><td style="font-size:11px">'+d.variantes.map(esc).join(' · ')+'</td><td class="num">$'+fmt(d.monto)+'</td></tr>';
+      });
+      h+='</table></div>';
+      h+='<div class="muted" style="font-size:11px;margin-top:5px">'+C.nProvRaw+' nombres distintos se reducen a '+C.nProv+' proveedores reales.</div>';
+    }
+  }
+  h+='</div>';
+
+  // ── BLOQUE 2: solicitudes ──
+  h+='<div class="card"><h2>2 · Solicitudes de Compra</h2>';
+  if(R.scErr){ h+='<div class="verd bad"><b>No se pudieron leer</b>'+esc(R.scErr)+'</div>'; }
+  else if(R.sc){
+    var S=R.sc;
+    h+='<div class="kpis">'
+      +kpi(fmt(S.n),'Solicitudes')
+      +kpi(fmt(S.lineas),'Líneas de ítem')
+      +kpi(pct(S.n-S.sinArea,S.n)+'%','Con área', pct(S.n-S.sinArea,S.n)>=90?'ok':'warn')
+      +kpi(pct(S.n-S.sinCrit,S.n)+'%','Con criticidad', pct(S.n-S.sinCrit,S.n)>=90?'ok':'warn')
+      +kpi(pct(S.urgentes,S.n)+'%','Urgentes / Altas', pct(S.urgentes,S.n)<=25?'ok':'warn')
+      +'</div>';
+    var areas=Object.keys(S.porArea).map(function(k){return {k:k,v:S.porArea[k]};}).sort(function(a,b){return b.v-a.v;});
+    if(areas.length){
+      h+='<div class="sec-t">Solicitudes por área</div><div class="tbl-wrap"><table><tr><th>Área</th><th class="num">SC</th><th class="num">%</th></tr>';
+      areas.forEach(function(a){ h+='<tr><td>'+esc(a.k)+'</td><td class="num">'+fmt(a.v)+'</td><td class="num">'+pct(a.v,S.n)+'%</td></tr>'; });
+      h+='</table></div>';
+    }
+    h+='<div class="verd warn"><b>Los ítems son texto libre</b>Hay '+fmt(S.lineas)+' líneas de ítem sin familia asignada. '
+      +'Es el trabajo principal de la Fase 2: no hace falta clasificarlas todas, sí las que cubren el 80% del gasto.</div>';
+  }
+  h+='</div>';
+
+  // ── BLOQUE 3: comparativas ──
+  h+='<div class="card"><h2>3 · Comparativas de precios</h2>';
+  if(R.cpErr){ h+='<div class="verd bad"><b>No se pudieron leer</b>'+esc(R.cpErr)+'</div>'; }
+  else if(R.cp){
+    var P=R.cp;
+    var cobSC=(R.sc&&R.sc.n)?pct(P.scConCP,R.sc.n):0;
+    h+='<div class="kpis">'
+      +kpi(fmt(P.n),'Comparativas')
+      +kpi(pct(P.n-P.sinPrecio,P.n)+'%','Con precio', pct(P.n-P.sinPrecio,P.n)>=90?'ok':'warn')
+      +kpi(fmt(P.nProv),'Proveedores adjudicados')
+      +kpi(cobSC+'%','SC con comparativa', cobSC>=50?'ok':'warn')
+      +'</div>';
+    h+='<div class="muted" style="font-size:12px">Divisas usadas: '
+      +Object.keys(P.porDivisa).map(function(d){return d+' ('+P.porDivisa[d]+')';}).join(' · ')+'</div>';
+    h+='<div class="verd '+(cobSC>=50?'ok':'warn')+'"><b>Cobertura de las comparativas</b>'
+      +'Solo el '+cobSC+'% de las SC pasó por comparativa. Por eso el Pareto de gasto debe salir de la planilla COMPRAS '
+      +'(facturación real) y no de las comparativas, que cubren una parte.</div>';
+  }
+  h+='</div>';
+
+  // ── VEREDICTO ──
+  h+='<div class="card"><h2>📋 Veredicto: qué se puede hacer hoy</h2>';
+  var C2=R.compras;
+  if(C2&&!C2.vacio){
+    var covGasto2=C2.tot>0?pct(C2.gastoClasif,C2.tot):0;
+    // Qué es computable ya
+    h+='<div class="sec-t">Computable ahora, sin cambios</div><table>'
+      +vered('Pareto por proveedor', true, 'Tenés proveedor y monto en la planilla.')
+      +vered('Pareto por área', C2.tieneArea&&C2.sinArea<C2.n*0.3, 'Requiere el campo Área cargado.')
+      +vered('Pareto por familia', covGasto2>=60, covGasto2>=60
+          ? 'La categoría de la planilla cubre el '+covGasto2+'% del gasto: alcanza para una primera lectura.'
+          : 'La categoría solo cubre el '+covGasto2+'% del gasto. Hay que completarla antes (Fase 2).')
+      +vered('Pareto por frecuencia de SC', R.sc&&R.sc.n>0, 'Tenés las SC contadas; falta ligarlas a familia para el cruce fino.')
+      +vered('Pareto de urgencias', R.sc&&(R.sc.n-R.sc.sinCrit)>R.sc.n*0.7, 'Requiere criticidad cargada en la mayoría de las SC.')
+      +'</table>';
+
+    h+='<div class="sec-t">Falta capturar (no se puede reconstruir hacia atrás)</div><table>'
+      +vered('Plazo de entrega real', false, 'No se registra la fecha de recepción. Es el dato clave del eje de riesgo de Kraljic.')
+      +vered('Quiebres de stock / paradas', false, 'No se registra si una compra fue por rotura o parada de equipo.')
+      +vered('Familia por ítem de SC', false, 'Los ítems son texto libre; hay que agregar el selector de familia en el Formulario SC.')
+      +'</table>';
+
+    // Conclusión
+    var listo = covGasto2>=60;
+    h+='<div class="verd '+(listo?'ok':'warn')+'"><b>'+(listo
+        ? 'Se puede arrancar con el Pareto ya'
+        : 'Primero hay que completar la clasificación')+'</b>'
+      +'Tu gasto analizable por familia es el <strong>'+covGasto2+'%</strong> del total. '
+      +(listo
+        ? 'Con eso se puede construir el módulo de Pareto y publicar resultados fieles, marcando el '+(100-covGasto2)+'% restante como "Sin clasificar". '
+        : 'Conviene clasificar hasta llegar al 80% antes de publicar conclusiones, para que el análisis no quede sesgado. ')
+      +'La matriz de Kraljic completa necesita además empezar a registrar la fecha de recepción; sin ese dato, el eje de riesgo se puede armar solo con N° de proveedores y concentración, dejando el resto marcado como pendiente.</div>';
+
+    // Dimensionamiento del trabajo
+    var catsOrden=Object.keys(C2.porCat).filter(function(k){return k!=='(sin categoría)';})
+      .map(function(k){return C2.porCat[k].monto;}).sort(function(a,b){return b-a;});
+    var ac=0,nFam80=0;
+    for(var i2=0;i2<catsOrden.length;i2++){ ac+=catsOrden[i2]; nFam80++; if(ac>=C2.tot*0.8)break; }
+    h+='<div class="verd" style="background:rgba(96,165,250,.08);border-color:rgba(96,165,250,.4);color:#93c5fd">'
+      +'<b>Dimensión del trabajo</b>'
+      +'Hoy <strong>'+nFam80+'</strong> categorías concentran el 80% del gasto. '
+      +'Ese es el universo real a revisar y normalizar en la Fase 2 — no las '+C2.nCat+' categorías completas, ni las miles de líneas de ítem.</div>';
+  } else {
+    h+='<div class="verd bad"><b>Sin datos de la planilla no hay veredicto</b>Resolvé primero la lectura de COMPRAS.</div>';
+  }
+  h+='</div>';
+
+  document.getElementById('salida').innerHTML=h;
+}
+
+function kpi(v,l,cls){ return '<div class="kpi '+(cls||'')+'"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
+function filaComp(nom, existe, vacios, n){
+  if(!existe) return '<tr><td>'+nom+'</td><td><span class="pill p-bad">No existe</span></td><td class="num">—</td><td>—</td></tr>';
+  var c=pct(n-vacios,n);
+  var p=c>=90?'p-ok':c>=60?'p-warn':'p-bad';
+  return '<tr><td>'+nom+'</td><td><span class="pill p-ok">Sí</span></td><td class="num">'+fmt(vacios)+'</td>'
+    +'<td><span class="pill '+p+'">'+c+'%</span> <div class="bar" style="display:inline-block;width:80px;vertical-align:middle"><i style="width:'+c+'%"></i></div></td></tr>';
+}
+function vered(nom, ok, det){
+  return '<tr><td style="width:230px"><strong>'+nom+'</strong></td>'
+    +'<td style="width:110px"><span class="pill '+(ok?'p-ok':'p-warn')+'">'+(ok?'✔ Sí':'✕ Todavía no')+'</span></td>'
+    +'<td class="muted" style="font-size:12px">'+det+'</td></tr>';
+}
+</script>
+</body>
+</html>
