@@ -1786,6 +1786,9 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('ahorro', this)">
       <span class="sb-icon">💰</span> Ahorro Generado
     </button>
+    <button class="sidebar-btn" onclick="showView('estrategia', this)">
+      <span class="sb-icon">🎯</span> Análisis Estratégico
+    </button>
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
@@ -2783,6 +2786,39 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   <div id="comp-list"></div>
 </div>
 
+<!-- ══════════════════════════════════
+     VIEW: ANÁLISIS ESTRATÉGICO (Pareto)
+══════════════════════════════════ -->
+<div id="view-estrategia" class="view">
+  <div class="pg-header">
+    <div class="pg-title">ANÁLISIS <span>ESTRATÉGICO</span></div>
+    <div class="pg-sub">Concentración del gasto y de la gestión — Ley de Pareto (80/20)</div>
+  </div>
+
+  <!-- Barra de control -->
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+    <div>
+      <label style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:block;margin-bottom:3px">Período</label>
+      <select id="par-periodo" onchange="renderEstrategia()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)"></select>
+    </div>
+    <div>
+      <label style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:block;margin-bottom:3px">Costo administrativo por SC</label>
+      <input type="number" id="par-costo-sc" value="15000" oninput="renderEstrategia()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;width:130px;font-family:var(--ff)">
+    </div>
+    <button class="btn-sm" onclick="renderEstrategia()" style="align-self:flex-end;padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ff)">🔄 Recalcular</button>
+    <div id="par-cobertura" style="margin-left:auto;font-size:11.5px;color:var(--muted);align-self:flex-end"></div>
+  </div>
+
+  <div id="par-aviso"></div>
+  <div id="par-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px"></div>
+
+  <!-- Pestañas de los 5 cortes -->
+  <div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap" id="par-tabs"></div>
+  <div id="par-pane"></div>
+
+  <div id="par-hallazgos" style="margin-top:20px"></div>
+</div>
+
 <div id="view-ahorro" class="view">
   <div class="pg-header">
     <div class="pg-title">AHORRO <span>GENERADO</span></div>
@@ -3563,6 +3599,7 @@ async function showView(id, btn) {
   }
   if (id === 'comparativas')   { await cargarTCOverrides(); renderComparativas(); }
   if (id === 'ahorro')         renderAhorro();
+  if (id === 'estrategia')     renderEstrategia();
   if (id === 'prov-db')      { await cargarProveedoresSB(); renderProvDB(); }
   if (id === 'prov-compras') { await _asegurarDatosCompras(); renderComprasProv(); }
   if (id === 'prov-area')      { await _asegurarDatosCompras(); renderComprasArea(); }
@@ -5390,6 +5427,231 @@ function _ahoDrawCharts(data, divisa){
   var cM=document.getElementById('aho-chart-mes');
   if(cM) _ahoCharts.mes=new Chart(cM,{type:'bar',data:{labels:mKeys,datasets:[{data:mKeys.map(function(k){return Math.round(porMes[k]);}),backgroundColor:'#22c55e',borderRadius:6}]},options:baseOpts});
 }
+async // ══════════════════════════════════════════════════════════════
+// ANÁLISIS ESTRATÉGICO — Pareto (Ley 80/20)
+// Se calcula SOLO con datos reales ya cargados: detalleData (facturación
+// de la planilla COMPRAS) y scs (Solicitudes de Compra). Nada estimado.
+// ══════════════════════════════════════════════════════════════
+let _parTab = 'familia';
+const PAR_TABS = [
+  { id:'familia',    lbl:'💰 Por familia',     sub:'Dónde negociar' },
+  { id:'proveedor',  lbl:'🏭 Por proveedor',   sub:'Volumen y dependencia' },
+  { id:'frecuencia', lbl:'🔁 Por frecuencia',  sub:'Costo de gestión' },
+  { id:'area',       lbl:'🏢 Por área',        sub:'Con quién planificar' },
+  { id:'urgencia',   lbl:'🚨 Urgencias',       sub:'Falta de planificación' }
+];
+
+function _parNum(n){ return Math.round(Number(n)||0).toLocaleString('es-AR'); }
+function _parPct(a,b){ return b>0 ? Math.round(a/b*100) : 0; }
+function _parEsc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+// Años disponibles en la facturación
+function _parAnios(){
+  const set = {};
+  (detalleData||[]).forEach(d=>{ const a=String(d.fecha||'').slice(0,4); if(/^\d{4}$/.test(a)) set[a]=1; });
+  return Object.keys(set).sort().reverse();
+}
+function _parPoblarPeriodo(){
+  const sel=document.getElementById('par-periodo'); if(!sel) return;
+  if(sel.options.length) return;
+  const anios=_parAnios();
+  sel.innerHTML = '<option value="__all__">Todo el histórico</option>'
+    + anios.map(a=>'<option value="'+a+'">'+a+'</option>').join('');
+  if(anios.length) sel.value=anios[0];
+}
+function _parFiltrado(){
+  const p=(document.getElementById('par-periodo')||{}).value||'__all__';
+  let filas=(detalleData||[]);
+  if(p!=='__all__') filas=filas.filter(d=>String(d.fecha||'').slice(0,4)===p);
+  let sc=(scs||[]);
+  if(p!=='__all__') sc=sc.filter(s=>String(s.fecha||'').slice(0,4)===p);
+  return { filas, sc, periodo:p };
+}
+
+// Agrupa y ordena por valor descendente, con acumulado
+function _parRanking(map){
+  const arr=Object.keys(map).map(k=>({ k:k, v:map[k].v, n:map[k].n||0 }))
+    .filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+  const tot=arr.reduce((s,x)=>s+x.v,0);
+  let ac=0;
+  arr.forEach(x=>{ ac+=x.v; x.ac=ac; x.pct=tot>0?x.v/tot*100:0; x.acPct=tot>0?ac/tot*100:0; });
+  return { arr, tot, corte80: arr.filter(x=>x.acPct<=80).length || (arr.length?1:0) };
+}
+
+function renderEstrategia(){
+  _parPoblarPeriodo();
+  const { filas, sc } = _parFiltrado();
+  const cont=document.getElementById('par-pane'); if(!cont) return;
+
+  if(!filas.length && !sc.length){
+    document.getElementById('par-aviso').innerHTML =
+      '<div style="padding:16px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.4);border-radius:10px;color:#f4d160;font-size:13px">'
+      +'⚠️ No hay datos cargados para este período. Actualizá la planilla de compras desde el panel principal.</div>';
+    document.getElementById('par-kpis').innerHTML=''; cont.innerHTML=''; return;
+  }
+  document.getElementById('par-aviso').innerHTML='';
+
+  // ── Cobertura: qué parte del gasto tiene categoría ──
+  const totGasto=filas.reduce((s,d)=>s+(d.monto||0),0);
+  const sinCat=filas.filter(d=>!d.categoria||d.categoria==='SIN ESPECIFICAR').reduce((s,d)=>s+(d.monto||0),0);
+  const cob=_parPct(totGasto-sinCat, totGasto);
+  document.getElementById('par-cobertura').innerHTML =
+    'Cobertura del análisis por familia: <strong style="color:'+(cob>=80?'var(--green)':'var(--yellow)')+'">'+cob+'%</strong> del gasto'
+    + (cob<100?(' · <span style="color:var(--muted)">$'+_parNum(sinCat)+' sin clasificar</span>'):'');
+
+  // ── KPIs ──
+  const costoSC=parseFloat((document.getElementById('par-costo-sc')||{}).value)||0;
+  const urg=sc.filter(s=>['URGENTE','ALTA'].includes(String(s.criticidad||'').toUpperCase())).length;
+  document.getElementById('par-kpis').innerHTML =
+    _parKpi('$'+_parNum(totGasto),'Gasto facturado')
+    + _parKpi(_parNum(sc.length),'Solicitudes de compra')
+    + _parKpi('$'+_parNum(sc.length*costoSC),'Costo de gestión estimado')
+    + _parKpi(_parPct(urg,sc.length)+'%','SC urgentes o altas', urg/Math.max(1,sc.length)>0.35?'bad':'')
+    + _parKpi(_parNum(filas.length),'Comprobantes');
+
+  // ── Pestañas ──
+  document.getElementById('par-tabs').innerHTML = PAR_TABS.map(t=>
+    '<button onclick="_parSetTab(\''+t.id+'\')" style="padding:9px 14px;border:none;background:none;cursor:pointer;font-family:var(--ff);font-size:12.5px;font-weight:700;'
+    + 'color:'+(_parTab===t.id?'var(--or)':'var(--muted)')+';border-bottom:2px solid '+(_parTab===t.id?'var(--or)':'transparent')+'">'
+    + t.lbl + '</button>').join('');
+
+  cont.innerHTML = _parRenderTab(filas, sc, costoSC);
+  _parRenderHallazgos(filas, sc, costoSC);
+}
+function _parSetTab(t){ _parTab=t; renderEstrategia(); }
+function _parKpi(v,l,cls){
+  const col = cls==='bad'?'var(--red)':'var(--or)';
+  return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:13px 15px">'
+    +'<div style="font-size:21px;font-weight:800;color:'+col+';line-height:1.2">'+v+'</div>'
+    +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:2px">'+l+'</div></div>';
+}
+
+function _parRenderTab(filas, sc, costoSC){
+  if(_parTab==='familia'){
+    const m={}; filas.forEach(d=>{ const k=d.categoria||'SIN ESPECIFICAR'; (m[k]=m[k]||{v:0,n:0}); m[k].v+=(d.monto||0); m[k].n++; });
+    return _parTabla(_parRanking(m), 'Familia / Categoría', 'Gasto', true,
+      'Las familias que concentran el 80% del gasto son donde conviene negociar y hacer acuerdos anuales.');
+  }
+  if(_parTab==='proveedor'){
+    const m={}; filas.forEach(d=>{ const k=_parNormProv(d.proveedor); if(!k)return; (m[k]=m[k]||{v:0,n:0}); m[k].v+=(d.monto||0); m[k].n++; });
+    const R=_parRanking(m);
+    let extra='';
+    if(R.arr.length){
+      const top=R.arr[0];
+      if(top.pct>=25) extra='<div style="margin-top:10px;padding:11px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:9px;font-size:12.5px;color:#f87171">'
+        +'⚠️ <strong>Dependencia alta:</strong> '+_parEsc(top.k)+' concentra el '+Math.round(top.pct)+'% del gasto. Conviene tener un proveedor alternativo homologado.</div>';
+    }
+    return _parTabla(R,'Proveedor','Gasto',true,
+      'Los proveedores del 80% son candidatos a acuerdo marco. Pero una concentración muy alta en uno solo es un riesgo.')+extra;
+  }
+  if(_parTab==='frecuencia'){
+    const m={}; sc.forEach(s=>{ const k=s.area||'SIN ÁREA'; (m[k]=m[k]||{v:0,n:0}); m[k].v++; m[k].n++; });
+    const R=_parRanking(m);
+    return _parTabla(R,'Área','Cantidad de SC',false,
+      'Cada solicitud cuesta tiempo de gestión. Con $'+_parNum(costoSC)+' por SC, estas '+_parNum(R.tot)+' solicitudes representan $'+_parNum(R.tot*costoSC)+' de costo administrativo.')
+      + '<div style="margin-top:12px;padding:12px 14px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.35);border-radius:9px;font-size:12.5px;color:#93c5fd">'
+      + '💡 <strong>Para afinar este corte</strong> hace falta la familia por ítem (hoy los ítems son texto libre). Con eso se detectan los artículos de bajo monto y alta frecuencia, que son los candidatos directos a stock de pañol.</div>';
+  }
+  if(_parTab==='area'){
+    const m={}; filas.forEach(d=>{ const k=d.area||'SIN ESPECIFICAR'; (m[k]=m[k]||{v:0,n:0}); m[k].v+=(d.monto||0); m[k].n++; });
+    return _parTabla(_parRanking(m),'Área','Gasto',true,
+      'Las áreas que concentran el gasto son con las que conviene planificar compras en vez de reaccionar a pedidos sueltos.');
+  }
+  if(_parTab==='urgencia'){
+    const m={}; sc.forEach(s=>{
+      const c=String(s.criticidad||'').toUpperCase();
+      if(c!=='URGENTE'&&c!=='ALTA')return;
+      const k=s.area||'SIN ÁREA'; (m[k]=m[k]||{v:0,n:0}); m[k].v++; m[k].n++;
+    });
+    const R=_parRanking(m);
+    const totU=R.tot, totSC=sc.length;
+    return '<div style="margin-bottom:12px;padding:12px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:9px;font-size:12.5px;color:#f87171">'
+      +'🚨 <strong>'+_parNum(totU)+' de '+_parNum(totSC)+' solicitudes ('+_parPct(totU,totSC)+'%) son urgentes o de criticidad alta.</strong> '
+      +'Una urgencia se paga más cara, resta poder de negociación y consume más gestión. Cuando son la mayoría, dejan de ser excepciones y pasan a ser un problema de planificación.</div>'
+      + _parTabla(R,'Área','SC urgentes / altas',false,
+        'Las áreas que concentran las urgencias son donde más rinde acordar previsiones de consumo y stock mínimo.');
+  }
+  return '';
+}
+
+function _parNormProv(s){
+  return String(s||'').toUpperCase().replace(/[.,;:'"()]/g,' ')
+    .replace(/\b(S\s*R\s*L|SRL|S\s*A|SA|SAS|SACIFI|SACIF|SCA|LTDA|CIA|E\s*HIJOS|HNOS)\b/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+
+function _parTabla(R, colNom, colVal, esMonto, nota){
+  if(!R.arr.length) return '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Sin datos para este corte.</div>';
+  const fmtV = v => esMonto ? ('$'+_parNum(v)) : _parNum(v);
+  let filas='';
+  R.arr.slice(0,40).forEach((x,i)=>{
+    const dentro80 = x.acPct<=80.5;
+    filas += '<tr style="'+(dentro80?'background:rgba(232,93,37,.05)':'')+'">'
+      + '<td style="padding:7px 9px;border-bottom:1px solid var(--border);font-family:var(--fm);font-size:10px;color:'+(dentro80?'var(--or)':'var(--muted)')+';font-weight:700">'+String(i+1).padStart(2,'0')+'</td>'
+      + '<td style="padding:7px 9px;border-bottom:1px solid var(--border);font-size:12.5px">'+_parEsc(x.k)
+        + (dentro80?' <span style="font-size:9px;font-weight:700;color:var(--or);background:rgba(232,93,37,.15);padding:1px 6px;border-radius:999px;margin-left:5px">80%</span>':'')+'</td>'
+      + '<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-size:12.5px;font-weight:700">'+fmtV(x.v)+'</td>'
+      + '<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-size:12px;color:var(--muted)">'+x.pct.toFixed(1)+'%</td>'
+      + '<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-size:12px;color:var(--muted)">'+Math.round(x.acPct)+'%</td>'
+      + '<td style="padding:7px 9px;border-bottom:1px solid var(--border);width:130px">'
+        + '<div style="height:7px;background:var(--s3);border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:'+Math.min(100,x.pct*3)+'%;background:'+(dentro80?'var(--or)':'var(--muted)')+'"></i></div></td>'
+      + '</tr>';
+  });
+  return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px">'
+    + '<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px">'
+      + '<span style="font-size:13px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px">'+R.corte80+' de '+R.arr.length+' concentran el 80%</span>'
+      + '<span style="font-size:12px;color:var(--muted)">Total: '+fmtV(R.tot)+'</span></div>'
+    + (nota?'<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">'+nota+'</div>':'')
+    + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+    + '<thead><tr style="background:var(--s2)">'
+      + '<th style="padding:7px 9px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">#</th>'
+      + '<th style="padding:7px 9px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">'+colNom+'</th>'
+      + '<th style="padding:7px 9px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">'+colVal+'</th>'
+      + '<th style="padding:7px 9px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">%</th>'
+      + '<th style="padding:7px 9px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Acum.</th>'
+      + '<th style="padding:7px 9px"></th></tr></thead><tbody>'+filas+'</tbody></table></div>'
+    + (R.arr.length>40?'<div style="font-size:11px;color:var(--muted);margin-top:8px">Se muestran los 40 primeros de '+R.arr.length+'.</div>':'')
+    + '</div>';
+}
+
+// Hallazgos automáticos, siempre derivados de los datos (nunca inventados)
+function _parRenderHallazgos(filas, sc, costoSC){
+  const cont=document.getElementById('par-hallazgos'); if(!cont) return;
+  const h=[];
+  // 1) Urgencias
+  const urg=sc.filter(s=>['URGENTE','ALTA'].includes(String(s.criticidad||'').toUpperCase())).length;
+  const pu=_parPct(urg,sc.length);
+  if(pu>=35) h.push(['bad','Las urgencias son la regla, no la excepción',
+    'El '+pu+'% de las solicitudes entra como urgente o alta. Ese nivel indica que el consumo no se está previendo. '
+    +'El camino no es negociar mejor: es identificar los artículos previsibles que hoy entran como urgencia y ponerlos en stock con punto de reposición.']);
+  // 2) Concentración de proveedor
+  const mp={}; filas.forEach(d=>{ const k=_parNormProv(d.proveedor); if(!k)return; (mp[k]=mp[k]||{v:0,n:0}); mp[k].v+=(d.monto||0); });
+  const Rp=_parRanking(mp);
+  if(Rp.arr.length && Rp.arr[0].pct>=25) h.push(['warn','Dependencia de un proveedor',
+    _parEsc(Rp.arr[0].k)+' concentra el '+Math.round(Rp.arr[0].pct)+'% del gasto. Es una oportunidad de acuerdo por volumen, pero también un riesgo: conviene homologar una alternativa antes de necesitarla.']);
+  // 3) Costo de gestión
+  if(sc.length && costoSC>0) h.push(['info','Costo de gestionar las solicitudes',
+    'Las '+_parNum(sc.length)+' solicitudes del período representan unos $'+_parNum(sc.length*costoSC)+' de costo administrativo, con el valor que cargaste arriba. '
+    +'Cada artículo de bajo monto que pase a stock de pañol evita ese costo cada vez que se pide.']);
+  // 4) Cobertura
+  const totG=filas.reduce((s,d)=>s+(d.monto||0),0);
+  const sinC=filas.filter(d=>!d.categoria||d.categoria==='SIN ESPECIFICAR').reduce((s,d)=>s+(d.monto||0),0);
+  const cob=_parPct(totG-sinC,totG);
+  if(cob<100) h.push(['info','Alcance de este análisis',
+    'Los cortes por familia cubren el '+cob+'% del gasto. Los $'+_parNum(sinC)+' restantes están sin categoría en la planilla y quedan fuera. '
+    +'Completar esa clasificación es lo que llevaría el análisis al 100%.']);
+
+  const col={bad:['rgba(239,68,68,.08)','rgba(239,68,68,.35)','#f87171'],
+             warn:['rgba(234,179,8,.08)','rgba(234,179,8,.35)','#f4d160'],
+             info:['rgba(96,165,250,.08)','rgba(96,165,250,.35)','#93c5fd']};
+  cont.innerHTML = h.length
+    ? '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:9px">Hallazgos</div>'
+      + h.map(x=>{ const c=col[x[0]];
+        return '<div style="background:'+c[0]+';border:1px solid '+c[1]+';border-radius:10px;padding:13px 15px;margin-bottom:9px;color:'+c[2]+';font-size:12.5px;line-height:1.55">'
+          +'<strong style="display:block;margin-bottom:3px;font-size:13px">'+x[1]+'</strong>'+x[2]+'</div>'; }).join('')
+    : '';
+}
+
 async function renderAhorro(){
   try{
     const h={'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY};
