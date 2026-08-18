@@ -566,7 +566,9 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
               <select id="scAsociadaSel" onchange="_scAsociadaElegir(this.value)" style="width:100%">
                 <option value="">— Cargando solicitudes... —</option>
               </select>
+              <div id="scChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:7px"></div>
               <input type="text" id="scAsociada" placeholder="Ej: SCTL-202605-0001" style="width:100%;margin-top:6px;display:none"/>
+              <div style="font-size:11px;color:var(--muted,#8b93a7);margin-top:5px">Podés asociar varias solicitudes. Sus artículos se cargan abajo en el orden en que las agregues.</div>
             </div>
             <label class="sc-assoc-check">
               <input type="checkbox" id="sinSC" onchange="toggleSinSC()"> S/SC Asociada
@@ -1471,42 +1473,117 @@ function _reintentarListaSC(){
 function _escAttr(v){ return String(v==null?'':v).replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
 // Al elegir una SC: completar el campo y autocompletar Asunto y Área
+var scAsociadas = [];   // [{num, area, asunto, items:[...]}] en el orden en que se agregan
+
+// Agrega una SC a la lista y precarga sus artículos
 function _scAsociadaElegir(num){
   var inp = document.getElementById('scAsociada');
   if (num === '__manual__'){
     if (inp){ inp.style.display=''; inp.value=''; inp.focus(); }
     return;
   }
-  if (inp){ inp.value = num || ''; inp.style.display='none'; }
-  if (!num || !_scListaCache) return;
-  var sc = _scListaCache.find(function(x){ return x.num_sc === num; });
+  if (!num) return;
+  var sel = document.getElementById('scAsociadaSel');
+  if (scAsociadas.some(function(x){ return x.num===num; })){
+    if (sel) sel.value='';
+    showToast('Esa solicitud ya está asociada','err');
+    return;
+  }
+  var sc = (_scListaCache||[]).find(function(x){ return x.num_sc === num; });
   if (!sc) return;
-  // Asunto / descripción del pedido
-  var asuntoEl = document.getElementById('asunto');
-  var textoAsunto = (sc.os_asunto || '').trim();
-  if (!textoAsunto && sc.items){
-    // Sin asunto de OS: armar una referencia con los primeros ítems del pedido
-    var lineas = String(sc.items).split('\n').map(function(l){ return l.replace(/\s+/g,' ').trim(); }).filter(Boolean);
-    textoAsunto = lineas.slice(0,3).join(' · ').slice(0,120);
+
+  // Artículos de esta SC, en el orden en que vienen
+  var arts = _scItemsParse(sc.items);
+  scAsociadas.push({ num:num, area:sc.area||'', asunto:(sc.os_asunto||sc.motivo||''), solicitante:sc.solicitante||'', items:arts });
+
+  _scAplicarAsociadas();
+  if (sel) sel.value='';
+  showToast('✔️ '+num+' asociada · '+arts.length+' artículo(s) cargado(s)','ok');
+}
+
+function _scQuitarAsociada(num){
+  scAsociadas = scAsociadas.filter(function(x){ return x.num!==num; });
+  _scAplicarAsociadas();
+  showToast('Solicitud '+num+' quitada','ok');
+}
+
+// Refresca chips, campos de cabecera y la tabla de artículos
+function _scAplicarAsociadas(){
+  // 1) Chips con las SC asociadas
+  var cont = document.getElementById('scChips');
+  if (cont){
+    cont.innerHTML = scAsociadas.map(function(x){
+      return '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(232,97,26,.12);border:1px solid rgba(232,97,26,.4);'
+        + 'border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:700;color:var(--orange,#E8611A)">'
+        + _escAttr(x.num)
+        + '<button type="button" onclick="_scQuitarAsociada(\''+_escAttr(x.num)+'\')" title="Quitar"'
+        + ' style="background:none;border:none;color:inherit;cursor:pointer;font-size:13px;line-height:1;padding:0">✕</button></span>';
+    }).join('');
   }
-  if (!textoAsunto) textoAsunto = (sc.motivo || '').trim();
-  if (asuntoEl && textoAsunto) asuntoEl.value = textoAsunto;
-  // Área / departamento (match tolerante con las opciones del select)
-  var areaEl = document.getElementById('area');
-  if (areaEl && sc.area){
-    var buscada = String(sc.area).trim().toUpperCase();
-    var encontrada = '';
-    for (var i=0;i<areaEl.options.length;i++){
-      var v = String(areaEl.options[i].value || areaEl.options[i].text).trim().toUpperCase();
-      if (!v) continue;
-      if (v === buscada || v.indexOf(buscada)===0 || buscada.indexOf(v)===0){ encontrada = areaEl.options[i].value || areaEl.options[i].text; break; }
+  // 2) Campo de texto: todas las SC separadas por " + "
+  var inp = document.getElementById('scAsociada');
+  if (inp) inp.value = scAsociadas.map(function(x){ return x.num; }).join(' + ');
+
+  // 3) Cabecera: asunto y área de la primera SC (si están vacíos)
+  if (scAsociadas.length){
+    var p = scAsociadas[0];
+    var asuntoEl = document.getElementById('asunto');
+    if (asuntoEl && !asuntoEl.value.trim()){
+      asuntoEl.value = scAsociadas.length>1
+        ? (p.asunto ? p.asunto + ' (y otras ' + (scAsociadas.length-1) + ' solicitudes)' : 'Compra agrupada de ' + scAsociadas.length + ' solicitudes')
+        : (p.asunto || '');
     }
-    if (encontrada) areaEl.value = encontrada;
+    var areaEl = document.getElementById('area');
+    if (areaEl && p.area){
+      var buscada = String(p.area).trim().toUpperCase(), hallada='';
+      for (var i2=0;i2<areaEl.options.length;i2++){
+        var v = String(areaEl.options[i2].value || areaEl.options[i2].text).trim().toUpperCase();
+        if (!v) continue;
+        if (v===buscada || v.indexOf(buscada)===0 || buscada.indexOf(v)===0){ hallada = areaEl.options[i2].value || areaEl.options[i2].text; break; }
+      }
+      if (hallada) areaEl.value = hallada;
+    }
+    var solEl = document.getElementById('solicitante');
+    if (solEl && !solEl.value.trim() && p.solicitante) solEl.value = p.solicitante;
   }
-  // Solicitante, si está vacío
-  var solEl = document.getElementById('solicitante');
-  if (solEl && !solEl.value.trim() && sc.solicitante) solEl.value = sc.solicitante;
-  if (typeof showToast==='function') showToast('✔️ Datos completados desde '+num,'ok');
+
+  // 4) Artículos: los de las SC asociadas, en orden, conservando los cargados a mano
+  var manuales = items.filter(function(it){ return !it._scOrigen; });
+  var nuevos = [];
+  scAsociadas.forEach(function(x){
+    x.items.forEach(function(a){
+      nuevos.push({ id: ++itemCounter, desc:a.desc, qty:a.qty, unit:a.unit, spec:'', sel:false, _scOrigen:x.num });
+    });
+  });
+  items = nuevos.concat(manuales);
+  renderItems();
+}
+
+// Convierte el texto libre de ítems de una SC en {desc, qty, unit}
+function _scItemsParse(txt){
+  if (!txt) return [];
+  return String(txt).split('\n').map(function(l){ return l.trim(); }).filter(Boolean).map(function(linea){
+    // Formatos frecuentes: "10 — LITROS DE TINER" · "24 u — GUANTES" · "3 UNI PILA AAA"
+    var m = /^(\d+(?:[.,]\d+)?)\s*([a-zA-Z\u00C0-\u017F]{0,6})?\s*[—\-–:]*\s*(.+)$/.exec(linea);
+    if (m){
+      var qty = parseFloat(String(m[1]).replace(',','.'));
+      var uni = (m[2]||'').trim();
+      var desc = (m[3]||'').trim();
+      return { qty: isNaN(qty)?1:qty, unit:_scUnidadNorm(uni), desc: desc || linea };
+    }
+    return { qty:1, unit:'u', desc:linea };
+  });
+}
+function _scUnidadNorm(u){
+  var t=String(u||'').toLowerCase();
+  if(!t) return 'u';
+  if(t.indexOf('lit')===0||t==='l') return 'l';
+  if(t.indexOf('kg')===0) return 'kg';
+  if(t.indexOf('mt')===0||t.indexOf('met')===0||t==='m') return 'm';
+  if(t.indexOf('par')===0) return 'par';
+  if(t.indexOf('caj')===0) return 'caja';
+  if(t.indexOf('uni')===0||t==='u'||t==='un') return 'u';
+  return (typeof UNITS!=='undefined' && UNITS.indexOf(t)>=0) ? t : 'u';
 }
 
 

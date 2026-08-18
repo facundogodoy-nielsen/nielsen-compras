@@ -638,20 +638,61 @@ function _dbConfigSola(){
   return cfgOnly;
 }
 
+// Fusiona dos listas de entidades con id. Lo local manda sobre lo remoto,
+// pero se conserva lo que otro equipo agregó y no está borrado acá.
+// Registra que un elemento de configuración fue borrado en este equipo,
+// para que la fusión con la nube no lo vuelva a traer.
+function _marcarBorrado(lista, id){
+  if(!DB.borrados) DB.borrados={};
+  if(!DB.borrados[lista]) DB.borrados[lista]=[];
+  if(DB.borrados[lista].indexOf(id)<0) DB.borrados[lista].push(id);
+}
+
+function _fusionarLista(local, remoto, borradosIds){
+  const out=[]; const vistos={};
+  (local||[]).forEach(x=>{ if(x&&x.id){ out.push(x); vistos[x.id]=1; } });
+  (remoto||[]).forEach(x=>{
+    if(!x||!x.id) return;
+    if(vistos[x.id]) return;                 // ya está (la versión local es la buena)
+    if((borradosIds||[]).indexOf(x.id)>=0) return;  // lo borré yo: no revivirlo
+    out.push(x);                             // lo agregó otro equipo: conservarlo
+  });
+  return out;
+}
+
 async function _recPush(){
   _recSaveTimer = null;
   try{
+    // 1) Leer la versión que hay en la nube para no pisar cambios de otro equipo
+    let remoto = null;
+    try{
+      const rr = await fetch(REC_SB_URL + '/rest/v1/recorridos?id=eq.' + encodeURIComponent(REC_ROW_ID) + '&select=data',
+        { headers:{ apikey:REC_SB_KEY, Authorization:'Bearer '+REC_SB_KEY }, cache:'no-store' });
+      if(rr.ok){ const a=await rr.json(); if(a && a[0] && a[0].data) remoto=a[0].data; }
+    }catch(e){ /* sin conexión: se guarda igual lo local */ }
+
+    // 2) Fusionar las listas de configuración
+    const cfgLocal = _dbConfigSola();
+    if(remoto){
+      const bor = DB.borrados || {};
+      cfgLocal.vehiculos   = _fusionarLista(cfgLocal.vehiculos,   remoto.vehiculos,   bor.vehiculos);
+      cfgLocal.choferes    = _fusionarLista(cfgLocal.choferes,    remoto.choferes,    bor.choferes);
+      cfgLocal.proveedores = _fusionarLista(cfgLocal.proveedores, remoto.proveedores, bor.proveedores);
+      // Reflejar la fusión en memoria, así la pantalla muestra lo mismo que se guardó
+      DB.vehiculos=cfgLocal.vehiculos; DB.choferes=cfgLocal.choferes; DB.proveedores=cfgLocal.proveedores;
+    }
+
     const r = await fetch(REC_SB_URL + '/rest/v1/recorridos?on_conflict=id', {
       method:'POST',
       headers:{ 'Content-Type':'application/json', apikey:REC_SB_KEY, Authorization:'Bearer '+REC_SB_KEY,
                 Prefer:'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ id:REC_ROW_ID, data:_dbConfigSola(), updated_at:new Date().toISOString() })
+      body: JSON.stringify({ id:REC_ROW_ID, data:cfgLocal, updated_at:new Date().toISOString() })
     });
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-    _recSetStatus('✅ Sincronizado', '#22c55e');
+    if(!r.ok){ const t=await r.text().catch(()=> ''); throw new Error('HTTP ' + r.status + (t?' — '+t.slice(0,120):'')); }
+    _recSetStatus('✅ Guardado', '#22c55e');
   }catch(e){
     console.warn('guardar recorridos', e);
-    _recSetStatus('⚠️ No se pudo guardar', '#ef4444');
+    _recSetStatus('⚠️ NO se guardó: ' + (e.message||''), '#ef4444');
   }
 }
 
@@ -2611,7 +2652,7 @@ function _toggleCorrido(){
   if(bp) bp.style.display = on ? 'none' : '';
   if(bc) bc.style.display = on ? '' : 'none';
 }
-function delProv(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar proveedor?')){ DB.proveedores=DB.proveedores.filter(x=>x.id!==id); ruta=ruta.filter(s=>s.id!==id); save(); renderProv(); renderAgenda(); drawMap(); updateEstimado(); } }
+function delProv(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar proveedor?')){ _marcarBorrado('proveedores',id); DB.proveedores=DB.proveedores.filter(x=>x.id!==id); ruta=ruta.filter(s=>s.id!==id); save(true); renderProv(); renderAgenda(); drawMap(); updateEstimado(); } }
 
 function editVeh(id){
   if(!esEditor()){ alert('🔒 Activá el Modo Editor para editar.'); return; }
@@ -2629,7 +2670,7 @@ function editVeh(id){
     save(true); renderVeh(); fillSelects(); closeModal();
   });
 }
-function delVeh(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar vehículo?')){ DB.vehiculos=DB.vehiculos.filter(x=>x.id!==id); save(true); renderVeh(); fillSelects(); } }
+function delVeh(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar vehículo?')){ _marcarBorrado('vehiculos',id); DB.vehiculos=DB.vehiculos.filter(x=>x.id!==id); save(true); renderVeh(); fillSelects(); } }
 
 function editCho(id){
   if(!esEditor()){ alert('🔒 Activá el Modo Editor para editar.'); return; }
@@ -2645,7 +2686,7 @@ function editCho(id){
     save(true); renderCho(); fillSelects(); closeModal();
   });
 }
-function delCho(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar chofer?')){ DB.choferes=DB.choferes.filter(x=>x.id!==id); save(); renderCho(); fillSelects(); } }
+function delCho(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para eliminar.'); return; } if(confirm('¿Eliminar chofer?')){ _marcarBorrado('choferes',id); DB.choferes=DB.choferes.filter(x=>x.id!==id); save(true); renderCho(); fillSelects(); } }
 
 /* ============================ TABS ============================ */
 function switchTab(name){

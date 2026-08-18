@@ -6043,6 +6043,46 @@ function cambiarEstado(idx, estado) {
 
 // ── Tombstones: registro de eliminaciones permanentes (evita "recuperación") ──
 function _getTombstones(key){ try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch(e){ return []; } }
+// ══════════════════════════════════════════════════════════════
+// BORRADOS COMPARTIDOS — la marca de eliminado viaja a la nube,
+// para que otro equipo no vuelva a subir lo que ya se borró.
+// ══════════════════════════════════════════════════════════════
+let _tombNube = { sc:new Set(), pa:new Set() };
+let _tombNubeOK = false;
+
+async function _tombCargarNube(){
+  try{
+    const r = await fetch(_SB_URL + '/rest/v1/borrados?select=tipo,clave&limit=5000',
+      { headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY }, cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const rows = await r.json();
+    _tombNube = { sc:new Set(), pa:new Set() };
+    rows.forEach(x=>{ const t=(x.tipo||'').toLowerCase(); if(_tombNube[t]) _tombNube[t].add(String(x.clave||'')); });
+    _tombNubeOK = true;
+  }catch(e){ console.warn('borrados compartidos:', e.message); _tombNubeOK = false; }
+  return _tombNubeOK;
+}
+async function _tombNubeAgregar(tipo, clave){
+  if(!clave) return false;
+  try{
+    const r = await fetch(_SB_URL + '/rest/v1/borrados', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY,
+                Prefer:'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ tipo:tipo, clave:String(clave), borrado_por:(typeof _usuarioActual!=='undefined'?_usuarioActual:'') })
+    });
+    if(r.ok && _tombNube[tipo]) _tombNube[tipo].add(String(clave));
+    return r.ok;
+  }catch(e){ console.warn('marcar borrado:', e.message); return false; }
+}
+// Unión de las marcas locales y las compartidas
+function _tombTodas(tipo){
+  const key = tipo==='sc' ? 'nielsen_scs_deleted' : 'nielsen_pa_deleted';
+  const set = new Set(_getTombstones(key).map(String));
+  (_tombNube[tipo]||new Set()).forEach(v=>set.add(String(v)));
+  return set;
+}
+
 function _addTombstone(key, val){ if(!val) return; const t=_getTombstones(key); const v=String(val); if(t.indexOf(v)<0){ t.push(v); try{ localStorage.setItem(key, JSON.stringify(t)); }catch(e){} } }
 function _isTombstoned(key, val){ if(!val) return false; return _getTombstones(key).indexOf(String(val))>=0; }
 // Quita de scs/paData cualquier registro marcado como borrado permanentemente (a prueba de balas)
@@ -6073,7 +6113,8 @@ function eliminarSC(idx) {
   const _scDel = scs[idx]; if (!_scDel) return;
   const _num = _scDel.numSC || _scDel.num || '';
   if (!_pinEliminar('la SC ' + _num)) return;
-  _addTombstone('nielsen_scs_deleted', normSCCode(_num));   // borrado permanente (no se recupera)
+  _addTombstone('nielsen_scs_deleted', normSCCode(_num));   // marca local
+  _tombNubeAgregar('sc', normSCCode(_num));                 // marca COMPARTIDA (no vuelve desde otro equipo)
   if (_num) sbDelete('solicitudes_compra','num_sc', _num);
   scs.splice(idx, 1);
   _lsSet('nielsen_scs_2026', JSON.stringify(scs));
@@ -10151,7 +10192,8 @@ function eliminarPA(idx) {
   const _paDel = paData[idx]; if (!_paDel) return;
   const _num = _paDel.numPA || _paDel._rawNumPA || '';
   if (!_pinEliminar('el PA ' + _num)) return;
-  _addTombstone('nielsen_pa_deleted', normPA(_num));   // borrado permanente (no se recupera)
+  _addTombstone('nielsen_pa_deleted', normPA(_num));   // marca local
+  _tombNubeAgregar('pa', normPA(_num));                // marca COMPARTIDA
   if (_num) sbDelete('pedidos_abastecimiento','num_pa', _num);
   paData.splice(idx, 1);
   _lsSet('nielsen_pa_2026', JSON.stringify(paData));
@@ -10317,9 +10359,17 @@ async function recuperarPCs() {
     }
   }
 
-  // 4) Re-subir a la nube lo que sólo estaba en local
-  let subidas = 0;
-  for (const sc of soloLocal) { if (await _sbInsertSC(sc)) subidas++; }
+  // 4) Re-subir a la nube lo que sólo estaba en local — EXCLUYENDO lo eliminado.
+  //    (Antes se re-subía todo, y por eso una SC borrada en un equipo volvía a aparecer.)
+  await _tombCargarNube();
+  const _borradas = _tombTodas('sc');
+  let subidas = 0, omitidas = 0;
+  for (const sc of soloLocal) {
+    const n = normSCCode(sc.numSC || sc.num || '');
+    if (_borradas.has(n)) { omitidas++; continue; }   // fue eliminada: no resucitarla
+    if (await _sbInsertSC(sc)) subidas++;
+  }
+  if (omitidas) console.log('Sincronización: ' + omitidas + ' SC eliminadas no se volvieron a subir.');
 
   // 5) Recargar todo con la lógica normal (ya paginada) y repintar
   await recargarSCsDesdeLS();
@@ -10337,6 +10387,7 @@ async function recuperarPCs() {
 
 // ── Cargar SCs desde Supabase (fuente principal) + localStorage (fallback) ──
 async function recargarSCsDesdeLS() {
+  await _tombCargarNube();   // marcas de borrado compartidas (evita que reaparezcan)
   // 1. Intentar Supabase primero — TODAS las filas (paginado)
   const rows = await _sbSelectAllSC();
   if (rows && Array.isArray(rows)) {
@@ -10384,7 +10435,7 @@ async function recargarSCsDesdeLS() {
     }));
     _sbOnline = true;
     // ── Borrados permanentes (tombstones): no mostrar ni recuperar, y limpiar de la nube ──
-    const _delSC = new Set(_getTombstones('nielsen_scs_deleted'));
+    const _delSC = _tombTodas('sc');   // marcas locales + compartidas de la nube
     if (_delSC.size) {
       fromDB.forEach(s => { const n = normSCCode(s.numSC); if (n && _delSC.has(n) && s.numSC) sbDelete('solicitudes_compra','num_sc', s.numSC); });
       fromDB = fromDB.filter(s => !_delSC.has(normSCCode(s.numSC)));
