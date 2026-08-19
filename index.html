@@ -6075,6 +6075,26 @@ async function _tombNubeAgregar(tipo, clave){
     return r.ok;
   }catch(e){ console.warn('marcar borrado:', e.message); return false; }
 }
+// Quita la marca de borrado (local y compartida) para poder recuperar una SC/PA
+async function _tombQuitar(tipo, clave){
+  if(!clave) return;
+  const key = tipo==='sc' ? 'nielsen_scs_deleted' : 'nielsen_pa_deleted';
+  const v = String(clave);
+  // local
+  try{
+    const t = _getTombstones(key).filter(x=>String(x)!==v);
+    localStorage.setItem(key, JSON.stringify(t));
+  }catch(e){}
+  // compartida
+  if(_tombNube[tipo]) _tombNube[tipo].delete(v);
+  try{
+    await fetch(_SB_URL + '/rest/v1/borrados?tipo=eq.' + encodeURIComponent(tipo) + '&clave=eq.' + encodeURIComponent(v), {
+      method:'DELETE',
+      headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, Prefer:'return=minimal' }
+    });
+  }catch(e){ console.warn('quitar marca de borrado:', e.message); }
+}
+
 // Unión de las marcas locales y las compartidas
 function _tombTodas(tipo){
   const key = tipo==='sc' ? 'nielsen_scs_deleted' : 'nielsen_pa_deleted';
@@ -9908,6 +9928,14 @@ async function recuperarSCsFaltantes() {
   const lista = missing.map(sc => `${sc.numSC||sc.num} (${sc.area||'?'} — ${sc.solicitante||'?'})`).join('\n');
   if (!confirm(`Se van a recuperar ${missing.length} SC faltante${missing.length!==1?'s':''}:\n\n${lista}\n\n¿Continuar?`)) return;
 
+  // 4b. Quitar la marca de "eliminada" de las SC que se van a recuperar.
+  //     Sin esto, al recargar el sistema las filtra por estar marcadas y las vuelve a borrar.
+  await _tombCargarNube();
+  for (const sc of missing) {
+    const n = normSCCode(sc.numSC || sc.num || '');
+    if (n) await _tombQuitar('sc', n);
+  }
+
   // 5. Insert each missing SC into Supabase
   let ok = 0, fail = 0;
   for (const sc of missing) {
@@ -9931,6 +9959,15 @@ async function recuperarSCsFaltantes() {
       obs:          sc.obs || '',
       panolero:     sc.panolero || '',
       estado:       sc.estado || 'PENDIENTE',
+      // Conservar también los datos que antes se perdían al recuperar
+      vale_num:     sc.valeNum || '',
+      vale_items:   sc.valeItems || null,
+      fotos_items:  sc.fotosItems || [],
+      presup_items: sc.presupItems || [],
+      fotos_map:    sc.fotosMap || {},
+      presup_map:   sc.presupMap || {},
+      proyecto_asociado: sc.proyectoAsociado || null,
+      origen:       sc.origen || 'RECUPERADA'
     };
     try {
       const r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra', {
