@@ -1792,6 +1792,23 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
   <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section" data-sid="informes">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()"
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))"
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Informes</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
+      <button class="sidebar-btn" onclick="showView('indicadores', this)">
+        <span class="sb-icon">📈</span> Indicadores
+      </button>
+    </div></div>
+  </div>
+  <div class="sidebar-divider"></div>
 </aside>
 
 <!-- ══════════════════════════════════
@@ -2789,6 +2806,33 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 <!-- ══════════════════════════════════
      VIEW: ANÁLISIS ESTRATÉGICO (Pareto)
 ══════════════════════════════════ -->
+<!-- ══════════════════════════════════
+     VIEW: INFORMES · INDICADORES
+══════════════════════════════════ -->
+<div id="view-indicadores" class="view">
+  <div class="pg-header">
+    <div class="pg-title">INDICADORES <span>DE COMPRA</span></div>
+    <div class="pg-sub">Datos del período listos para armar la presentación mensual</div>
+  </div>
+
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+    <div>
+      <label style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:block;margin-bottom:3px">Período</label>
+      <select id="ind-mes" onchange="renderIndicadores()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)"></select>
+    </div>
+    <div>
+      <label style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:block;margin-bottom:3px">Comparar contra</label>
+      <select id="ind-mes-prev" onchange="renderIndicadores()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)"></select>
+    </div>
+    <button onclick="renderIndicadores()" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ff)">🔄 Recalcular</button>
+    <button onclick="exportarIndicadores()" style="padding:9px 15px;border-radius:8px;border:none;background:var(--or);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ff)">⬇️ Exportar todo</button>
+    <div id="ind-cobertura" style="margin-left:auto;font-size:11.5px;color:var(--muted)"></div>
+  </div>
+
+  <div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap" id="ind-tabs"></div>
+  <div id="ind-pane"></div>
+</div>
+
 <div id="view-estrategia" class="view">
   <div class="pg-header">
     <div class="pg-title">ANÁLISIS <span>ESTRATÉGICO</span></div>
@@ -3600,6 +3644,7 @@ async function showView(id, btn) {
   if (id === 'comparativas')   { await cargarTCOverrides(); renderComparativas(); }
   if (id === 'ahorro')         renderAhorro();
   if (id === 'estrategia')     renderEstrategia();
+  if (id === 'indicadores')    renderIndicadores();
   if (id === 'prov-db')      { await cargarProveedoresSB(); renderProvDB(); }
   if (id === 'prov-compras') { await _asegurarDatosCompras(); renderComprasProv(); }
   if (id === 'prov-area')      { await _asegurarDatosCompras(); renderComprasArea(); }
@@ -5426,6 +5471,301 @@ function _ahoDrawCharts(data, divisa){
   var mKeys=Object.keys(porMes).sort().slice(-12);
   var cM=document.getElementById('aho-chart-mes');
   if(cM) _ahoCharts.mes=new Chart(cM,{type:'bar',data:{labels:mKeys,datasets:[{data:mKeys.map(function(k){return Math.round(porMes[k]);}),backgroundColor:'#22c55e',borderRadius:6}]},options:baseOpts});
+}
+
+// ══════════════════════════════════════════════════════════════
+// INFORMES · INDICADORES — arma los datos de la presentación mensual
+// Todo sale de datos reales: detalleData (facturación) y scs (solicitudes).
+// ══════════════════════════════════════════════════════════════
+let _indTab = 'sc';
+const IND_TABS = [
+  { id:'sc',        lbl:'01 · Solicitudes' },
+  { id:'area',      lbl:'02 · Por Área' },
+  { id:'campamento',lbl:'03 · Por Campamento' },
+  { id:'proveedor', lbl:'04 · Por Proveedor' },
+  { id:'comp',      lbl:'05 · Comparativo' }
+];
+const IND_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function _indN(n){ return Math.round(Number(n)||0).toLocaleString('es-AR'); }
+function _indM(n){ return '$'+_indN(n); }
+function _indMM(n){ return '$'+((Number(n)||0)/1e6).toFixed(1).replace('.',',')+'M'; }
+function _indP(a,b){ return b>0 ? Math.round(a/b*100) : 0; }
+function _indE(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function _indMesLbl(ym){
+  if(!ym) return '—';
+  const p=ym.split('-'); return (IND_MESES[parseInt(p[1],10)-1]||'')+' '+p[0];
+}
+
+// Meses con datos (de facturación o de solicitudes)
+function _indMeses(){
+  const set={};
+  (detalleData||[]).forEach(d=>{ const m=String(d.fecha||'').slice(0,7); if(/^\d{4}-\d{2}$/.test(m)) set[m]=1; });
+  (scs||[]).forEach(s=>{ const m=String(s.fecha||'').slice(0,7); if(/^\d{4}-\d{2}$/.test(m)) set[m]=1; });
+  return Object.keys(set).sort().reverse();
+}
+function _indPoblarMeses(){
+  const a=document.getElementById('ind-mes'), b=document.getElementById('ind-mes-prev');
+  if(!a||a.options.length) return;
+  const ms=_indMeses();
+  a.innerHTML = ms.map(m=>'<option value="'+m+'">'+_indMesLbl(m)+'</option>').join('');
+  b.innerHTML = '<option value="">— Sin comparación —</option>' + ms.map(m=>'<option value="'+m+'">'+_indMesLbl(m)+'</option>').join('');
+  if(ms.length) a.value=ms[0];
+  if(ms.length>1) b.value=ms[1];
+}
+
+// Calcula TODOS los indicadores de un mes
+function _indCalcular(ym){
+  const fac = (detalleData||[]).filter(d=>String(d.fecha||'').slice(0,7)===ym);
+  const sc  = (scs||[]).filter(s=>String(s.fecha||'').slice(0,7)===ym);
+
+  // ── Solicitudes ──
+  const est={}, crit={}, areaSC={}, destSC={};
+  sc.forEach(s=>{
+    const e=String(s.estado||'PENDIENTE').toUpperCase(); est[e]=(est[e]||0)+1;
+    const c=String(s.criticidad||'').toUpperCase(); if(c) crit[c]=(crit[c]||0)+1;
+    const a=s.area||'SIN ÁREA'; areaSC[a]=(areaSC[a]||0)+1;
+    const d=s.destino||'SIN DESTINO'; destSC[d]=(destSC[d]||0)+1;
+  });
+  const completadas=est['COMPLETADA']||0;
+  const efectividad=_indP(completadas, sc.length);
+
+  // ── Facturación ──
+  let monto=0; const areaM={}, campM={}, provM={};
+  fac.forEach(d=>{
+    const m=d.monto||0; monto+=m;
+    const a=d.area||'SIN ESPECIFICAR'; (areaM[a]=areaM[a]||{m:0,n:0}); areaM[a].m+=m; areaM[a].n++;
+    const c=d.campamento||'SIN ESPECIFICAR'; (campM[c]=campM[c]||{m:0,n:0}); campM[c].m+=m; campM[c].n++;
+    const p=_parNormProv(d.proveedor)||'SIN ESPECIFICAR'; (provM[p]=provM[p]||{m:0,n:0}); provM[p].m+=m; provM[p].n++;
+  });
+  const rank=o=>Object.keys(o).map(k=>({k:k,m:o[k].m,n:o[k].n})).sort((x,y)=>y.m-x.m);
+  const rAreas=rank(areaM), rCamp=rank(campM), rProv=rank(provM);
+  const top3=rProv.slice(0,3).reduce((a,x)=>a+x.m,0);
+
+  return {
+    ym, fac, sc,
+    // SC
+    scTotal:sc.length, est, crit, areaSC, destSC, completadas, efectividad,
+    enProceso:est['EN PROCESO']||0, pendientes:est['PENDIENTE']||0, canceladas:est['CANCELADA']||0,
+    // Facturación
+    monto, comprobantes:fac.length,
+    rAreas, rCamp, rProv,
+    nAreas:rAreas.length, nCamp:rCamp.length, nProv:rProv.length,
+    ticket: fac.length? monto/fac.length : 0,
+    concentracion:_indP(top3, monto),
+    promArea: rAreas.length? monto/rAreas.length : 0,
+    promCamp: rCamp.length? monto/rCamp.length : 0
+  };
+}
+
+function renderIndicadores(){
+  _indPoblarMeses();
+  const ym=(document.getElementById('ind-mes')||{}).value;
+  const yp=(document.getElementById('ind-mes-prev')||{}).value;
+  const pane=document.getElementById('ind-pane'); if(!pane) return;
+  if(!ym){ pane.innerHTML='<div style="padding:18px;color:var(--muted)">No hay datos cargados. Actualizá la planilla de compras desde el panel principal.</div>'; return; }
+
+  const A=_indCalcular(ym);
+  const B=yp?_indCalcular(yp):null;
+  window._indA=A; window._indB=B;
+
+  document.getElementById('ind-cobertura').innerHTML =
+    _indE(_indMesLbl(ym))+': <b>'+A.comprobantes+'</b> comprobantes · <b>'+A.scTotal+'</b> solicitudes'
+    + (B?(' · comparado con '+_indE(_indMesLbl(yp))):'');
+
+  document.getElementById('ind-tabs').innerHTML = IND_TABS.map(t=>
+    '<button onclick="_indSetTab(\''+t.id+'\')" style="padding:9px 14px;border:none;background:none;cursor:pointer;font-family:var(--ff);font-size:12.5px;font-weight:700;'
+    +'color:'+(_indTab===t.id?'var(--or)':'var(--muted)')+';border-bottom:2px solid '+(_indTab===t.id?'var(--or)':'transparent')+'">'+t.lbl+'</button>').join('');
+
+  pane.innerHTML = _indRender(A,B);
+}
+function _indSetTab(t){ _indTab=t; renderIndicadores(); }
+
+function _indKpi(v,l,sub,color){
+  return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:13px 15px">'
+    +'<div style="font-size:22px;font-weight:800;color:'+(color||'var(--or)')+';line-height:1.15">'+v+'</div>'
+    +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:2px">'+l+'</div>'
+    +(sub?'<div style="font-size:10.5px;color:var(--muted);margin-top:3px">'+sub+'</div>':'')+'</div>';
+}
+function _indKpis(arr){
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:18px">'+arr.join('')+'</div>';
+}
+function _indTabla(titulo, cols, filas, nota){
+  return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:14px">'
+    +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+      +'<span style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px">'+titulo+'</span>'
+      +'<button onclick="_indCopiar(this)" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-size:10.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">📋 Copiar</button></div>'
+    +(nota?'<div style="font-size:11.5px;color:var(--muted);margin-bottom:9px">'+nota+'</div>':'')
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr style="background:var(--s2)">'+cols.map(c=>'<th style="padding:7px 9px;text-align:'+(c[1]||'left')+';font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">'+c[0]+'</th>').join('')+'</tr></thead>'
+    +'<tbody>'+filas+'</tbody></table></div></div>';
+}
+function _indCopiar(btn){
+  const tabla=btn.closest('div').parentNode.querySelector('table');
+  if(!tabla) return;
+  let txt='';
+  tabla.querySelectorAll('tr').forEach(tr=>{
+    txt += Array.from(tr.querySelectorAll('th,td')).map(c=>c.innerText.trim()).join('\t')+'\n';
+  });
+  navigator.clipboard.writeText(txt).then(()=>showToast('📋 Tabla copiada','ok')).catch(()=>{});
+}
+function _indVar(a,b){
+  if(b==null||b===0) return '<span style="color:var(--muted)">—</span>';
+  const v=(a-b)/Math.abs(b)*100;
+  const col=v>0?'var(--green)':(v<0?'var(--red)':'var(--muted)');
+  const fl=v>0?'▲':(v<0?'▼':'=');
+  return '<span style="color:'+col+';font-weight:700">'+fl+' '+(v>0?'+':'')+v.toFixed(1).replace('.',',')+' %</span>';
+}
+
+function _indRender(A,B){
+  // ── 01 SOLICITUDES ──
+  if(_indTab==='sc'){
+    let h=_indKpis([
+      _indKpi(A.scTotal,'SC Registradas', B?('vs '+B.scTotal+' el mes anterior'):''),
+      _indKpi(A.efectividad+'%','Completadas', A.completadas+' de '+A.scTotal, 'var(--green)'),
+      _indKpi(A.enProceso,'En Proceso', _indP(A.enProceso,A.scTotal)+'% del total'),
+      _indKpi(A.pendientes,'Pendientes', _indP(A.pendientes,A.scTotal)+'% del total'),
+      _indKpi((A.crit['URGENTE']||0)+(A.crit['CRITICA']||0),'Urgentes / Críticas',
+        (A.crit['ALTA']||0)+' ALTA · '+(A.crit['MEDIA']||0)+' MEDIA', 'var(--red)')
+    ]);
+    // Cumplimiento
+    const eOrden=['COMPLETADA','EN PROCESO','PENDIENTE','CANCELADA'];
+    h+=_indTabla('Cumplimiento (estados)',[['Estado'],['Cantidad','right'],['%','right']],
+      eOrden.map(e=>'<tr><td style="padding:7px 9px;border-bottom:1px solid var(--border)">'+e+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">'+(A.est[e]||0)+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+_indP(A.est[e]||0,A.scTotal)+'%</td></tr>').join(''),
+      'EN PROCESO y PENDIENTE se confirman al cruzar con facturación.');
+    // Criticidad
+    const cOrden=['CRITICA','URGENTE','ALTA','MEDIA','BAJA'];
+    h+=_indTabla('Criticidad',[['Nivel'],['Cantidad','right'],['%','right']],
+      cOrden.filter(c=>A.crit[c]).map(c=>'<tr><td style="padding:7px 9px;border-bottom:1px solid var(--border)">'+c+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">'+A.crit[c]+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+_indP(A.crit[c],A.scTotal)+'%</td></tr>').join(''));
+    // Por área
+    const ra=Object.keys(A.areaSC).map(k=>({k:k,v:A.areaSC[k]})).sort((x,y)=>y.v-x.v);
+    h+=_indTabla('SC por área',[['Área'],['SC','right'],['%','right']],
+      ra.map(x=>'<tr><td style="padding:7px 9px;border-bottom:1px solid var(--border)">'+_indE(x.k)+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">'+x.v+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+_indP(x.v,A.scTotal)+'%</td></tr>').join(''));
+    // Por destino
+    const rd=Object.keys(A.destSC).map(k=>({k:k,v:A.destSC[k]})).sort((x,y)=>y.v-x.v);
+    h+=_indTabla('SC por destino',[['Destino'],['SC','right'],['%','right']],
+      rd.map(x=>'<tr><td style="padding:7px 9px;border-bottom:1px solid var(--border)">'+_indE(x.k)+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">'+x.v+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+_indP(x.v,A.scTotal)+'%</td></tr>').join(''));
+    return h;
+  }
+
+  // ── 02 / 03 · ÁREA y CAMPAMENTO ──
+  if(_indTab==='area' || _indTab==='campamento'){
+    const esArea=_indTab==='area';
+    const r=esArea?A.rAreas:A.rCamp;
+    const lider=r[0]||{k:'—',m:0};
+    const prom=esArea?A.promArea:A.promCamp;
+    let h=_indKpis([
+      _indKpi(_indMM(A.monto),'Monto Neto Total', A.comprobantes+' comprobantes'),
+      _indKpi(A.comprobantes,'Comprobantes'),
+      _indKpi(_indE(lider.k),(esArea?'Área':'Campamento')+' líder', _indMM(lider.m)),
+      _indKpi(_indMM(prom),'Promedio', (esArea?A.nAreas+' áreas':A.nCamp+' campamentos'))
+    ]);
+    h+=_indTabla('Monto por '+(esArea?'área':'campamento'),
+      [[esArea?'Área':'Campamento'],['Comprob.','right'],['Monto','right'],['%','right']],
+      r.map(x=>'<tr><td style="padding:7px 9px;border-bottom:1px solid var(--border)">'+_indE(x.k)+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+x.n+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">'+_indM(x.m)+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+(A.monto?(x.m/A.monto*100).toFixed(1):0)+'%</td></tr>').join(''),
+      r.some(x=>x.m<0)?'Los montos negativos corresponden a notas de crédito.':'');
+    return h;
+  }
+
+  // ── 04 · PROVEEDOR ──
+  if(_indTab==='proveedor'){
+    let h=_indKpis([
+      _indKpi(A.comprobantes,'N° Compras', A.nProv+' proveedores'),
+      _indKpi(_indM(A.ticket),'Ticket Promedio'),
+      _indKpi(A.concentracion+'%','Concentración','Top 3 proveedores'),
+      _indKpi(_indMM(A.monto),'Monto Neto Total')
+    ]);
+    const top=A.rProv.slice(0,10);
+    h+=_indTabla('Top 10 proveedores por monto',[['Proveedor'],['N°','right'],['Monto','right'],['%','right']],
+      top.map(x=>'<tr><td style="padding:7px 9px;border-bottom:1px solid var(--border)">'+_indE(x.k)+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+x.n+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">'+_indM(x.m)+'</td>'
+        +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+(A.monto?(x.m/A.monto*100).toFixed(1):0)+'%</td></tr>').join(''),
+      'Los nombres se unifican automáticamente (por ejemplo «S.R.L.» y «SRL» se cuentan como el mismo proveedor).');
+    return h;
+  }
+
+  // ── 05 · COMPARATIVO ──
+  if(!B) return '<div style="padding:18px;color:var(--muted);background:var(--s1);border:1px solid var(--border);border-radius:11px">Elegí un mes en «Comparar contra» para ver la variación.</div>';
+  const filas=[
+    ['Monto Neto Total', _indM(A.monto), _indM(B.monto), _indVar(A.monto,B.monto)],
+    ['Comprobantes', A.comprobantes, B.comprobantes, _indVar(A.comprobantes,B.comprobantes)],
+    ['N° Proveedores', A.nProv, B.nProv, _indVar(A.nProv,B.nProv)],
+    ['Ticket Promedio', _indM(A.ticket), _indM(B.ticket), _indVar(A.ticket,B.ticket)],
+    ['Solicitudes (SC)', A.scTotal, B.scTotal, _indVar(A.scTotal,B.scTotal)],
+    ['SC Completadas', A.completadas+' ('+A.efectividad+'%)', B.completadas+' ('+B.efectividad+'%)', _indVar(A.efectividad,B.efectividad)],
+    ['SC Urgentes/Críticas', (A.crit['URGENTE']||0)+(A.crit['CRITICA']||0), (B.crit['URGENTE']||0)+(B.crit['CRITICA']||0),
+      _indVar((A.crit['URGENTE']||0)+(A.crit['CRITICA']||0),(B.crit['URGENTE']||0)+(B.crit['CRITICA']||0))]
+  ];
+  let h=_indTabla('Variación de indicadores clave · '+_indMesLbl(B.ym)+' → '+_indMesLbl(A.ym),
+    [['Indicador'],[_indMesLbl(B.ym),'right'],[_indMesLbl(A.ym),'right'],['Variación','right']],
+    filas.map(f=>'<tr><td style="padding:7px 9px;border-bottom:1px solid var(--border)">'+f[0]+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+f[2]+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">'+f[1]+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+f[3]+'</td></tr>').join(''));
+
+  // Monto por área: los dos meses
+  const claves={}; A.rAreas.forEach(x=>claves[x.k]=1); B.rAreas.forEach(x=>claves[x.k]=1);
+  const mA={}; A.rAreas.forEach(x=>mA[x.k]=x.m);
+  const mB={}; B.rAreas.forEach(x=>mB[x.k]=x.m);
+  const ks=Object.keys(claves).sort((x,y)=>(mA[y]||0)-(mA[x]||0));
+  h+=_indTabla('Monto por área · '+_indMesLbl(B.ym)+' vs '+_indMesLbl(A.ym),
+    [['Área'],[_indMesLbl(B.ym),'right'],[_indMesLbl(A.ym),'right'],['Variación','right']],
+    ks.map(k=>'<tr><td style="padding:7px 9px;border-bottom:1px solid var(--border)">'+_indE(k)+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+_indM(mB[k]||0)+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">'+_indM(mA[k]||0)+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+_indVar(mA[k]||0,mB[k]||0)+'</td></tr>').join(''));
+  return h;
+}
+
+// Exporta TODOS los indicadores del período a un CSV
+function exportarIndicadores(){
+  const A=window._indA, B=window._indB;
+  if(!A){ showToast('Primero elegí un período','error'); return; }
+  const f=[['SECCION','INDICADOR','DETALLE','VALOR_'+A.ym, B?('VALOR_'+B.ym):'']];
+  const add=(s,i,d,v,v2)=>f.push([s,i,d==null?'':d,v==null?'':v,v2==null?'':v2]);
+
+  add('01 SOLICITUDES','SC Registradas','',A.scTotal,B?B.scTotal:'');
+  add('01 SOLICITUDES','SC Completadas','',A.completadas,B?B.completadas:'');
+  add('01 SOLICITUDES','% Efectividad','Completadas / Registradas',A.efectividad+'%',B?(B.efectividad+'%'):'');
+  add('01 SOLICITUDES','En Proceso','',A.enProceso,B?B.enProceso:'');
+  add('01 SOLICITUDES','Pendientes','',A.pendientes,B?B.pendientes:'');
+  add('01 SOLICITUDES','Canceladas','',A.canceladas,B?B.canceladas:'');
+  ['CRITICA','URGENTE','ALTA','MEDIA','BAJA'].forEach(c=>add('01 SOLICITUDES','Criticidad '+c,'',A.crit[c]||0,B?(B.crit[c]||0):''));
+  Object.keys(A.areaSC).sort().forEach(a=>add('01 SOLICITUDES','SC del área','' +a,A.areaSC[a],B?(B.areaSC[a]||0):''));
+  Object.keys(A.destSC).sort().forEach(d=>add('01 SOLICITUDES','SC al destino',''+d,A.destSC[d],B?(B.destSC[d]||0):''));
+
+  add('02 AREA','Monto Neto Total','',Math.round(A.monto),B?Math.round(B.monto):'');
+  add('02 AREA','Comprobantes','',A.comprobantes,B?B.comprobantes:'');
+  add('02 AREA','Cantidad de areas','',A.nAreas,B?B.nAreas:'');
+  A.rAreas.forEach(x=>add('02 AREA','Monto del área',x.k,Math.round(x.m), B?Math.round((B.rAreas.find(y=>y.k===x.k)||{m:0}).m):''));
+
+  add('03 CAMPAMENTO','Cantidad de campamentos','',A.nCamp,B?B.nCamp:'');
+  A.rCamp.forEach(x=>add('03 CAMPAMENTO','Monto del campamento',x.k,Math.round(x.m), B?Math.round((B.rCamp.find(y=>y.k===x.k)||{m:0}).m):''));
+
+  add('04 PROVEEDOR','N° de proveedores','',A.nProv,B?B.nProv:'');
+  add('04 PROVEEDOR','Ticket promedio','',Math.round(A.ticket),B?Math.round(B.ticket):'');
+  add('04 PROVEEDOR','Concentración Top 3','% del monto',A.concentracion+'%',B?(B.concentracion+'%'):'');
+  A.rProv.slice(0,10).forEach((x,i)=>add('04 PROVEEDOR','Top '+(i+1),x.k+' ('+x.n+' compras)',Math.round(x.m),''));
+
+  const csv=f.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='Indicadores_'+A.ym+(B?('_vs_'+B.ym):'')+'.csv';
+  a.click();
+  showToast('⬇️ Indicadores exportados','ok');
 }
 
 // ══════════════════════════════════════════════════════════════
