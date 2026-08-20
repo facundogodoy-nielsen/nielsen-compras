@@ -64,6 +64,7 @@
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn ghost" onclick="descargarLocal()">💾 Descargar copia local (respaldo)</button>
       <button class="btn green" onclick="subirFaltantes()" id="btn-subir" disabled>⬆️ Subir las faltantes a la nube</button>
+      <button class="btn" onclick="corregirExistentes()" id="btn-corregir" style="background:#3e7cb1" disabled>✏️ Corregir las que ya están</button>
     </div>
     <div id="estado-subir" style="margin-top:12px"></div>
   </div>
@@ -88,6 +89,7 @@ const _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsIn
 
 let _locales = [];      // SC del localStorage
 let _faltantes = [];    // las que no están en la nube
+let _yaEstan = [];      // las que SÍ están (candidatas a corregir)
 
 function normSC(v){ return v ? String(v).trim().toUpperCase() : ''; }
 
@@ -207,6 +209,9 @@ async function _compararConNube(est){
     : '<div class="ok">✔️ Todas las SC ya están en la nube.</div>';
   document.getElementById('resumen').innerHTML = resumen;
   document.getElementById('btn-subir').disabled = _faltantes.length === 0;
+  _yaEstan = _locales.filter(sc => sc.numSC && enNube.has(normSC(sc.numSC)));
+  const bc = document.getElementById('btn-corregir');
+  if (bc) bc.disabled = _yaEstan.length === 0;
   est.textContent = _locales.length + ' SC · ' + _faltantes.length + ' faltan · ' + bloqueadas.length + ' bloqueadas por "eliminada".';
   // si hay bloqueadas, mostrar la lista de tombstones automáticamente
   if(bloqueadas.length) verTombstones();
@@ -250,6 +255,38 @@ function _aFilaSB(sc){
     estado:       sc.estado || 'PENDIENTE',
     origen:       sc.origen || 'RECUPERADA_LOCAL'
   };
+}
+
+// Sobrescribe en la nube los datos de las SC que YA existen, con los del archivo.
+// Sirve cuando un numero de SC se reutilizo y quedo cargada con datos viejos.
+async function corregirExistentes(){
+  if(!_yaEstan.length) return;
+  const nums=_yaEstan.map(s=>s.numSC).join(', ');
+  if(!confirm('Vas a SOBRESCRIBIR los datos de '+_yaEstan.length+' solicitud(es) que ya estan en la nube:\n\n'+nums
+    +'\n\nSe reemplazan solicitante, area, destino, items y observaciones por los de este archivo.\n\nContinuar?')) return;
+  const est=document.getElementById('estado-subir');
+  const btn=document.getElementById('btn-corregir'); btn.disabled=true;
+  let ok=0, fail=0; const errores=[];
+  for(let i=0;i<_yaEstan.length;i++){
+    const sc=_yaEstan[i];
+    est.innerHTML='<div class="muted">Corrigiendo '+(i+1)+' de '+_yaEstan.length+'... ('+sc.numSC+')</div>';
+    try{
+      const fila=_aFilaSB(sc);
+      delete fila.num_sc;
+      const r=await fetch(_SB_URL+'/rest/v1/solicitudes_compra?num_sc=eq.'+encodeURIComponent(sc.numSC), {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json', apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, Prefer:'return=minimal'},
+        body: JSON.stringify(fila)
+      });
+      if(!r.ok){ const t=await r.text(); errores.push('- '+sc.numSC+': HTTP '+r.status+' -> '+t.slice(0,160)); throw new Error('HTTP '+r.status); }
+      ok++;
+    }catch(e){ fail++; }
+  }
+  let html='<div class="'+(fail?'warn':'ok')+'">'+(fail?'\u26A0\uFE0F':'\u2705')+' Corregidas: '+ok+(fail?(' \u00b7 Errores: '+fail):'')+'</div>';
+  if(fail) html+='<div style="margin-top:8px;font-size:11px;font-family:monospace;background:#0d1017;border:1px solid var(--border);border-radius:8px;padding:10px;white-space:pre-wrap;max-height:200px;overflow:auto;color:#f4d160">'+errores.join('\n').replace(/</g,'&lt;')+'</div>';
+  else html+='<div class="muted" style="margin-top:6px;font-size:12px">Abri el Centro de Control y refresca (Ctrl+Shift+R).</div>';
+  est.innerHTML=html;
+  btn.disabled=false;
 }
 
 async function subirFaltantes(){
