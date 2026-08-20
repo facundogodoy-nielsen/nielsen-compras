@@ -2825,9 +2825,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <select id="ind-mes-prev" onchange="renderIndicadores()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)"></select>
     </div>
     <button onclick="renderIndicadores()" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ff)">🔄 Recalcular</button>
+    <button onclick="_indRecargarPlanilla()" id="ind-btn-sheet" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ff)">📊 Actualizar planilla</button>
     <button onclick="exportarIndicadores()" style="padding:9px 15px;border-radius:8px;border:none;background:var(--or);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ff)">⬇️ Exportar todo</button>
     <div id="ind-cobertura" style="margin-left:auto;font-size:11.5px;color:var(--muted)"></div>
   </div>
+  <div id="ind-fuente" style="font-size:11px;color:var(--muted);margin:-8px 0 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"></div>
 
   <div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap" id="ind-tabs"></div>
   <div id="ind-pane"></div>
@@ -5558,17 +5560,50 @@ function _indCalcular(ym){
   };
 }
 
+// Vuelve a traer la planilla de compras (misma fuente que usa todo el sistema)
+async function _indRecargarPlanilla(){
+  const btn=document.getElementById('ind-btn-sheet');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Actualizando...'; }
+  try{ await traerDetalleDesdeSheet(false); }
+  catch(e){ showToast('No se pudo leer la planilla: '+(e.message||''),'error'); }
+  if(btn){ btn.disabled=false; btn.textContent='📊 Actualizar planilla'; }
+  renderIndicadores();
+}
+
+// Muestra de dónde salen los datos y cuánto se leyó
+function _indFuente(){
+  const cont=document.getElementById('ind-fuente'); if(!cont) return;
+  const n=(detalleData||[]).length;
+  const meses={}; (detalleData||[]).forEach(d=>{ const m=String(d.fecha||'').slice(0,7); if(m) meses[m]=1; });
+  const ms=Object.keys(meses).sort();
+  const urlEdit='https://docs.google.com/spreadsheets/d/'+_SHEET_ID+'/edit?gid='+_SHEET_GID;
+  cont.innerHTML =
+    '<span style="font-weight:700;color:var(--muted)">Origen de los montos:</span> '
+    + '<a href="'+urlEdit+'" target="_blank" rel="noopener" style="color:#7cc4ff;text-decoration:none">📊 Planilla COMPRAS ↗</a>'
+    + '<span>·</span><span>' + (n ? (n.toLocaleString('es-AR')+' comprobantes') : '<span style="color:var(--yellow)">sin datos cargados</span>') + '</span>'
+    + (ms.length ? ('<span>·</span><span>'+ms[0]+' a '+ms[ms.length-1]+'</span>') : '')
+    + '<span>·</span><span style="color:var(--muted)">Las solicitudes salen del Historial de SC</span>';
+}
+
 function renderIndicadores(){
   _indPoblarMeses();
   const ym=(document.getElementById('ind-mes')||{}).value;
   const yp=(document.getElementById('ind-mes-prev')||{}).value;
   const pane=document.getElementById('ind-pane'); if(!pane) return;
-  if(!ym){ pane.innerHTML='<div style="padding:18px;color:var(--muted)">No hay datos cargados. Actualizá la planilla de compras desde el panel principal.</div>'; return; }
+  if(!ym){
+    _indFuente();
+    pane.innerHTML='<div style="padding:18px;background:var(--s1);border:1px solid var(--border);border-radius:11px">'
+      +'<div style="color:var(--yellow);font-weight:700;margin-bottom:6px">⚠️ Todavía no hay datos cargados</div>'
+      +'<div style="color:var(--muted);font-size:13px">Tocá <b>📊 Actualizar planilla</b> para traer los montos de compras, '
+      +'o revisá que la planilla siga publicada como CSV.</div></div>';
+    return;
+  }
 
   const A=_indCalcular(ym);
   const B=yp?_indCalcular(yp):null;
   window._indA=A; window._indB=B;
 
+  _indFuente();
   document.getElementById('ind-cobertura').innerHTML =
     _indE(_indMesLbl(ym))+': <b>'+A.comprobantes+'</b> comprobantes · <b>'+A.scTotal+'</b> solicitudes'
     + (B?(' · comparado con '+_indE(_indMesLbl(yp))):'');
