@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solicitudes Duplicadas — Nielsen</title>
+<style>
+  :root{ --or:#E8611A; --navy:#13161E; --bg:#14171f; --s1:#1b1f2a; --s2:#222736; --s3:#2a3040; --border:#2f3546; --text:#e9ebf0; --muted:#8b93a7; --green:#22c55e; --yellow:#eab308; --red:#ef4444; --blue:#60a5fa; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55}
+  header{background:linear-gradient(135deg,var(--navy),#1e2433);padding:20px 24px;border-bottom:3px solid var(--or)}
+  h1{margin:0;font-size:19px;font-weight:800}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px 18px 60px}
+  .card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+  .card h2{margin:0 0 4px;font-size:15px;color:var(--or)}
+  .hint{font-size:12px;color:var(--muted);margin-bottom:14px}
+  .btn{background:var(--or);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+  input,select{background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 12px;font-size:13px;font-family:inherit}
+  label{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);display:block;margin-bottom:4px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin:16px 0}
+  .kpi{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+  .kpi .v{font-size:22px;font-weight:800;color:var(--or);line-height:1.2}
+  .kpi .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
+  .kpi.bad .v{color:var(--red)} .kpi.ok .v{color:var(--green)} .kpi.warn .v{color:var(--yellow)}
+  .grp{border:1px solid var(--border);border-radius:11px;margin-bottom:14px;overflow:hidden}
+  .grp.dup{border-color:rgba(239,68,68,.45)}
+  .grp.par{border-color:rgba(234,179,8,.45)}
+  .grp-h{padding:11px 14px;background:var(--s2);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .grp.dup .grp-h{background:rgba(239,68,68,.10)}
+  .grp.par .grp-h{background:rgba(234,179,8,.10)}
+  .badge{font-size:10px;font-weight:800;padding:2px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px}
+  .b-dup{background:rgba(239,68,68,.2);color:#f87171}
+  .b-par{background:rgba(234,179,8,.2);color:#f4d160}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:7px 10px;border-bottom:1px solid var(--border);text-align:left}
+  th{color:var(--muted);font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;background:var(--s3)}
+  .items{padding:10px 14px;background:var(--s1);font-size:12px;border-top:1px solid var(--border)}
+  .items .it{padding:2px 0;color:var(--text)}
+  .mono{font-family:ui-monospace,Menlo,monospace}
+  .muted{color:var(--muted)}
+  .nota{padding:12px 15px;border-radius:9px;font-size:12.5px;border:1px solid;margin-top:12px}
+  .n-info{background:rgba(96,165,250,.08);border-color:rgba(96,165,250,.35);color:#93c5fd}
+  .n-ok{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.4);color:#7ee2a4}
+  #estado{font-size:13px;color:var(--muted);margin-top:10px}
+  details{margin-top:10px} summary{cursor:pointer;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔎 Solicitudes de Compra duplicadas</h1>
+  <div class="sub">Detecta solicitudes distintas que piden exactamente los mismos artículos.</div>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <h2>Período a analizar</h2>
+    <div class="hint">Se comparan las SC por su <b>fecha de solicitud</b>.</div>
+    <div class="row">
+      <div><label>Desde</label><input type="date" id="f-desde" value="2026-01-01"></div>
+      <div><label>Hasta</label><input type="date" id="f-hasta" value="2026-04-30"></div>
+      <div><label>Área</label><select id="f-area"><option value="">Todas</option></select></div>
+      <button class="btn" onclick="analizar()" id="btn-run">🔎 Buscar duplicadas</button>
+      <button class="btn ghost" onclick="exportarCSV()" id="btn-csv" disabled>⬇️ Exportar</button>
+    </div>
+    <div id="estado"></div>
+  </div>
+
+  <div id="salida"></div>
+</div>
+
+<script>
+var _SB_URL='https://qivvewvgqlsptydftlhx.supabase.co';
+var _SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+var _H={apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY};
+var _todas=[], _gruposExactos=[], _gruposParciales=[];
+
+function esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+// ── Normalización de un ítem ──────────────────────────────────
+// Los ítems son texto libre con formatos variados:
+//   "10 — LITROS DE TINER" · "10 u — CERRADURAS 39MM" · "4LITROS — DE PINTURA"
+// Se separa la CANTIDAD del DETALLE y se limpia el detalle para comparar.
+var UNIDADES = ['U','UN','UNI','UNID','UNIDAD','UNIDADES','PZA','PZAS','PIEZA','PIEZAS',
+                'L','LT','LTS','LITRO','LITROS','KG','KGS','KILO','KILOS','GR','GRS',
+                'M','MT','MTS','METRO','METROS','CM','MM','CAJA','CAJAS','PAR','PARES',
+                'ROLLO','ROLLOS','BOLSA','BOLSAS','TACHO','TACHOS','JUEGO','JUEGOS'];
+
+function sinAcentos(t){
+  return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function normItem(linea){
+  var t = sinAcentos(String(linea||'')).toUpperCase().trim();
+  if(!t) return null;
+  // cantidad al inicio (puede venir pegada a la unidad: "4LITROS")
+  var m = /^(\d+(?:[.,]\d+)?)\s*(.*)$/.exec(t);
+  var qty = null, resto = t;
+  if(m){ qty = parseFloat(m[1].replace(',','.')); resto = m[2]||''; }
+  // quitar separadores (los guiones largos solo se usan como separador)
+  resto = resto.replace(/[–—]/g,' ').replace(/^[\s\-:.\u00b7]+/,'').replace(/\s+/g,' ').trim();
+  // quitar la unidad si aparece como primera palabra
+  var palabras = resto.split(/\s+/).filter(Boolean);
+  // puede venir la unidad y después un conector: "LITROS DE TINER", "DE PINTURA"
+  var cambio = true;
+  while(cambio && palabras.length){
+    cambio = false;
+    if(UNIDADES.indexOf(palabras[0])>=0){ palabras.shift(); cambio = true; }
+    else if(palabras[0]==='DE'||palabras[0]==='DEL'||palabras[0]==='DA'){ palabras.shift(); cambio = true; }
+  }
+  var desc = palabras.join(' ')
+    .replace(/[^A-Z0-9%\/\."'\s]/g,' ')   // dejar medidas: 3/4, 1", 15X15
+    .replace(/\s+/g,' ').trim();
+  if(!desc) return null;
+  return { qty: (qty==null?1:qty), desc: desc, original: String(linea).trim() };
+}
+function itemsDe(sc){
+  return String(sc.items||'').split('\n')
+    .map(function(l){ return normItem(l); })
+    .filter(Boolean);
+}
+// Firma con cantidad (duplicado exacto) y sin cantidad (mismos artículos)
+function firmaConCant(items){
+  return items.map(function(i){ return i.qty+'|'+i.desc; }).sort().join(' ## ');
+}
+function firmaSinCant(items){
+  return items.map(function(i){ return i.desc; }).sort().join(' ## ');
+}
+
+async function _traerSC(){
+  var out=[];
+  for(var g=0; g<15; g++){
+    var r=await fetch(_SB_URL+'/rest/v1/solicitudes_compra?select=num_sc,num_op,area,subarea,solicitante,fecha,criticidad,destino,items,estado&order=fecha.asc&limit=1000&offset='+(g*1000),
+      {headers:_H,cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    var a=await r.json(); if(!a.length) break;
+    out=out.concat(a); if(a.length<1000) break;
+  }
+  return out;
+}
+
+async function analizar(){
+  var btn=document.getElementById('btn-run'); btn.disabled=true;
+  var est=document.getElementById('estado'); est.textContent='Leyendo solicitudes...';
+  document.getElementById('salida').innerHTML='';
+  try{
+    if(!_todas.length) _todas = await _traerSC();
+    // poblar áreas
+    var selA=document.getElementById('f-area');
+    if(selA.options.length<=1){
+      var as={}; _todas.forEach(function(s){ if(s.area) as[s.area]=1; });
+      Object.keys(as).sort().forEach(function(a){ var o=document.createElement('option'); o.value=a; o.textContent=a; selA.appendChild(o); });
+    }
+    var d=document.getElementById('f-desde').value, h=document.getElementById('f-hasta').value;
+    var area=selA.value;
+    var lista=_todas.filter(function(s){
+      var f=String(s.fecha||'').slice(0,10);
+      if(!f) return false;
+      if(d && f<d) return false;
+      if(h && f>h) return false;
+      if(area && s.area!==area) return false;
+      return true;
+    });
+    est.textContent = lista.length+' solicitudes en el período (de '+_todas.length+' en total).';
+    agrupar(lista);
+  }catch(e){
+    est.innerHTML='<span style="color:var(--red)">Error: '+esc(e.message)+'</span>';
+  }
+  btn.disabled=false;
+}
+
+function agrupar(lista){
+  var conItems=[], sinItems=0;
+  lista.forEach(function(s){
+    var it=itemsDe(s);
+    if(!it.length){ sinItems++; return; }
+    conItems.push({ sc:s, items:it, fc:firmaConCant(it), fs:firmaSinCant(it) });
+  });
+
+  // 1) Duplicados EXACTOS: mismos artículos y mismas cantidades
+  var mapC={};
+  conItems.forEach(function(x){ (mapC[x.fc]=mapC[x.fc]||[]).push(x); });
+  _gruposExactos = Object.keys(mapC).map(function(k){ return mapC[k]; })
+    .filter(function(g){ return g.length>1; })
+    .sort(function(a,b){ return b.length-a.length; });
+
+  // 2) Mismos artículos con cantidades distintas (no entran en el grupo exacto)
+  var enExacto={};
+  _gruposExactos.forEach(function(g){ g.forEach(function(x){ enExacto[x.sc.num_sc]=1; }); });
+  var mapS={};
+  conItems.forEach(function(x){ (mapS[x.fs]=mapS[x.fs]||[]).push(x); });
+  _gruposParciales = Object.keys(mapS).map(function(k){ return mapS[k]; })
+    .filter(function(g){
+      if(g.length<2) return false;
+      var cants={}; g.forEach(function(x){ cants[x.fc]=1; });
+      return Object.keys(cants).length>1;   // difieren en cantidad
+    })
+    .sort(function(a,b){ return b.length-a.length; });
+
+  render(lista.length, conItems.length, sinItems);
+  document.getElementById('btn-csv').disabled = !(_gruposExactos.length||_gruposParciales.length);
+}
+
+function render(nTotal, nConItems, sinItems){
+  var nDup=0; _gruposExactos.forEach(function(g){ nDup+=g.length; });
+  var nPar=0; _gruposParciales.forEach(function(g){ nPar+=g.length; });
+  var h='';
+
+  h+='<div class="kpis">'
+    +kpi(nTotal,'SC en el período')
+    +kpi(_gruposExactos.length,'Grupos duplicados', _gruposExactos.length?'bad':'ok')
+    +kpi(nDup,'SC involucradas', nDup?'bad':'ok')
+    +kpi(_gruposParciales.length,'Mismos artículos, otra cantidad', _gruposParciales.length?'warn':'')
+    +'</div>';
+
+  // ── Duplicados exactos ──
+  h+='<div class="card"><h2>1 · Duplicados exactos</h2>'
+    +'<div class="hint">Solicitudes distintas que piden <b>los mismos artículos en las mismas cantidades</b>.</div>';
+  if(!_gruposExactos.length){
+    h+='<div class="nota n-ok">✅ No se encontraron solicitudes con artículos y cantidades idénticas en el período.</div>';
+  } else {
+    _gruposExactos.forEach(function(g,i){ h+=grupoHTML(g,'dup','DUPLICADO',i+1); });
+  }
+  h+='</div>';
+
+  // ── Mismos artículos, distinta cantidad ──
+  h+='<div class="card"><h2>2 · Mismos artículos con cantidades distintas</h2>'
+    +'<div class="hint">Pueden ser reposiciones legítimas o un pedido repetido con otra cantidad. Conviene revisarlas.</div>';
+  if(!_gruposParciales.length){
+    h+='<div class="nota n-ok">✅ No se encontraron casos.</div>';
+  } else {
+    _gruposParciales.forEach(function(g,i){ h+=grupoHTML(g,'par','REVISAR',i+1); });
+  }
+  h+='</div>';
+
+  // ── Criterio y alcance ──
+  h+='<div class="card"><h2>Cómo se comparó</h2>'
+    +'<div class="nota n-info"><b>Criterio aplicado</b><br>'
+    +'Cada ítem se separa en <b>cantidad</b> y <b>detalle</b>. El detalle se compara sin distinguir mayúsculas, tildes ni signos, '
+    +'y se ignoran las unidades escritas de distintas formas (por ejemplo «10 u — CERRADURAS» y «10 — CERRADURAS» se consideran el mismo ítem). '
+    +'El orden de los ítems dentro de la solicitud no afecta: se comparan como conjunto.<br><br>'
+    +'<b>Alcance</b><br>'
+    +'Se analizaron '+nConItems+' solicitudes con ítems cargados'
+    + (sinItems?(' · '+sinItems+' quedaron fuera por no tener ítems'):'')
+    +'. Como los ítems son texto libre, dos pedidos escritos de forma muy distinta («CAÑO 40X40» y «CAÑOS DE 40 X 40») no se detectan como iguales. '
+    +'Por eso este listado marca duplicados <b>seguros</b>, pero puede no incluirlos a todos.</div></div>';
+
+  document.getElementById('salida').innerHTML=h;
+}
+
+function kpi(v,l,cls){ return '<div class="kpi '+(cls||'')+'"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
+
+function grupoHTML(g, cls, etiqueta, n){
+  var items=g[0].items;
+  var h='<div class="grp '+cls+'">'
+    +'<div class="grp-h">'
+      +'<span class="badge b-'+cls+'">'+etiqueta+' '+n+'</span>'
+      +'<span style="font-size:12.5px;font-weight:700">'+g.length+' solicitudes · '+items.length+' artículo(s)</span>'
+      +'<span class="muted" style="font-size:11.5px;margin-left:auto">'+esc(g.map(function(x){return x.sc.num_sc;}).join('  ·  '))+'</span>'
+    +'</div>'
+    +'<table><thead><tr><th>N° SC</th><th>N° PC</th><th>Fecha</th><th>Área</th><th>Solicitante</th><th>Destino</th><th>Estado</th></tr></thead><tbody>';
+  g.forEach(function(x){
+    var s=x.sc;
+    h+='<tr><td class="mono"><b>'+esc(s.num_sc)+'</b></td><td class="mono">'+esc(s.num_op||'—')+'</td>'
+      +'<td>'+esc(String(s.fecha||'').slice(0,10))+'</td><td>'+esc(s.area||'—')+(s.subarea?(' <span class="muted">/'+esc(s.subarea)+'</span>'):'')+'</td>'
+      +'<td>'+esc(s.solicitante||'—')+'</td><td>'+esc(s.destino||'—')+'</td><td>'+esc(s.estado||'—')+'</td></tr>';
+  });
+  h+='</tbody></table>';
+  // Detalle de artículos
+  h+='<div class="items"><div class="muted" style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px">Artículos en común</div>';
+  if(cls==='dup'){
+    items.forEach(function(i){ h+='<div class="it">· '+esc(i.original)+'</div>'; });
+  } else {
+    // mostrar las cantidades de cada SC
+    g.forEach(function(x){
+      h+='<div class="it" style="margin-top:4px"><b class="mono">'+esc(x.sc.num_sc)+'</b></div>';
+      x.items.forEach(function(i){ h+='<div class="it" style="padding-left:14px">· '+esc(i.original)+'</div>'; });
+    });
+  }
+  h+='</div></div>';
+  return h;
+}
+
+function exportarCSV(){
+  var filas=[['Tipo','Grupo','N_SC','N_PC','Fecha','Area','Solicitante','Destino','Estado','Articulos']];
+  _gruposExactos.forEach(function(g,i){
+    g.forEach(function(x){
+      filas.push(['DUPLICADO EXACTO', 'D'+(i+1), x.sc.num_sc, x.sc.num_op||'', String(x.sc.fecha||'').slice(0,10),
+        x.sc.area||'', x.sc.solicitante||'', x.sc.destino||'', x.sc.estado||'',
+        x.items.map(function(t){return t.original;}).join(' | ')]);
+    });
+  });
+  _gruposParciales.forEach(function(g,i){
+    g.forEach(function(x){
+      filas.push(['MISMOS ARTICULOS OTRA CANTIDAD', 'R'+(i+1), x.sc.num_sc, x.sc.num_op||'', String(x.sc.fecha||'').slice(0,10),
+        x.sc.area||'', x.sc.solicitante||'', x.sc.destino||'', x.sc.estado||'',
+        x.items.map(function(t){return t.original;}).join(' | ')]);
+    });
+  });
+  var csv=filas.map(function(f){ return f.map(function(c){ return '"'+String(c==null?'':c).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
+  var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='SC_duplicadas_'+document.getElementById('f-desde').value+'_a_'+document.getElementById('f-hasta').value+'.csv';
+  a.click();
+}
+</script>
+</body>
+</html>
