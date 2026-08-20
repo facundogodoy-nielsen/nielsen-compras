@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Depurar Solicitudes Duplicadas — Nielsen</title>
+<style>
+  :root{ --or:#E8611A; --navy:#13161E; --bg:#14171f; --s1:#1b1f2a; --s2:#222736; --s3:#2a3040; --border:#2f3546; --text:#e9ebf0; --muted:#8b93a7; --green:#22c55e; --yellow:#eab308; --red:#ef4444; --blue:#60a5fa; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55}
+  header{background:linear-gradient(135deg,var(--navy),#1e2433);padding:20px 24px;border-bottom:3px solid var(--or)}
+  h1{margin:0;font-size:19px;font-weight:800}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px 18px 60px}
+  .card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+  .card h2{margin:0 0 4px;font-size:15px;color:var(--or)}
+  .hint{font-size:12px;color:var(--muted);margin-bottom:14px}
+  .btn{background:var(--or);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+  .btn.red{background:var(--red)}
+  .btn.green{background:#2f9e6b}
+  input,select{background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 12px;font-size:13px;font-family:inherit}
+  label{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);display:block;margin-bottom:4px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin:16px 0}
+  .kpi{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+  .kpi .v{font-size:22px;font-weight:800;color:var(--or);line-height:1.2}
+  .kpi .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
+  .kpi.ok .v{color:var(--green)} .kpi.bad .v{color:var(--red)} .kpi.warn .v{color:var(--yellow)}
+  .grp{border:1px solid var(--border);border-radius:11px;margin-bottom:12px;overflow:hidden}
+  .grp-h{padding:10px 13px;background:var(--s2);display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px}
+  .opt{display:flex;align-items:center;gap:10px;padding:9px 13px;border-top:1px solid var(--border);font-size:12.5px}
+  .opt.keep{background:rgba(34,197,94,.09)}
+  .opt.del{background:rgba(239,68,68,.06);opacity:.85}
+  .opt input[type=radio]{width:16px;height:16px;flex:none;accent-color:var(--green)}
+  .tag{font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px;flex:none}
+  .t-keep{background:rgba(34,197,94,.2);color:#7ee2a4}
+  .t-del{background:rgba(239,68,68,.2);color:#f87171}
+  .mono{font-family:ui-monospace,Menlo,monospace}
+  .muted{color:var(--muted)}
+  .nota{padding:12px 15px;border-radius:9px;font-size:12.5px;border:1px solid;margin-top:12px}
+  .n-info{background:rgba(96,165,250,.08);border-color:rgba(96,165,250,.35);color:#93c5fd}
+  .n-ok{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.4);color:#7ee2a4}
+  .n-warn{background:rgba(234,179,8,.08);border-color:rgba(234,179,8,.4);color:#f4d160}
+  .n-bad{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.4);color:#f87171}
+  .nota b{display:block;margin-bottom:4px;font-size:13px}
+  #estado{font-size:13px;color:var(--muted);margin-top:10px}
+  pre{background:#0d1017;border:1px solid var(--border);border-radius:8px;padding:11px;font-size:11px;overflow:auto;max-height:220px;color:#cfd3da}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧹 Depurar Solicitudes Duplicadas</h1>
+  <div class="sub">Deja una sola solicitud por cada grupo duplicado y elimina las repetidas.</div>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <h2>1 · Buscar duplicadas</h2>
+    <div class="hint">Se agrupan las SC que tienen exactamente los mismos artículos y cantidades.</div>
+    <div class="row">
+      <div><label>Desde</label><input type="date" id="f-desde" value="2026-01-01"></div>
+      <div><label>Hasta</label><input type="date" id="f-hasta" value="2026-04-30"></div>
+      <div style="flex:1;min-width:250px">
+        <label>Cuál conservar en cada grupo</label>
+        <select id="f-criterio" onchange="aplicarCriterio()">
+          <option value="camada">La del formato de camada (/1) con el número más bajo — recomendado</option>
+          <option value="antigua">La de número de SC más bajo</option>
+          <option value="nocamada">La del formato sin /1</option>
+        </select>
+      </div>
+      <button class="btn" onclick="buscar()" id="btn-run">🔎 Analizar</button>
+    </div>
+    <div id="estado"></div>
+  </div>
+
+  <div id="salida"></div>
+
+  <div class="card" id="card-aplicar" style="display:none">
+    <h2>3 · Aplicar la depuración</h2>
+    <div id="validacion"></div>
+    <div class="nota n-warn" style="margin-top:12px">
+      ⚠️ Se eliminarán definitivamente las solicitudes marcadas en rojo. Las conservadas <b>mantienen su número actual</b> (no se renumera nada, así no puede haber choques).
+      El borrado queda registrado en la nube, de modo que no reaparecen y el cambio se ve en el Centro de Control.
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn ghost" onclick="descargarRespaldo()">💾 Descargar respaldo</button>
+      <button class="btn red" onclick="aplicar()" id="btn-aplicar">🗑 Eliminar las duplicadas</button>
+    </div>
+    <div id="res-aplicar" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<script>
+var _SB_URL='https://qivvewvgqlsptydftlhx.supabase.co';
+var _SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpdnZld3ZncWxzcHR5ZGZ0bGh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMzkyMjUsImV4cCI6MjA5MTkxNTIyNX0.4PGflbub6rz5bdpabOFgHVwihBh2UFC5LRqwi93fLIo';
+var _H={apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY};
+var _todas=[], _grupos=[], _elegido={};
+
+function esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+// ── Normalización de ítems (mismo criterio que la herramienta de detección) ──
+var UNIDADES=['U','UN','UNI','UNID','UNIDAD','UNIDADES','PZA','PZAS','PIEZA','PIEZAS','L','LT','LTS','LITRO','LITROS',
+'KG','KGS','KILO','KILOS','GR','GRS','M','MT','MTS','METRO','METROS','CM','MM','CAJA','CAJAS','PAR','PARES',
+'ROLLO','ROLLOS','BOLSA','BOLSAS','TACHO','TACHOS','JUEGO','JUEGOS'];
+function sinAcentos(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function normItem(linea){
+  var t=sinAcentos(String(linea||'')).toUpperCase().trim(); if(!t) return null;
+  var m=/^(\d+(?:[.,]\d+)?)\s*(.*)$/.exec(t), qty=null, resto=t;
+  if(m){ qty=parseFloat(m[1].replace(',','.')); resto=m[2]||''; }
+  resto=resto.replace(/[–—]/g,' ').replace(/^[\s\-:.\u00b7]+/,'').replace(/\s+/g,' ').trim();
+  var pal=resto.split(/\s+/).filter(Boolean), cambio=true;
+  while(cambio&&pal.length){ cambio=false;
+    if(UNIDADES.indexOf(pal[0])>=0){ pal.shift(); cambio=true; }
+    else if(pal[0]==='DE'||pal[0]==='DEL'||pal[0]==='DA'){ pal.shift(); cambio=true; } }
+  var desc=pal.join(' ').replace(/[^A-Z0-9%\/\."'\s]/g,' ').replace(/\s+/g,' ').trim();
+  if(!desc) return null;
+  return { qty:(qty==null?1:qty), desc:desc, original:String(linea).trim() };
+}
+function itemsDe(sc){ return String(sc.items||'').split('\n').map(normItem).filter(Boolean); }
+function firma(items){ return items.map(function(i){ return i.qty+'|'+i.desc; }).sort().join(' ## '); }
+
+// ── Análisis del número de SC ──
+function esCamada(num){ return /\/\d+-/.test(String(num||'')); }
+function corrDe(num){ var m=/-(\d+)\s*$/.exec(String(num||'')); return m?parseInt(m[1],10):999999; }
+
+async function _traerSC(){
+  var out=[];
+  for(var g=0;g<15;g++){
+    var r=await fetch(_SB_URL+'/rest/v1/solicitudes_compra?select=num_sc,num_op,area,subarea,solicitante,fecha,criticidad,destino,items,estado,obs&order=fecha.asc&limit=1000&offset='+(g*1000),
+      {headers:_H,cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    var a=await r.json(); if(!a.length)break; out=out.concat(a); if(a.length<1000)break;
+  }
+  return out;
+}
+
+async function buscar(){
+  var btn=document.getElementById('btn-run'); btn.disabled=true;
+  var est=document.getElementById('estado'); est.textContent='Leyendo solicitudes...';
+  document.getElementById('salida').innerHTML='';
+  document.getElementById('card-aplicar').style.display='none';
+  try{
+    _todas=await _traerSC();
+    var d=document.getElementById('f-desde').value, h=document.getElementById('f-hasta').value;
+    var lista=_todas.filter(function(s){
+      var f=String(s.fecha||'').slice(0,10);
+      return f && (!d||f>=d) && (!h||f<=h);
+    });
+    var conIt=[];
+    lista.forEach(function(s){ var it=itemsDe(s); if(it.length) conIt.push({sc:s, items:it, f:firma(it)}); });
+    var map={};
+    conIt.forEach(function(x){ (map[x.f]=map[x.f]||[]).push(x); });
+    _grupos=Object.keys(map).map(function(k){ return map[k]; })
+      .filter(function(g){ return g.length>1; })
+      .sort(function(a,b){ return (a[0].sc.fecha||'').localeCompare(b[0].sc.fecha||''); });
+    est.textContent=lista.length+' solicitudes en el período · '+_grupos.length+' grupo(s) duplicado(s).';
+    aplicarCriterio();
+  }catch(e){ est.innerHTML='<span style="color:var(--red)">Error: '+esc(e.message)+'</span>'; }
+  btn.disabled=false;
+}
+
+// Elige automáticamente cuál conservar en cada grupo
+function aplicarCriterio(){
+  if(!_grupos.length){ render(); return; }
+  var cr=document.getElementById('f-criterio').value;
+  _grupos.forEach(function(g,i){
+    var cands=g.slice();
+    var elegida=null;
+    if(cr==='camada'){
+      var conC=cands.filter(function(x){ return esCamada(x.sc.num_sc); });
+      var pool=conC.length?conC:cands;
+      elegida=pool.sort(function(a,b){ return corrDe(a.sc.num_sc)-corrDe(b.sc.num_sc); })[0];
+    } else if(cr==='nocamada'){
+      var sinC=cands.filter(function(x){ return !esCamada(x.sc.num_sc); });
+      var pool2=sinC.length?sinC:cands;
+      elegida=pool2.sort(function(a,b){ return corrDe(a.sc.num_sc)-corrDe(b.sc.num_sc); })[0];
+    } else {
+      elegida=cands.sort(function(a,b){ return String(a.sc.num_sc).localeCompare(String(b.sc.num_sc)); })[0];
+    }
+    _elegido[i]=elegida.sc.num_sc;
+  });
+  render();
+}
+function marcarConservar(gi, num){ _elegido[gi]=num; render(); }
+
+function render(){
+  var out=document.getElementById('salida');
+  if(!_grupos.length){
+    out.innerHTML='<div class="card"><div class="nota n-ok">✅ No se encontraron solicitudes duplicadas en el período.</div></div>';
+    return;
+  }
+  var totalSC=0, aBorrar=0;
+  _grupos.forEach(function(g,i){ totalSC+=g.length; aBorrar+=g.length-1; });
+
+  // ¿Todas las del grupo comparten el mismo PC?
+  var gruposMismoPC=_grupos.filter(function(g){
+    var pcs={}; g.forEach(function(x){ pcs[x.sc.num_op||'']=1; });
+    return Object.keys(pcs).length===1;
+  }).length;
+
+  var h='<div class="kpis">'
+    +kpi(_grupos.length,'Grupos duplicados')
+    +kpi(totalSC,'SC involucradas')
+    +kpi(_grupos.length,'Quedarán','ok')
+    +kpi(aBorrar,'Se eliminarán','bad')
+    +'</div>';
+
+  if(gruposMismoPC===_grupos.length){
+    h+='<div class="card"><div class="nota n-info"><b>Son el mismo pedido registrado varias veces</b>'
+      +'En los '+_grupos.length+' grupos, todas las solicitudes comparten el <b>mismo N° de Pedido de Compra</b>. '
+      +'No son pedidos repetidos por el área: son copias del mismo registro, generadas durante el renombrado de la primera camada. '
+      +'Por eso es seguro dejar una sola de cada grupo.</div></div>';
+  }
+
+  h+='<div class="card"><h2>2 · Revisá cuál se conserva</h2>'
+    +'<div class="hint">Podés cambiar la elección de cualquier grupo tocando su círculo.</div>';
+
+  _grupos.forEach(function(g,i){
+    var art=g[0].items.map(function(x){ return x.original; }).join(' · ');
+    var pc=g[0].sc.num_op||'—';
+    h+='<div class="grp"><div class="grp-h">'
+      +'<b style="color:var(--or)">Grupo '+(i+1)+'</b>'
+      +'<span class="mono muted">'+esc(pc)+'</span>'
+      +'<span class="muted">'+esc(String(g[0].sc.fecha||'').slice(0,10))+' · '+esc(g[0].sc.area||'')+' · '+esc(g[0].sc.solicitante||'')+'</span>'
+      +'<span class="muted" style="margin-left:auto;font-size:11px;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(art)+'">'+esc(art)+'</span>'
+      +'</div>';
+    g.forEach(function(x){
+      var keep=_elegido[i]===x.sc.num_sc;
+      h+='<label class="opt '+(keep?'keep':'del')+'">'
+        +'<input type="radio" name="g'+i+'" '+(keep?'checked':'')+' onchange="marcarConservar('+i+',\''+esc(x.sc.num_sc)+'\')">'
+        +'<span class="mono" style="font-weight:700;min-width:180px">'+esc(x.sc.num_sc)+'</span>'
+        +'<span class="tag '+(keep?'t-keep':'t-del')+'">'+(keep?'✓ se conserva':'✕ se elimina')+'</span>'
+        +'<span class="muted" style="font-size:11.5px">'+(esCamada(x.sc.num_sc)?'formato camada':'formato original')+'</span>'
+        +'</label>';
+    });
+    h+='</div>';
+  });
+  h+='</div>';
+  out.innerHTML=h;
+  validar();
+  document.getElementById('card-aplicar').style.display='';
+}
+function kpi(v,l,c){ return '<div class="kpi '+(c||'')+'"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>'; }
+
+// Comprueba que no queden números repetidos ni se pierda información
+function validar(){
+  var cont=document.getElementById('validacion');
+  var conservadas=[], borradas=[];
+  _grupos.forEach(function(g,i){
+    g.forEach(function(x){
+      if(_elegido[i]===x.sc.num_sc) conservadas.push(x.sc); else borradas.push(x.sc);
+    });
+  });
+  var avisos=[];
+
+  // 1) ¿Los números conservados son únicos en TODA la base?
+  var borradasSet={}; borradas.forEach(function(s){ borradasSet[s.num_sc]=1; });
+  var conteo={};
+  _todas.forEach(function(s){ if(!borradasSet[s.num_sc]) conteo[s.num_sc]=(conteo[s.num_sc]||0)+1; });
+  var repetidos=conservadas.filter(function(s){ return conteo[s.num_sc]>1; });
+  if(repetidos.length){
+    avisos.push(['bad','Hay números repetidos','Estas SC quedarían con un número que ya usa otra solicitud: '
+      +repetidos.map(function(s){return s.num_sc;}).join(', ')+'. Cambiá la elección en esos grupos.']);
+  } else {
+    avisos.push(['ok','Sin choques de numeración','Cada solicitud conservada mantiene un número único. No se renumera nada, así que ningún número puede pisar a otro.']);
+  }
+
+  // 2) ¿Se pierde información al borrar? (observaciones o datos que la conservada no tenga)
+  var conObs=[];
+  _grupos.forEach(function(g,i){
+    var keep=g.find(function(x){ return _elegido[i]===x.sc.num_sc; });
+    g.forEach(function(x){
+      if(_elegido[i]===x.sc.num_sc) return;
+      var o=String(x.sc.obs||'').trim();
+      if(o && o!==String((keep&&keep.sc.obs)||'').trim()) conObs.push(x.sc.num_sc+': "'+o.slice(0,60)+'"');
+    });
+  });
+  if(conObs.length){
+    avisos.push(['warn','Observaciones que se perderían','Algunas SC a eliminar tienen observaciones distintas de la conservada: '
+      +conObs.slice(0,5).join(' · ')+(conObs.length>5?(' y '+(conObs.length-5)+' más'):'')
+      +'. Revisalas antes de aplicar si son importantes.']);
+  }
+
+  // 3) Resumen
+  avisos.push(['info','Qué va a pasar','Se conservan '+conservadas.length+' solicitudes (una por grupo) y se eliminan '+borradas.length+'. '
+    +'El borrado se registra en la nube para que no reaparezcan, y el Centro de Control lo refleja al refrescar.']);
+
+  cont.innerHTML=avisos.map(function(a){
+    return '<div class="nota n-'+a[0]+'"><b>'+a[1]+'</b>'+a[2]+'</div>';
+  }).join('');
+  document.getElementById('btn-aplicar').disabled = repetidos.length>0;
+}
+
+function _listaBorrar(){
+  var out=[];
+  _grupos.forEach(function(g,i){
+    g.forEach(function(x){ if(_elegido[i]!==x.sc.num_sc) out.push(x.sc); });
+  });
+  return out;
+}
+
+function descargarRespaldo(){
+  var data={ generado:new Date().toISOString(),
+    descripcion:'Respaldo previo a la depuración de SC duplicadas',
+    conservadas:[], eliminadas:_listaBorrar() };
+  _grupos.forEach(function(g,i){ g.forEach(function(x){ if(_elegido[i]===x.sc.num_sc) data.conservadas.push(x.sc); }); });
+  var b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(b);
+  a.download='respaldo_depuracion_sc_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+}
+
+async function aplicar(){
+  var borrar=_listaBorrar();
+  if(!borrar.length) return;
+  if(!confirm('Se eliminarán '+borrar.length+' solicitudes duplicadas.\n\nLas '+_grupos.length+' conservadas mantienen su número actual.\n\n¿Descargaste el respaldo? Esta acción no se puede deshacer.\n\n¿Continuar?')) return;
+  descargarRespaldo();
+  var btn=document.getElementById('btn-aplicar'); btn.disabled=true;
+  var res=document.getElementById('res-aplicar');
+  var ok=0, fail=0, errores=[];
+  for(var i=0;i<borrar.length;i++){
+    var s=borrar[i];
+    res.innerHTML='<div class="muted">Eliminando '+(i+1)+' de '+borrar.length+'... ('+esc(s.num_sc)+')</div>';
+    try{
+      // 1) borrar de la tabla
+      var r=await fetch(_SB_URL+'/rest/v1/solicitudes_compra?num_sc=eq.'+encodeURIComponent(s.num_sc),
+        {method:'DELETE',headers:Object.assign({Prefer:'return=minimal'},_H)});
+      if(!r.ok){ var t=await r.text(); errores.push(s.num_sc+': HTTP '+r.status+' '+t.slice(0,90)); throw new Error('del'); }
+      // 2) registrar el borrado compartido para que no reaparezca
+      await fetch(_SB_URL+'/rest/v1/borrados',{
+        method:'POST',
+        headers:Object.assign({'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},_H),
+        body:JSON.stringify({tipo:'sc', clave:String(s.num_sc).trim().toUpperCase(), borrado_por:'depuracion_duplicadas'})
+      }).catch(function(){});
+      ok++;
+    }catch(e){ fail++; }
+  }
+  var h='<div class="nota '+(fail?'n-warn':'n-ok')+'"><b>'+(fail?'⚠️ Terminado con errores':'✅ Depuración aplicada')+'</b>'
+    +'Eliminadas: '+ok+(fail?(' · Errores: '+fail):'')+'. Quedó una solicitud por cada grupo.</div>';
+  if(fail) h+='<pre>'+esc(errores.join('\n'))+'</pre>';
+  h+='<div class="nota n-info" style="margin-top:10px"><b>Para verlo en el Centro de Control</b>'
+    +'Abrilo y refrescá con Ctrl+Shift+R. Si alguna duplicada siguiera apareciendo, es la copia local de ese equipo: '
+    +'volvé a eliminarla desde el Centro de Control y ya queda registrada en la nube.</div>';
+  res.innerHTML=h;
+  btn.disabled=false;
+}
+</script>
+</body>
+</html>
