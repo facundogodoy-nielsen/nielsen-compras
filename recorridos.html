@@ -853,6 +853,12 @@ function addStopFromMap(latlng){
 }
 let pickTarget = null; // proveedor esperando coordenada
 function onMapClick(e){
+  if(pickTarget==='__DESVIO__'){
+    const la=+e.latlng.lat.toFixed(5), ln=+e.latlng.lng.toFixed(5);
+    const mi=document.getElementById('map-info'); if(mi) mi.textContent='Desvío marcado: '+la+', '+ln;
+    _dsVolverAlFormulario(la, ln);
+    return;
+  }
   if(pickTarget==='__FIN__'){
     if(!DB.fin) DB.fin={};
     DB.fin.lat=+e.latlng.lat.toFixed(5); DB.fin.lng=+e.latlng.lng.toFixed(5); DB.fin.modo='custom';
@@ -2266,6 +2272,11 @@ function consultarRecorrido(id){
   const paradasHtml = (r.paradas||[]).map((p,i)=>{
     const adj=(p.adjuntos||[]);
     let extra='';
+    if(p.desvio && p.motivoDesvio){
+      extra += '<div style="margin-top:7px;padding:8px 10px;background:rgba(234,179,8,.09);border:1px solid rgba(234,179,8,.35);border-radius:8px">'
+        + '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#eab308;margin-bottom:3px">↩️ Justificación del desvío</div>'
+        + '<div style="font-size:12px;color:var(--text)">'+_escRec(p.motivoDesvio)+'</div></div>';
+    }
     // Todas las SC asignadas a este proveedor, con sus ítems a retirar
     const _scs = Array.isArray(p.scs) && p.scs.length ? p.scs
                : (p.scNum ? [{num:p.scNum, items:(p.scItems||[])}] : []);
@@ -2287,7 +2298,9 @@ function consultarRecorrido(id){
     return `<div style="padding:10px 0;border-bottom:1px solid var(--border,#333)">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="width:22px;height:22px;border-radius:50%;background:${p.extra?'#3e7cb1':'var(--or,#E8611A)'};color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none">${i+1}</span>
-        <span style="flex:1;font-size:13px;font-weight:600">${_escRec(p.nombre)} ${p.extra?'<span class="pill" style="background:#3e7cb1;color:#fff;font-size:10px;margin-left:4px">➕ fuera del plan</span>':''}</span>
+        <span style="flex:1;font-size:13px;font-weight:600">${_escRec(p.nombre)} ${
+          p.desvio ? '<span class="pill" style="background:#eab308;color:#1a1a1a;font-size:10px;margin-left:4px">↩️ desvío</span>'
+          : (p.extra?'<span class="pill" style="background:#3e7cb1;color:#fff;font-size:10px;margin-left:4px">➕ fuera del plan</span>':'')}</span>
         ${p.arribo?`<span class="pill ok">arribo ${p.arribo}</span>`:'<span class="muted" style="font-size:11px">sin arribo</span>'}
         ${esEditor()?`<button class="btn danger sm" onclick="quitarParadaRec('${r.id}','${p.id}')" title="Quitar este proveedor del recorrido" style="padding:2px 8px;font-size:11px;flex:none">✕</button>`:''}
       </div>
@@ -2323,6 +2336,7 @@ function consultarRecorrido(id){
     <div style="margin-top:16px;display:flex;align-items:center;gap:8px">
       <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or,#E8611A)">Proveedores del recorrido (${(r.paradas||[]).length})</span>
       <button class="btn sm" onclick="agregarProvARecorrido('${r.id}')" style="background:#3e7cb1;margin-left:auto" title="Sumar un proveedor no planificado">➕ Agregar proveedor</button>
+      <button class="btn sm" onclick="agregarDesvioARecorrido('${r.id}')" style="background:#eab308;color:#1a1a1a;margin-left:6px" title="Registrar un desvío del recorrido planificado">↩️ Agregar desvío</button>
     </div>
     <div style="margin-top:4px">${_filaPartida(r)}${paradasHtml||'<div class="muted">Sin paradas.</div>'}${_filaFinal(r)}</div>
 
@@ -2578,6 +2592,114 @@ function _dibujarMiniMapa(r){
 // ══ Agregar un proveedor NO planificado a un recorrido ya guardado ══
 // Queda marcado con extra:true ("fuera del plan") porque altera la distancia/tiempo estimados.
 let _apRecId=null;
+// ══ DESVÍOS DEL RECORRIDO ══
+// Registra una parada no planificada que NO es un proveedor (una desviación de la ruta),
+// con su ubicación en el mapa y la justificación correspondiente.
+let _dsRecId=null, _dsLat=null, _dsLng=null;
+
+function agregarDesvioARecorrido(recId, conservarUbic){
+  const r=DB.historial.find(x=>x.id===recId); if(!r) return;
+  _dsRecId=recId;
+  if(!conservarUbic){ _dsLat=null; _dsLng=null; }
+  openModal('↩️ Agregar desvío al recorrido', `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Registrá una desviación del recorrido planificado (una parada que no estaba prevista y no es un proveedor). Queda marcada como <b style="color:#eab308">desvío</b> y se justifica el motivo.</div>
+    <label>Desvío <span style="color:#E8611A">*</span></label>
+    <input type="text" id="ds-nombre" placeholder="Ej: Carga de combustible, Gomería, Trámite en banco">
+    <div style="margin-top:10px">
+      <label>Ubicación en el mapa</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn sm" type="button" onclick="_dsPickMapa()" style="background:#3e7cb1;white-space:nowrap">📍 Marcar en el mapa</button>
+        <span id="ds-coord" class="muted" style="font-size:11.5px">${_dsLat!=null?('<b style="color:#22c55e">📍 '+_dsLat.toFixed(5)+', '+_dsLng.toFixed(5)+'</b>'):'Sin ubicación'}</span>
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:4px">Sin ubicación no se puede recalcular la distancia.</div>
+    </div>
+    <div style="margin-top:10px"><label>Hora de arribo (opcional)</label><input type="time" id="ds-arribo"></div>
+    <div style="margin-top:10px">
+      <label>Justificación del desvío <span style="color:#E8611A">*</span></label>
+      <textarea id="ds-motivo" rows="3" placeholder="Por qué se hizo este desvío" style="width:100%;padding:9px 12px;background:var(--s3,#2a251e);border:1.5px solid var(--border,#3a332b);border-radius:8px;color:var(--text,#ece7e1);font-family:inherit;font-size:13px;resize:vertical"></textarea>
+    </div>
+    <div style="margin-top:10px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+      <input type="checkbox" id="ds-recalc" checked style="width:16px;height:16px"> Recalcular distancia/tiempo estimados sumando esta parada
+    </label></div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn" onclick="consultarRecorrido('${recId}')" style="background:var(--s3,#2a251e);margin-right:6px">Cancelar</button>
+      <button class="btn" onclick="_confirmarAgregarDesvio()" style="background:#eab308;color:#1a1a1a">↩️ Agregar desvío</button>
+    </div>`, null);
+}
+
+// Deja marcar el punto del desvío haciendo clic en el mapa
+function _dsPickMapa(){
+  // conservar lo escrito antes de pasar al mapa
+  _dsTmp = {
+    nombre:(document.getElementById('ds-nombre')||{}).value||'',
+    arribo:(document.getElementById('ds-arribo')||{}).value||'',
+    motivo:(document.getElementById('ds-motivo')||{}).value||'',
+    recalc:(document.getElementById('ds-recalc')||{}).checked!==false
+  };
+  closeModal();
+  pickTarget='__DESVIO__';
+  const hint=document.getElementById('hint-picker');
+  if(hint){ hint.style.display='block'; hint.textContent='📍 Hacé clic en el mapa para marcar dónde fue el desvío.'; }
+  switchTab('recorrido');
+  setTimeout(()=>{ if(map) map.invalidateSize(); }, 150);
+  alert('Hacé clic en el mapa para marcar la ubicación del desvío.');
+}
+let _dsTmp=null;
+
+// Reabre el formulario del desvío con lo ya cargado y la ubicación elegida
+function _dsVolverAlFormulario(lat,lng){
+  _dsLat=lat; _dsLng=lng;
+  const hint=document.getElementById('hint-picker'); if(hint) hint.style.display='none';
+  pickTarget=null;
+  const t=_dsTmp||{};
+  agregarDesvioARecorrido(_dsRecId, true);   // true = conservar la ubicación recién marcada
+  setTimeout(()=>{
+    const n=document.getElementById('ds-nombre'); if(n) n.value=t.nombre||'';
+    const a=document.getElementById('ds-arribo'); if(a) a.value=t.arribo||'';
+    const m=document.getElementById('ds-motivo'); if(m) m.value=t.motivo||'';
+    const c=document.getElementById('ds-recalc'); if(c) c.checked=t.recalc!==false;
+    const co=document.getElementById('ds-coord');
+    if(co){ co.innerHTML='<b style="color:#22c55e">📍 '+lat.toFixed(5)+', '+lng.toFixed(5)+'</b>'; }
+  }, 60);
+}
+
+function _confirmarAgregarDesvio(){
+  const r=DB.historial.find(x=>x.id===_dsRecId); if(!r) return;
+  const nombre=(document.getElementById('ds-nombre').value||'').trim();
+  const motivo=(document.getElementById('ds-motivo').value||'').trim();
+  const arribo=document.getElementById('ds-arribo').value||'';
+  const recalc=document.getElementById('ds-recalc').checked;
+  if(!nombre){ alert('Poné un nombre para el desvío.'); document.getElementById('ds-nombre').focus(); return; }
+  if(!motivo){ alert('La justificación del desvío es obligatoria.'); document.getElementById('ds-motivo').focus(); return; }
+
+  if(!r.paradas) r.paradas=[];
+  r.paradas.push({
+    id:'desvio_'+uid(), nombre:nombre, dir:'', lat:_dsLat, lng:_dsLng,
+    arribo, hm1:'',hm2:'',ht1:'',ht2:'',corrido:false,
+    scNum:'', scItems:[], scs:[], adjuntos:[],
+    desvio:true, motivoDesvio:motivo, extra:true
+  });
+
+  // Recalcular estimados sumando el tramo hasta el desvío (si tiene ubicación)
+  if(recalc && _dsLat!=null){
+    const prev=[...r.paradas].reverse().find(x=>x!==r.paradas[r.paradas.length-1] && x.lat!=null);
+    if(prev){
+      const tramo=haversine([prev.lat,prev.lng],[_dsLat,_dsLng])*FACTOR_CALLE;
+      const velKmH=(r.cfg&&r.cfg.vel)||28;
+      const minParada=(r.cfg&&r.cfg.parada)||12;
+      r.estKm=+((r.estKm||0)+tramo).toFixed(1);
+      r.estMin=Math.round((r.estMin||0) + (tramo/velKmH*60) + minParada);
+      const consumo=(r.cfg&&r.cfg.consumo)||12;
+      r.estLitros=+(((r.estKm||0)*consumo/100)).toFixed(1);
+    }
+  }
+  r.tieneExtras=true; r.tieneDesvios=true;
+  guardarRecorridoItem(r); renderHistorial();
+  consultarRecorrido(_dsRecId);
+  _dsTmp=null;
+  if(typeof toast!=='undefined'&&toast) toast('↩️ Desvío registrado');
+}
+
 function agregarProvARecorrido(recId){
   const r=DB.historial.find(x=>x.id===recId); if(!r) return;
   _apRecId=recId;
