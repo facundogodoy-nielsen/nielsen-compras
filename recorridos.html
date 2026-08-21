@@ -164,6 +164,7 @@
 
 <nav class="tabs">
   <button data-tab="recorrido" class="active">🗺️ Recorrido del día</button>
+  <button data-tab="programado">📅 Recorridos programados</button>
   <button data-tab="historial">📊 Historial</button>
   <button data-tab="analisis">📈 Análisis</button>
   <button data-tab="proveedores">🏭 Proveedores</button>
@@ -181,7 +182,7 @@
           ➕ NUEVO RECORRIDO
         </button>
         <div class="card">
-          <h2>Planificar recorrido</h2>
+          <h2><span id="plan-titulo">Planificar recorrido</span> <span id="plan-badge" style="display:none;font-size:10px;font-weight:800;background:#3e7cb1;color:#fff;padding:2px 9px;border-radius:999px;letter-spacing:.6px;margin-left:6px">PROGRAMADO</span></h2>
           <div class="body">
             <label>Movilidad (vehículo)</label>
             <select id="sel-vehiculo"></select>
@@ -372,6 +373,29 @@
     <div class="card">
       <h2>📈 Análisis de recorridos</h2>
       <div class="body">
+        <!-- Filtros de período -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border,#3a332b)">
+          <div>
+            <label style="margin-top:0">Período</label>
+            <select id="an-periodo" onchange="_anPeriodoChange()" style="width:auto">
+              <option value="mes">Por mes</option>
+              <option value="anio">Por año</option>
+              <option value="rango">Rango de fechas</option>
+              <option value="todo">Todo el histórico</option>
+            </select>
+          </div>
+          <div id="an-box-mes"><label style="margin-top:0">Mes</label><select id="an-mes" onchange="renderAnalisis()" style="width:auto"></select></div>
+          <div id="an-box-anio" style="display:none"><label style="margin-top:0">Año</label><select id="an-anio" onchange="renderAnalisis()" style="width:auto"></select></div>
+          <div id="an-box-rango" style="display:none;gap:8px;align-items:flex-end">
+            <div><label style="margin-top:0">Desde</label><input type="date" id="an-desde" onchange="renderAnalisis()"></div>
+            <div><label style="margin-top:0">Hasta</label><input type="date" id="an-hasta" onchange="renderAnalisis()"></div>
+          </div>
+          <div><label style="margin-top:0">Chofer</label><select id="an-chofer" onchange="renderAnalisis()" style="width:auto"><option value="">Todos</option></select></div>
+          <div><label style="margin-top:0">Vehículo</label><select id="an-veh" onchange="renderAnalisis()" style="width:auto"><option value="">Todos</option></select></div>
+          <button class="btn sm" onclick="generarExcelAnalisis()" style="background:#217346">📊 Generar Excel</button>
+          <button class="btn sm" onclick="generarInformeWord()" style="background:#2b579a">📄 Generar informe</button>
+          <span id="an-resumen" style="margin-left:auto;font-size:11.5px;color:var(--muted)"></span>
+        </div>
         <div class="metrics" style="grid-template-columns:repeat(4,1fr)" id="kpis-analisis"></div>
 
         <!-- Costo logístico -->
@@ -1278,9 +1302,10 @@ function renderListaAgregar(filtro=''){
 function guardarRecorrido(){
   const provs=ruta.filter(s=>s.tipo==='prov');
   if(provs.length===0){ alert('Agregá al menos un proveedor.'); return; }
-  // Obligatorios para iniciar el recorrido
+  // Obligatorios SOLO para el recorrido del día (el programado se completa después)
   const salidaVal=document.getElementById('hora-salida').value;
   const kmIniVal=document.getElementById('real-km-ini').value;
+  if(!_modoProgramado){
   if(!salidaVal){
     alert('⚠️ Falta la HORA DE SALIDA (real).\n\nEs obligatoria para guardar e iniciar el recorrido.');
     document.getElementById('hora-salida').focus();
@@ -1297,11 +1322,12 @@ function guardarRecorrido(){
     const _n=document.getElementById('nivel-comb-ini'); if(_n) _n.focus();
     return;
   }
+  }   // fin de las validaciones del recorrido del día
   const est=calcEstimado();
   const v=vehSel(), c=DB.choferes.find(x=>x.id===document.getElementById('sel-chofer').value);
   const salida=_gv('hora-salida'), regreso=_gv('real-regreso');
   const rec={
-    id:uid(), codigo:_nuevoCodigoRC(), fecha:document.getElementById('fecha').value,
+    id:uid(), codigo:_nuevoCodigoRC(_modoProgramado?'RP':'RC'), programado:_modoProgramado, fecha:document.getElementById('fecha').value,
     vehiculo:v?`${v.patente} ${v.desc}`:'-', chofer:c?c.nombre:'-',
     // Guardar la ruta COMPLETA (con coords, horarios, SC asignada, ítems y adjuntos)
     paradas:provs.map(p=>({
@@ -1332,14 +1358,49 @@ function guardarRecorrido(){
   }
 }
 // Genera el próximo código RC-2026-#### (correlativo, robusto ante huecos)
-function _nuevoCodigoRC(){
+// ══ MODO PROGRAMADO ══
+// Usa la misma pantalla de planificación, pero permite guardar sin los datos
+// que recién se conocen el día del viaje (movilidad, chofer, salida, km, combustible).
+let _modoProgramado = false;
+
+function _aplicarModoProgramado(){
+  const btn=document.getElementById('btn-nuevo-recorrido');
+  const tit=document.getElementById('plan-titulo');
+  const bdg=document.getElementById('plan-badge');
+  if(btn) btn.innerHTML = _modoProgramado ? '➕ NUEVO RECORRIDO PROGRAMADO' : '➕ NUEVO RECORRIDO';
+  if(tit) tit.textContent = _modoProgramado ? 'Planificar recorrido programado' : 'Planificar recorrido';
+  if(bdg) bdg.style.display = _modoProgramado ? '' : 'none';
+  // Los campos que en modo programado se completan después
+  const opc = ['sel-vehiculo','sel-chofer','hora-salida','real-km-ini','nivel-comb-ini'];
+  opc.forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    const lab=el.previousElementSibling;
+    if(lab && lab.tagName==='LABEL'){
+      let marca=lab.querySelector('.marca-obl');
+      if(!marca){
+        marca=document.createElement('span');
+        marca.className='marca-obl';
+        lab.appendChild(marca);
+      }
+      marca.innerHTML = _modoProgramado
+        ? ' <span style="color:#3e7cb1;font-size:10px;font-weight:700">(se completa después)</span>'
+        : (['hora-salida','real-km-ini','nivel-comb-ini'].includes(id) ? ' <span style="color:#E8611A">*</span>' : '');
+    }
+  });
+  const bt=document.getElementById('btn-guardar-recorrido');
+  if(bt) bt.textContent = _modoProgramado ? '💾 Guardar recorrido programado' : '💾 Guardar recorrido';
+}
+
+function _nuevoCodigoRC(prefijo){
+  const pre = prefijo || 'RC';
   const anio=new Date().getFullYear();
   let max=0;
+  const re=new RegExp('^'+pre+'-(\\d{4})-(\\d+)$');
   (DB.historial||[]).forEach(r=>{
-    const m=/^RC-(\d{4})-(\d+)$/.exec(r.codigo||'');
+    const m=re.exec(r.codigo||'');
     if(m && +m[1]===anio){ const n=+m[2]; if(n>max) max=n; }
   });
-  return 'RC-'+anio+'-'+String(max+1).padStart(4,'0');
+  return pre+'-'+anio+'-'+String(max+1).padStart(4,'0');
 }
 // Asigna código a recorridos existentes que no lo tengan (del más viejo al más nuevo)
 function _migrarCodigosRC(){
@@ -1603,7 +1664,7 @@ function _fmt$(n){ return '$'+Math.round(n||0).toLocaleString('es-AR'); }
 
 function renderCostos(){
   const cont=document.getElementById('costo-cont'); if(!cont) return;
-  const lista=_histFiltrado();
+  const lista=_anFiltrado();
   if(!lista.length){ cont.innerHTML='<div class="muted" style="padding:14px">Sin recorridos en el período.</div>'; return; }
 
   let totG=0, totKm=0, totMin=0, totL=0, nMed=0;
@@ -1681,9 +1742,275 @@ function renderCostos(){
   cont.innerHTML=h;
 }
 
+// ══ FILTROS DE PERÍODO DEL ANÁLISIS ══
+const AN_MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+function _anPoblar(){
+  const hist=DB.historial||[];
+  const selM=document.getElementById('an-mes'), selA=document.getElementById('an-anio');
+  if(selM && !selM.options.length){
+    const ms={}; hist.forEach(r=>{ const m=String(r.fecha||'').slice(0,7); if(/^\d{4}-\d{2}$/.test(m)) ms[m]=1; });
+    const arr=Object.keys(ms).sort().reverse();
+    selM.innerHTML=arr.map(m=>{ const p=m.split('-'); return '<option value="'+m+'">'+AN_MESES[+p[1]-1]+' '+p[0]+'</option>'; }).join('')
+      || '<option value="">Sin datos</option>';
+  }
+  if(selA && !selA.options.length){
+    const as={}; hist.forEach(r=>{ const a=String(r.fecha||'').slice(0,4); if(/^\d{4}$/.test(a)) as[a]=1; });
+    selA.innerHTML=Object.keys(as).sort().reverse().map(a=>'<option value="'+a+'">'+a+'</option>').join('') || '<option value="">Sin datos</option>';
+  }
+  const selC=document.getElementById('an-chofer'), selV=document.getElementById('an-veh');
+  if(selC && selC.options.length<=1){
+    const cs={}; hist.forEach(r=>{ if(r.chofer && r.chofer!=='-') cs[r.chofer]=1; });
+    Object.keys(cs).sort().forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; selC.appendChild(o); });
+  }
+  if(selV && selV.options.length<=1){
+    const vs={}; hist.forEach(r=>{ if(r.vehiculo && r.vehiculo!=='-') vs[r.vehiculo]=1; });
+    Object.keys(vs).sort().forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; selV.appendChild(o); });
+  }
+}
+function _anPeriodoChange(){
+  const t=(document.getElementById('an-periodo')||{}).value||'mes';
+  const b=(id,v)=>{ const e=document.getElementById(id); if(e) e.style.display=v; };
+  b('an-box-mes', t==='mes'?'':'none');
+  b('an-box-anio', t==='anio'?'':'none');
+  b('an-box-rango', t==='rango'?'flex':'none');
+  renderAnalisis();
+}
+// Recorridos que entran en el análisis según los filtros
+function _anFiltrado(){
+  const t=(document.getElementById('an-periodo')||{}).value||'mes';
+  const mes=(document.getElementById('an-mes')||{}).value;
+  const anio=(document.getElementById('an-anio')||{}).value;
+  const d=(document.getElementById('an-desde')||{}).value;
+  const h=(document.getElementById('an-hasta')||{}).value;
+  const cho=(document.getElementById('an-chofer')||{}).value;
+  const veh=(document.getElementById('an-veh')||{}).value;
+  return (DB.historial||[]).filter(r=>{
+    const f=String(r.fecha||'').slice(0,10);
+    if(t==='mes'  && mes  && f.slice(0,7)!==mes) return false;
+    if(t==='anio' && anio && f.slice(0,4)!==anio) return false;
+    if(t==='rango'){ if(d && f<d) return false; if(h && f>h) return false; }
+    if(cho && r.chofer!==cho) return false;
+    if(veh && r.vehiculo!==veh) return false;
+    return true;
+  });
+}
+function _anPeriodoTexto(){
+  const t=(document.getElementById('an-periodo')||{}).value||'mes';
+  if(t==='mes'){ const m=(document.getElementById('an-mes')||{}).value||''; if(!m) return 'Sin datos';
+    const p=m.split('-'); return AN_MESES[+p[1]-1]+' '+p[0]; }
+  if(t==='anio') return 'Año '+((document.getElementById('an-anio')||{}).value||'');
+  if(t==='rango'){ const d=(document.getElementById('an-desde')||{}).value||'—', h=(document.getElementById('an-hasta')||{}).value||'—';
+    return 'Del '+d+' al '+h; }
+  return 'Todo el histórico';
+}
+
+// ══ DATOS CONSOLIDADOS DEL PERÍODO (para pantalla, Excel e informe) ══
+function _anDatos(){
+  const lista=_anFiltrado();
+  let km=0,min=0,lit=0,costo=0,nMed=0, kmEst=0, minEst=0;
+  const porChofer={}, porVeh={}, filas=[];
+  const scMap={};
+  lista.forEach(r=>{
+    const c=costoRecorrido(r);
+    const L=_litrosConsumidos(r);
+    if(c.medido){ nMed++; km+=c.km; min+=c.min; lit+=L.litros; costo+=c.total; }
+    kmEst+=(r.estKm||0); minEst+=(r.estMin||0);
+    if(r.chofer){ (porChofer[r.chofer]=porChofer[r.chofer]||{km:0,n:0,costo:0}); porChofer[r.chofer].km+=c.km; porChofer[r.chofer].n++; porChofer[r.chofer].costo+=c.medido?c.total:0; }
+    if(r.vehiculo){ (porVeh[r.vehiculo]=porVeh[r.vehiculo]||{km:0,n:0,lit:0}); porVeh[r.vehiculo].km+=c.km; porVeh[r.vehiculo].n++; porVeh[r.vehiculo].lit+=L.litros; }
+    const m=costoPorSC(r); Object.keys(m).forEach(k=>{ scMap[k]=(scMap[k]||0)+m[k]; });
+    filas.push({r:r,c:c,L:L});
+  });
+  return { lista, filas, km, min, lit, costo, nMed, kmEst, minEst, porChofer, porVeh, scMap,
+    rend: lit>0? km/lit : 0,
+    costoKm: km>0? costo/km : 0,
+    paradas: lista.reduce((a,r)=>a+((r.paradas||[]).length),0),
+    periodo:_anPeriodoTexto() };
+}
+
+// ══ GENERAR EXCEL ══
+function generarExcelAnalisis(){
+  const D=_anDatos();
+  if(!D.lista.length){ alert('No hay recorridos en el período seleccionado.'); return; }
+  const hojas=[];
+  // Hoja 1: resumen
+  hojas.push({nombre:'Resumen', filas:[
+    ['INFORME DE RECORRIDOS — NIELSEN'],
+    ['Período', D.periodo],
+    ['Generado', new Date().toLocaleString('es-AR')],
+    [],
+    ['INDICADOR','VALOR'],
+    ['Recorridos', D.lista.length],
+    ['Recorridos con datos reales', D.nMed],
+    ['Paradas totales', D.paradas],
+    ['Km recorridos', Math.round(D.km)],
+    ['Km estimados', Math.round(D.kmEst)],
+    ['Tiempo real (min)', Math.round(D.min)],
+    ['Tiempo estimado (min)', Math.round(D.minEst)],
+    ['Litros consumidos', +D.lit.toFixed(1)],
+    ['Rendimiento (km/L)', +D.rend.toFixed(2)],
+    ['Costo logístico total', Math.round(D.costo)],
+    ['Costo por km', Math.round(D.costoKm)]
+  ]});
+  // Hoja 2: detalle
+  const det=[['Código','Fecha','Vehículo','Chofer','Paradas','Km est.','Km real','Tiempo est. (min)','Tiempo real (min)','Litros','Método combustible','Combustible $','Chofer $','Vehículo $','Costo total','Estado']];
+  D.filas.forEach(f=>{
+    det.push([f.r.codigo||'', f.r.fecha||'', f.r.vehiculo||'', f.r.chofer||'', (f.r.paradas||[]).length,
+      f.r.estKm||0, f.c.km||0, Math.round(f.r.estMin||0), Math.round(f.c.min||0),
+      f.L.litros, f.L.metodo, Math.round(f.c.cComb), Math.round(f.c.cCho), Math.round(f.c.cVeh),
+      Math.round(f.c.total), f.r.estado||'']);
+  });
+  hojas.push({nombre:'Detalle', filas:det});
+  // Hoja 3: paradas y SC
+  const par=[['Código','Fecha','Orden','Proveedor','Dirección','Arribo','SC asignadas','Ítems a retirar']];
+  D.lista.forEach(r=>{
+    (r.paradas||[]).forEach((p,i)=>{
+      const scs=Array.isArray(p.scs)&&p.scs.length?p.scs:(p.scNum?[{num:p.scNum,items:p.scItems||[]}]:[]);
+      par.push([r.codigo||'', r.fecha||'', i+1, p.nombre||'', p.dir||'', p.arribo||'',
+        scs.map(x=>x.num).join(' + '), scs.map(x=>(x.items||[]).join(', ')).join(' | ')]);
+    });
+  });
+  hojas.push({nombre:'Paradas y SC', filas:par});
+  // Hoja 4: costo por SC
+  const sc=[['N° SC','Costo logístico atribuido']];
+  Object.keys(D.scMap).sort((a,b)=>D.scMap[b]-D.scMap[a]).forEach(k=>sc.push([k, Math.round(D.scMap[k])]));
+  hojas.push({nombre:'Costo por SC', filas:sc});
+  // Hoja 5: por chofer y vehículo
+  const cv=[['CHOFER','Recorridos','Km','Costo'],];
+  Object.keys(D.porChofer).forEach(k=>cv.push([k, D.porChofer[k].n, Math.round(D.porChofer[k].km), Math.round(D.porChofer[k].costo)]));
+  cv.push([], ['VEHÍCULO','Recorridos','Km','Litros']);
+  Object.keys(D.porVeh).forEach(k=>cv.push([k, D.porVeh[k].n, Math.round(D.porVeh[k].km), +D.porVeh[k].lit.toFixed(1)]));
+  hojas.push({nombre:'Por chofer y vehículo', filas:cv});
+
+  _descargarExcel(hojas, 'Recorridos_'+_anArchivo()+'.xls');
+}
+function _anArchivo(){
+  return _anPeriodoTexto().replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
+}
+// Genera un Excel real (formato SpreadsheetML) sin librerías externas
+function _descargarExcel(hojas, nombre){
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let xml='<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n'
+    +'<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '
+    +'xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" '
+    +'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">'
+    +'<Styles>'
+    +'<Style ss:ID="tit"><Font ss:Bold="1" ss:Size="14" ss:Color="#E8611A"/></Style>'
+    +'<Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#13161E" ss:Pattern="Solid"/></Style>'
+    +'<Style ss:ID="num"><NumberFormat ss:Format="#,##0"/></Style>'
+    +'</Styles>';
+  hojas.forEach(h=>{
+    xml+='<Worksheet ss:Name="'+esc(h.nombre).slice(0,31)+'"><Table>';
+    h.filas.forEach((f,idx)=>{
+      xml+='<Row>';
+      (f||[]).forEach(c=>{
+        const esNum = typeof c==='number' && isFinite(c);
+        const estilo = idx===0 ? (h.filas[0].length===1?' ss:StyleID="tit"':' ss:StyleID="hdr"') : (esNum?' ss:StyleID="num"':'');
+        xml+='<Cell'+estilo+'><Data ss:Type="'+(esNum?'Number':'String')+'">'+esc(c)+'</Data></Cell>';
+      });
+      xml+='</Row>';
+    });
+    xml+='</Table></Worksheet>';
+  });
+  xml+='</Workbook>';
+  const blob=new Blob([xml],{type:'application/vnd.ms-excel'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nombre; a.click();
+  if(typeof toast==='function') toast('📊 Excel generado');
+}
+
+// ══ GENERAR INFORME WORD ══
+function generarInformeWord(){
+  const D=_anDatos();
+  if(!D.lista.length){ alert('No hay recorridos en el período seleccionado.'); return; }
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const $=n=>'$'+Math.round(n||0).toLocaleString('es-AR');
+  const desvKm = D.kmEst>0 ? ((D.km-D.kmEst)/D.kmEst*100) : 0;
+  const desvMin= D.minEst>0 ? ((D.min-D.minEst)/D.minEst*100) : 0;
+
+  const kpi=(v,l)=>'<td style="border:1px solid #d9d9d9;padding:10px;text-align:center;width:25%">'
+    +'<div style="font-size:20pt;font-weight:bold;color:#E8611A">'+v+'</div>'
+    +'<div style="font-size:8pt;color:#666;text-transform:uppercase">'+l+'</div></td>';
+
+  let filasDet='';
+  D.filas.forEach(f=>{
+    filasDet+='<tr>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px"><b>'+esc(f.r.codigo||'')+'</b></td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px">'+esc(f.r.fecha||'')+'</td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px">'+esc(f.r.vehiculo||'')+'</td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px">'+esc(f.r.chofer||'')+'</td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px;text-align:center">'+((f.r.paradas||[]).length)+'</td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px;text-align:right">'+(f.c.km||0)+'</td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px;text-align:right">'+f.L.litros+'</td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px;text-align:right"><b>'+$(f.c.total)+'</b></td></tr>';
+  });
+
+  let filasCho='';
+  Object.keys(D.porChofer).sort((a,b)=>D.porChofer[b].km-D.porChofer[a].km).forEach(k=>{
+    const x=D.porChofer[k];
+    filasCho+='<tr><td style="border:1px solid #d9d9d9;padding:5px">'+esc(k)+'</td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px;text-align:center">'+x.n+'</td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px;text-align:right">'+Math.round(x.km)+'</td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px;text-align:right">'+$(x.costo)+'</td></tr>';
+  });
+
+  const scKeys=Object.keys(D.scMap).sort((a,b)=>D.scMap[b]-D.scMap[a]).slice(0,15);
+  let filasSC='';
+  scKeys.forEach(k=>{
+    filasSC+='<tr><td style="border:1px solid #d9d9d9;padding:5px">'+esc(k)+'</td>'
+      +'<td style="border:1px solid #d9d9d9;padding:5px;text-align:right">'+$(D.scMap[k])+'</td></tr>';
+  });
+
+  const html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'
+   +'<head><meta charset="utf-8"><title>Informe de Recorridos</title>'
+   +'<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->'
+   +'<style>@page{size:A4;margin:2cm} body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#222}'
+   +'h1{color:#E8611A;font-size:20pt;margin:0} h2{color:#13161E;font-size:13pt;border-bottom:2px solid #E8611A;padding-bottom:3px;margin-top:22px}'
+   +'table{border-collapse:collapse;width:100%;font-size:9.5pt} th{background:#13161E;color:#fff;padding:6px;text-align:left;font-size:8.5pt}</style></head><body>'
+   +'<div style="border-bottom:3px solid #E8611A;padding-bottom:10px;margin-bottom:18px">'
+     +'<h1>INFORME DE RECORRIDOS</h1>'
+     +'<div style="font-size:10pt;color:#666">Nielsen Logística y Expediciones S.A. — Compras y Abastecimiento</div>'
+     +'<div style="font-size:11pt;margin-top:6px"><b>Período:</b> '+esc(D.periodo)+'</div>'
+     +'<div style="font-size:9pt;color:#888">Generado el '+new Date().toLocaleString('es-AR')+'</div></div>'
+
+   +'<h2>1. Resumen del período</h2>'
+   +'<table style="margin-bottom:14px"><tr>'+kpi(D.lista.length,'Recorridos')+kpi(Math.round(D.km),'Km recorridos')
+     +kpi(D.lit.toFixed(1),'Litros')+kpi($(D.costo),'Costo logístico')+'</tr></table>'
+   +'<p>En el período se realizaron <b>'+D.lista.length+' recorridos</b> con un total de <b>'+D.paradas+' paradas</b>. '
+   +'Se recorrieron <b>'+Math.round(D.km)+' km</b> reales frente a '+Math.round(D.kmEst)+' km estimados '
+   +'(desvío de '+(desvKm>=0?'+':'')+desvKm.toFixed(1)+'%). El tiempo real fue de '+Math.round(D.min)+' minutos '
+   +'contra '+Math.round(D.minEst)+' estimados (desvío de '+(desvMin>=0?'+':'')+desvMin.toFixed(1)+'%). '
+   +'El rendimiento promedio de la flota fue de <b>'+D.rend.toFixed(1)+' km/L</b> y el costo por kilómetro de <b>'+$(D.costoKm)+'</b>.</p>'
+   +(D.nMed<D.lista.length ? '<p style="font-size:9.5pt;color:#a06000"><b>Nota:</b> '+(D.lista.length-D.nMed)+' recorrido(s) no tienen cargados los datos reales (km y tiempo) y no se incluyen en los cálculos de costo.</p>' : '')
+
+   +'<h2>2. Detalle de recorridos</h2>'
+   +'<table><tr><th>Código</th><th>Fecha</th><th>Vehículo</th><th>Chofer</th><th>Paradas</th><th>Km</th><th>Litros</th><th>Costo</th></tr>'+filasDet+'</table>'
+
+   +(filasCho?('<h2>3. Actividad por chofer</h2>'
+   +'<table><tr><th>Chofer</th><th>Recorridos</th><th>Km</th><th>Costo</th></tr>'+filasCho+'</table>'):'')
+
+   +(filasSC?('<h2>4. Costo logístico por Solicitud de Compra</h2>'
+   +'<p style="font-size:9.5pt;color:#555">Costo del retiro atribuido a cada solicitud, repartiendo el costo de cada recorrido entre sus paradas.</p>'
+   +'<table><tr><th>N° SC</th><th>Costo de retiro</th></tr>'+filasSC+'</table>'):'')
+
+   +'<h2>'+(filasSC?'5':'4')+'. Criterio de cálculo</h2>'
+   +'<p style="font-size:9.5pt">El costo de cada recorrido se compone de: <b>combustible</b> (litros consumidos por el precio del gasoil), '
+   +'<b>tiempo del chofer</b> (minutos reales por el valor hora) y <b>desgaste del vehículo</b> (kilómetros por el costo por km). '
+   +'Los litros se calculan con los niveles de tanque declarados al salir y al regresar, más las cargas realizadas durante el viaje.</p>'
+   +'<div style="margin-top:30px;font-size:9pt;color:#888;border-top:1px solid #ddd;padding-top:8px">'
+   +'Nielsen Logística y Expediciones S.A. · Informe generado automáticamente desde el Control de Recorridos</div>'
+   +'</body></html>';
+
+  const blob=new Blob(['\ufeff'+html],{type:'application/msword'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='Informe_Recorridos_'+_anArchivo()+'.doc'; a.click();
+  if(typeof toast==='function') toast('📄 Informe generado');
+}
+
 function renderAnalisis(){
   _cstRestaurar();
-  const lista=_histFiltrado();
+  _anPoblar();
+  const lista=_anFiltrado();
+  const res=document.getElementById('an-resumen');
+  if(res) res.textContent = _anPeriodoTexto()+' · '+lista.length+' recorrido(s)';
   // KPIs generales del análisis
   const k=document.getElementById('kpis-analisis');
   if(k){
@@ -1806,9 +2133,35 @@ function cargarDatosChofer(id){
   openModal('✏️ Cargar datos — '+(r.fecha||''), `
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Completá los datos reales del recorrido. Se guardan en la nube.</div>
 
+    ${(r.programado || !r.vehiculo || r.vehiculo==='-' || !r.chofer || r.chofer==='-') ? `
+    <div style="padding:9px 12px;background:rgba(62,124,177,.12);border:1px solid rgba(62,124,177,.4);border-radius:8px;font-size:11.5px;color:#7cc4ff;margin-bottom:12px">
+      📅 Recorrido programado: completá acá la movilidad, el chofer y los datos de salida.
+    </div>
+    <div class="row">
+      <div><label>Movilidad (vehículo)</label><select id="cd-veh">${
+        '<option value="">— Elegí —</option>' + (DB.vehiculos||[]).map(v=>
+          '<option value="'+v.id+'"'+((r.vehiculo||'').indexOf(v.patente)>=0?' selected':'')+'>'+v.patente+' — '+v.desc+'</option>').join('')
+      }</select></div>
+      <div><label>Chofer</label><select id="cd-cho">${
+        '<option value="">— Elegí —</option>' + (DB.choferes||[]).map(c=>
+          '<option value="'+c.id+'"'+((r.chofer||'')===c.nombre?' selected':'')+'>'+c.nombre+'</option>').join('')
+      }</select></div>
+    </div>` : ''}
+
     <div class="row">
       <div><label>Hora de salida</label><input type="time" id="cd-salida" value="${r.salida||''}"></div>
       <div><label>Hora de regreso</label><input type="time" id="cd-regreso" value="${r.regreso||''}"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div><label>Nivel combustible inicial</label>
+        <select id="cd-nivel-ini">
+          <option value="">— Elegí el nivel —</option>
+          <option value="0.25" ${r.nivelCombIni==0.25?'selected':''}>1/4 de tanque</option>
+          <option value="0.5" ${r.nivelCombIni==0.5?'selected':''}>1/2 tanque</option>
+          <option value="0.75" ${r.nivelCombIni==0.75?'selected':''}>3/4 de tanque</option>
+          <option value="1" ${r.nivelCombIni==1?'selected':''}>Tanque lleno (FULL)</option>
+        </select></div>
+      <div></div>
     </div>
 
     <div style="margin-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or,#E8611A)">Arribo real a cada proveedor</div>
@@ -1847,6 +2200,19 @@ function _guardarDatosChofer(){
   r.realKm = (r.kmIni!=null && r.kmFin!=null && r.kmFin>=r.kmIni) ? (r.kmFin - r.kmIni) : (r.realKm||null);
   r.realLitros = +g('cd-litros').value || null;
   const _nf = g('cd-nivel-fin'); r.nivelCombFin = _nf && _nf.value ? +_nf.value : null;
+  const _ni = g('cd-nivel-ini'); if(_ni && _ni.value) r.nivelCombIni = +_ni.value;
+  // Movilidad y chofer (recorridos programados)
+  const _cv = g('cd-veh');
+  if(_cv && _cv.value){
+    const v=(DB.vehiculos||[]).find(x=>x.id===_cv.value);
+    if(v){ r.vehiculo = v.patente+' '+v.desc; r.tanqueL = v.tanque||r.tanqueL||null; }
+  }
+  const _cc = g('cd-cho');
+  if(_cc && _cc.value){
+    const c=(DB.choferes||[]).find(x=>x.id===_cc.value);
+    if(c) r.chofer = c.nombre;
+  }
+  if(r.programado && r.vehiculo && r.vehiculo!=='-' && r.salida) r.programado = false;   // pasa a recorrido en curso
   r.realMin = minutosEntre(r.salida, r.regreso);
   // Solo se considera COMPLETADO cuando hay hora de regreso cargada.
   r.estado = r.regreso ? 'COMPLETADO' : 'EN_CURSO';
@@ -2691,11 +3057,15 @@ function delCho(id){ if(!esEditor()){ alert('🔒 Activá el Modo Editor para el
 /* ============================ TABS ============================ */
 function switchTab(name){
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+  // 'programado' usa la MISMA pantalla de planificación, en otro modo
+  const vista = (name==='programado') ? 'recorrido' : name;
   ['recorrido','historial','analisis','proveedores','vehiculos','choferes'].forEach(t=>{
     const el=document.getElementById('tab-'+t);
-    if(el) el.style.display = (t===name)?'block':'none';
+    if(el) el.style.display = (t===vista)?'block':'none';
   });
-  if(name==='recorrido' && map) setTimeout(()=>map.invalidateSize(),100);
+  _modoProgramado = (name==='programado');
+  _aplicarModoProgramado();
+  if(vista==='recorrido' && map) setTimeout(()=>map.invalidateSize(),100);
   if(name==='historial') renderHistorial();
   if(name==='analisis') renderAnalisis();
 }
