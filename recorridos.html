@@ -444,7 +444,7 @@
             style="width:100%;padding:10px 12px 10px 36px;border:1px solid var(--border,#2f3546);border-radius:9px;background:var(--s2,#222736);color:var(--text,#e9ebf0);font-size:14px;font-family:inherit">
         </div>
         <table id="tabla-prov">
-          <thead><tr><th>Proveedor</th><th>Rubro</th><th>Dirección</th><th>Horario de atención</th><th>Coordenadas</th><th></th></tr></thead>
+          <thead><tr><th>Proveedor</th><th>Rubro</th><th>Dirección</th><th>Horario de atención</th><th>Atención</th><th>Coordenadas</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -1091,9 +1091,15 @@ function vehSel(){ return DB.vehiculos.find(v=>v.id===document.getElementById('s
 function calcEstimado(){
   const c=cfg(), v=vehSel();
   const km = distanciaRuta();
-  const paradas = ruta.filter(s=>s.tipo==='prov').length;
+  const provs = ruta.filter(s=>s.tipo==='prov');
+  const paradas = provs.length;
   const minViaje = c.vel>0 ? (km/c.vel)*60 : 0;
-  const minParadas = paradas*c.parada;
+  // Cada proveedor puede tener su propio tiempo de atención; si no, se usa el general
+  const minParadas = provs.reduce((a,s)=>{
+    const p=(DB.proveedores||[]).find(x=>x.id===s.id);
+    const t=(s.tAtencion || (p&&p.tAtencion) || 0);
+    return a + (t>0 ? t : c.parada);
+  },0);
   const minTot = minViaje+minParadas;
   const litros = v ? km*(v.consumo/100) : 0;
   const costo = litros*c.precio;
@@ -1193,7 +1199,7 @@ function addParada(pid){
   if(ruta.some(s=>s.id===pid)) return;
   // Insertar la parada ANTES del punto final (si existe), para que el fin quede siempre último
   const finIdx = ruta.findIndex(s=>s.tipo==='fin');
-  const nueva = {id:p.id, tipo:'prov', nombre:p.nombre, dir:p.dir, lat:p.lat, lng:p.lng, arribo:'', hm1:p.hm1,hm2:p.hm2,ht1:p.ht1,ht2:p.ht2};
+  const nueva = {id:p.id, tipo:'prov', nombre:p.nombre, dir:p.dir, lat:p.lat, lng:p.lng, arribo:'', hm1:p.hm1,hm2:p.hm2,ht1:p.ht1,ht2:p.ht2, tAtencion:p.tAtencion||0};
   if(finIdx>=0) ruta.splice(finIdx, 0, nueva); else ruta.push(nueva);
   rebuildRutaBase();   // reordena: base al inicio, fin al final
   save(); renderAgenda(); drawMap(); updateEstimado();
@@ -1338,7 +1344,7 @@ function guardarRecorrido(){
     // Guardar la ruta COMPLETA (con coords, horarios, SC asignada, ítems y adjuntos)
     paradas:provs.map(p=>({
       id:p.id, nombre:p.nombre, dir:p.dir||'', lat:p.lat, lng:p.lng,
-      arribo:p.arribo||'', hm1:p.hm1||'',hm2:p.hm2||'',ht1:p.ht1||'',ht2:p.ht2||'',corrido:!!p.corrido,
+      arribo:p.arribo||'', hm1:p.hm1||'',hm2:p.hm2||'',ht1:p.ht1||'',ht2:p.ht2||'',corrido:!!p.corrido, tAtencion:p.tAtencion||0,
       scNum:p.scNum||'', scItems:p.scItems||[], scs:_paradaScs(p), adjuntos:p.adjuntos||[]
     })),
     base:{ nombre:DB.base?.nombre||'', lat:DB.base?.lat, lng:DB.base?.lng },
@@ -1540,6 +1546,7 @@ function renderHistorial(){
         <td style="white-space:nowrap">
           <button class="btn sm" onclick="cargarDatosChofer('${r.id}')" title="Cargar datos reales del recorrido" style="background:#2f9e6b">✏️</button>
           <button class="btn gray sm" onclick="consultarRecorrido('${r.id}')" title="Ver detalle completo">👁</button>
+          <button class="btn gray sm" onclick="editarRecorridoCompleto('${r.id}')" title="Editar todos los datos" style="${esEditor()?'':'display:none'}">✎</button>
           <button class="btn danger sm" onclick="delRec('${r.id}')" title="Eliminar" style="${esEditor()?'':'display:none'}">✕</button>
         </td>
       </tr>`;
@@ -2302,7 +2309,12 @@ function consultarRecorrido(id){
           p.desvio ? '<span class="pill" style="background:#eab308;color:#1a1a1a;font-size:10px;margin-left:4px">↩️ desvío</span>'
           : (p.extra?'<span class="pill" style="background:#3e7cb1;color:#fff;font-size:10px;margin-left:4px">➕ fuera del plan</span>':'')}</span>
         ${p.arribo?`<span class="pill ok">arribo ${p.arribo}</span>`:'<span class="muted" style="font-size:11px">sin arribo</span>'}
-        ${esEditor()?`<button class="btn danger sm" onclick="quitarParadaRec('${r.id}','${p.id}')" title="Quitar este proveedor del recorrido" style="padding:2px 8px;font-size:11px;flex:none">✕</button>`:''}
+        ${esEditor()?`
+          <button class="btn ghost sm" onclick="moverParadaRec('${r.id}','${p.id}',-1)" title="Subir" style="padding:2px 7px;font-size:11px;flex:none">▲</button>
+          <button class="btn ghost sm" onclick="moverParadaRec('${r.id}','${p.id}',1)" title="Bajar" style="padding:2px 7px;font-size:11px;flex:none">▼</button>
+          <button class="btn ghost sm" onclick="reubicarParadaRec('${r.id}','${p.id}')" title="Mover a una posición concreta" style="padding:2px 7px;font-size:11px;flex:none">⇅</button>
+          <button class="btn sm" onclick="abrirParadaHist('${r.id}','${p.id}')" title="Asignar SC o adjuntar documentos" style="background:#3e7cb1;padding:2px 8px;font-size:11px;flex:none">📎</button>
+          <button class="btn danger sm" onclick="quitarParadaRec('${r.id}','${p.id}')" title="Quitar del recorrido" style="padding:2px 8px;font-size:11px;flex:none">✕</button>`:''}
       </div>
       ${p.dir?`<div style="font-size:11px;color:var(--muted);margin-left:32px">${_escRec(p.dir)}</div>`:''}
       <div style="margin-left:32px">${extra}</div>
@@ -2403,6 +2415,151 @@ function _armarTextoRecorrido(r){
   return t;
 }
 // Abre la navegación del recorrido en Google Maps (ruta por calles con waypoints)
+// ══ MODO EDITOR: reordenar paradas de un recorrido guardado ══
+async function moverParadaRec(recId, paradaId, dir){
+  if(!esEditor()){ alert('🔒 Activá el Modo Editor para reordenar.'); return; }
+  const r=DB.historial.find(x=>x.id===recId); if(!r||!r.paradas) return;
+  const i=r.paradas.findIndex(p=>p.id===paradaId);
+  const j=i+dir;
+  if(i<0 || j<0 || j>=r.paradas.length) return;
+  const t=r.paradas[i]; r.paradas[i]=r.paradas[j]; r.paradas[j]=t;
+  await guardarRecorridoItem(r);
+  renderHistorial(); consultarRecorrido(recId);
+}
+// Mover a una posición concreta (para reubicar un agregado que quedó al final)
+async function reubicarParadaRec(recId, paradaId){
+  if(!esEditor()){ alert('🔒 Activá el Modo Editor para reordenar.'); return; }
+  const r=DB.historial.find(x=>x.id===recId); if(!r||!r.paradas) return;
+  const i=r.paradas.findIndex(p=>p.id===paradaId); if(i<0) return;
+  const total=r.paradas.length;
+  const txt=prompt('¿En qué posición querés ubicar "'+r.paradas[i].nombre+'"?\n\nEscribí un número del 1 al '+total+'.', String(i+1));
+  if(txt===null) return;
+  let pos=parseInt(txt,10);
+  if(isNaN(pos)||pos<1||pos>total){ alert('Poné un número entre 1 y '+total+'.'); return; }
+  const p=r.paradas.splice(i,1)[0];
+  r.paradas.splice(pos-1,0,p);
+  await guardarRecorridoItem(r);
+  renderHistorial(); consultarRecorrido(recId);
+  if(typeof toast!=='undefined'&&toast) toast('Parada reubicada en la posición '+pos);
+}
+
+// ══ MODO EDITOR: asignar SC / adjuntar documentos a una parada YA guardada ══
+let _phRecId=null;
+async function abrirParadaHist(recId, paradaId){
+  if(!esEditor()){ alert('🔒 Activá el Modo Editor para modificar las paradas.'); return; }
+  const r=DB.historial.find(x=>x.id===recId); if(!r) return;
+  const p=(r.paradas||[]).find(x=>x.id===paradaId); if(!p) return;
+  _phRecId=recId; _pdParadaId=paradaId; _pdContextoHist=true;
+  openModal('📎 '+_escRec(p.nombre), `
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn sm" id="ph-tab-sc" onclick="_phTab('sc')" style="background:var(--or,#E8611A)">📋 Solicitud de Compra</button>
+      <button class="btn sm" id="ph-tab-adj" onclick="_phTab('adj')" style="background:var(--s3,#2a251e)">📎 Documentos adjuntos</button>
+    </div>
+    <div id="pd-sc"></div>
+    <div id="pd-adj" style="display:none"></div>`, null);
+  _phTab('sc');
+}
+function _phTab(t){
+  const a=document.getElementById('ph-tab-sc'), b=document.getElementById('ph-tab-adj');
+  const sc=document.getElementById('pd-sc'), ad=document.getElementById('pd-adj');
+  if(a) a.style.background = t==='sc' ? 'var(--or,#E8611A)' : 'var(--s3,#2a251e)';
+  if(b) b.style.background = t==='adj' ? 'var(--or,#E8611A)' : 'var(--s3,#2a251e)';
+  if(sc) sc.style.display = t==='sc' ? '' : 'none';
+  if(ad) ad.style.display = t==='adj' ? '' : 'none';
+  if(t==='sc') renderParadaSC(); else renderParadaAdj();
+}
+
+// ══ MODO EDITOR: editar TODOS los datos del recorrido ══
+function editarRecorridoCompleto(id){
+  if(!esEditor()){ alert('🔒 Activá el Modo Editor para editar.'); return; }
+  const r=DB.historial.find(x=>x.id===id); if(!r) return;
+  const optV='<option value="">— Sin asignar —</option>'+(DB.vehiculos||[]).map(v=>
+    '<option value="'+v.id+'"'+(String(r.vehiculo||'').indexOf(v.patente)>=0?' selected':'')+'>'+_escRec(v.patente+' — '+v.desc)+'</option>').join('');
+  const optC='<option value="">— Sin asignar —</option>'+(DB.choferes||[]).map(c=>
+    '<option value="'+c.id+'"'+((r.chofer||'')===c.nombre?' selected':'')+'>'+_escRec(c.nombre)+'</option>').join('');
+  const nv=(v)=>v==null?'':v;
+  openModal('✎ Editar recorrido '+(r.codigo||''), `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Modo Editor: podés corregir cualquier dato del recorrido.</div>
+    <div class="row">
+      <div><label style="margin-top:0">Código</label><input type="text" id="er-cod" value="${_escRec(r.codigo||'')}"></div>
+      <div><label style="margin-top:0">Fecha</label><input type="date" id="er-fecha" value="${r.fecha||''}"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div><label style="margin-top:0">Vehículo</label><select id="er-veh">${optV}</select></div>
+      <div><label style="margin-top:0">Chofer</label><select id="er-cho">${optC}</select></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div><label style="margin-top:0">Hora de salida</label><input type="time" id="er-salida" value="${r.salida||''}"></div>
+      <div><label style="margin-top:0">Hora de regreso</label><input type="time" id="er-regreso" value="${r.regreso||''}"></div>
+    </div>
+
+    <div style="margin-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--or,#E8611A)">Estimado</div>
+    <div class="row" style="margin-top:6px">
+      <div><label style="margin-top:0">Km estimados</label><input type="number" step="0.1" id="er-estkm" value="${nv(r.estKm)}"></div>
+      <div><label style="margin-top:0">Tiempo estimado (min)</label><input type="number" id="er-estmin" value="${nv(r.estMin)}"></div>
+      <div><label style="margin-top:0">Litros estimados</label><input type="number" step="0.1" id="er-estlit" value="${nv(r.estLitros)}"></div>
+    </div>
+
+    <div style="margin-top:14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#22c55e">Real</div>
+    <div class="row" style="margin-top:6px">
+      <div><label style="margin-top:0">Km inicial</label><input type="number" id="er-kmini" value="${nv(r.kmIni)}"></div>
+      <div><label style="margin-top:0">Km final</label><input type="number" id="er-kmfin" value="${nv(r.kmFin)}"></div>
+      <div><label style="margin-top:0">Km reales</label><input type="number" step="0.1" id="er-realkm" value="${nv(r.realKm)}"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div><label style="margin-top:0">Tiempo real (min)</label><input type="number" id="er-realmin" value="${nv(r.realMin)}"></div>
+      <div><label style="margin-top:0">Litros cargados</label><input type="number" step="0.1" id="er-reallit" value="${nv(r.realLitros)}"></div>
+      <div><label style="margin-top:0">Estado</label><select id="er-estado">
+        ${['ENVIADO','EN_CURSO','COMPLETADO'].map(e=>'<option value="'+e+'"'+((r.estado||'')===e?' selected':'')+'>'+e.replace('_',' ')+'</option>').join('')}
+      </select></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div><label style="margin-top:0">Nivel combustible inicial</label><select id="er-nivini">
+        ${['','0.25','0.5','0.75','1'].map(v=>'<option value="'+v+'"'+((r.nivelCombIni==v&&v!=='')?' selected':'')+'>'+(v===''?'— Sin dato —':(v==='1'?'FULL':v==='0.25'?'1/4':v==='0.5'?'1/2':'3/4'))+'</option>').join('')}
+      </select></div>
+      <div><label style="margin-top:0">Nivel combustible final</label><select id="er-nivfin">
+        ${['','0.25','0.5','0.75','1'].map(v=>'<option value="'+v+'"'+((r.nivelCombFin==v&&v!=='')?' selected':'')+'>'+(v===''?'— Sin dato —':(v==='1'?'FULL':v==='0.25'?'1/4':v==='0.5'?'1/2':'3/4'))+'</option>').join('')}
+      </select></div>
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:8px">Las paradas se reordenan y editan desde el detalle del recorrido (👁).</div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn" onclick="closeModal()" style="background:var(--s3,#2a251e);margin-right:6px">Cancelar</button>
+      <button class="btn" onclick="_guardarRecorridoCompleto('${id}')" style="background:#2f9e6b">✔ Guardar cambios</button>
+    </div>`, null);
+}
+
+async function _guardarRecorridoCompleto(id){
+  const r=DB.historial.find(x=>x.id===id); if(!r) return;
+  const g=i=>document.getElementById(i);
+  const num=i=>{ const v=(g(i)||{}).value; return v===''||v==null?null:+v; };
+  const cod=String((g('er-cod')||{}).value||'').trim().toUpperCase();
+  if(!cod){ alert('El código no puede quedar vacío.'); return; }
+  const dup=DB.historial.find(x=>x.id!==id && String(x.codigo||'').toUpperCase()===cod);
+  if(dup && !confirm('⚠️ Ya existe otro recorrido con el código '+cod+'.\n\n¿Guardar igual?')) return;
+
+  r.codigo=cod;
+  r.fecha=(g('er-fecha')||{}).value||r.fecha;
+  const v=(DB.vehiculos||[]).find(x=>x.id===(g('er-veh')||{}).value);
+  r.vehiculo = v ? (v.patente+' '+v.desc) : '-';
+  if(v) r.tanqueL = v.tanque||r.tanqueL||null;
+  const c=(DB.choferes||[]).find(x=>x.id===(g('er-cho')||{}).value);
+  r.chofer = c ? c.nombre : '-';
+  r.salida=(g('er-salida')||{}).value||'';
+  r.regreso=(g('er-regreso')||{}).value||'';
+  r.estKm=num('er-estkm'); r.estMin=num('er-estmin'); r.estLitros=num('er-estlit');
+  r.kmIni=num('er-kmini'); r.kmFin=num('er-kmfin');
+  r.realKm=num('er-realkm'); r.realMin=num('er-realmin'); r.realLitros=num('er-reallit');
+  const ni=(g('er-nivini')||{}).value, nf=(g('er-nivfin')||{}).value;
+  r.nivelCombIni = ni===''?null:+ni;
+  r.nivelCombFin = nf===''?null:+nf;
+  r.estado=(g('er-estado')||{}).value||r.estado;
+  if(r.vehiculo && r.vehiculo!=='-' && r.salida) r.programado=false;
+  r.actualizado=new Date().toISOString();
+  await guardarRecorridoItem(r);
+  renderHistorial(); closeModal();
+  if(typeof toast!=='undefined'&&toast) toast('✔ Recorrido actualizado');
+}
+
 // ══ MODO EDITOR: editar el código del recorrido ══
 async function editarCodigoRec(id){
   if(!esEditor()){ alert('🔒 Activá el Modo Editor para modificar el código.'); return; }
@@ -2811,6 +2968,7 @@ function renderProv(){
   tb.innerHTML = lista.map(p=>`<tr>
     <td><b>${p.nombre}</b></td><td><span class="tag">${p.rubro}</span></td><td>${p.dir||''}</td>
     <td class="muted">${horarioTxt(p)||'—'}</td>
+    <td class="muted" style="text-align:center">${p.tAtencion?(p.tAtencion+' min'):'<span style="opacity:.5">—</span>'}</td>
     <td class="muted">${p.lat!=null?`${p.lat}, ${p.lng}`:'<span style="color:#fca5a5">sin ubicar</span>'}</td>
     <td style="white-space:nowrap">
       <button class="btn ghost sm" onclick="pickCoord('${p.id}')" style="${esEditor()?'':'display:none'}">📍 Mapa</button>
@@ -2839,9 +2997,17 @@ async function _cargarSCs(){
     return _scCache;
   }catch(e){ console.warn('cargar SCs', e); return null; }
 }
-function _paradaById(id){ return ruta.find(s=>s.id===id); }
+let _pdContextoHist=false;   // true cuando se edita una parada de un recorrido guardado
+function _paradaById(id){
+  if(_pdContextoHist && _phRecId){
+    const r=DB.historial.find(x=>x.id===_phRecId);
+    if(r && r.paradas){ const p=r.paradas.find(s=>s.id===id); if(p) return p; }
+  }
+  return ruta.find(s=>s.id===id);
+}
 
 async function abrirParadaDetalle(pid){
+  _pdContextoHist=false;
   const s=_paradaById(pid); if(!s) return;
   if(!s.adjuntos) s.adjuntos=[];
   if(!s.scItems) s.scItems=[];
@@ -2964,6 +3130,16 @@ function _toggleScItem(num, item, on){
   _syncParadaSCLegacy(s);
 }
 function _guardarParada(){
+  if(_pdContextoHist && _phRecId){
+    const r=DB.historial.find(x=>x.id===_phRecId);
+    if(r){ guardarRecorridoItem(r); renderHistorial(); }
+    _pdContextoHist=false;
+    closeModal();
+    if(_phRecId) consultarRecorrido(_phRecId);
+    if(typeof toast!=='undefined'&&toast) toast('✔ Parada actualizada');
+    return;
+  }
+
   save(); renderAgenda(); drawMap(); closeModal();
   if(typeof toast==='undefined'){} else toast&&toast('Guardado');
 }
@@ -3090,6 +3266,9 @@ function editProv(id){
     <label>Nombre</label><input type="text" id="m-nom" value="${p.nombre}">
     <label>Rubro</label><input type="text" id="m-rub" value="${p.rub||p.rubro||''}">
     <label>Dirección</label><input type="text" id="m-dir" value="${p.dir||''}">
+    <label>Tiempo promedio de atención (minutos)</label>
+    <input type="number" id="m-tatencion" min="0" max="240" value="${p.tAtencion||''}" placeholder="Dejar vacío para usar el valor general">
+    <div class="muted" style="font-size:11px;margin-top:3px">Cuánto demora habitualmente este proveedor en atender. Mejora la precisión del tiempo estimado del recorrido.</div>
 
     <label style="display:flex;align-items:center;gap:9px;margin-top:12px;cursor:pointer;font-weight:600">
       <input type="checkbox" id="m-corrido" ${esCorrido?'checked':''} onchange="_toggleCorrido()" style="width:17px;height:17px;flex:none;cursor:pointer">
@@ -3124,7 +3303,7 @@ function editProv(id){
     }
     const o={nombre:mval('m-nom'),rubro:mval('m-rub'),dir:mval('m-dir'),
       corrido:!!corrido, hm1,hm2,ht1,ht2,
-      lat:mval('m-lat')?+mval('m-lat'):null, lng:mval('m-lng')?+mval('m-lng'):null};
+      lat:mval('m-lat')?+mval('m-lat'):null, lng:mval('m-lng')?+mval('m-lng'):null, tAtencion:+mval('m-tatencion')||0};
     if(!o.nombre){ alert('Poné un nombre'); return; }
     if(id) Object.assign(p,o); else DB.proveedores.push({id:uid(),...o});
     // reflejar horario en paradas ya agregadas
