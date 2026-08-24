@@ -13075,7 +13075,7 @@ function _lcToggleSel(id,on){ if(on) _lcSel[id]=true; else delete _lcSel[id]; _l
 function toggleTodos(on){
   if(!current||!current.listaItems) return;
   _lcSel={};
-  if(on) current.listaItems.filter(x=>!x.asignadoA).forEach(x=>_lcSel[x.id]=true);
+  if(on) current.listaItems.forEach(x=>_lcSel[x.id]=true);
   renderListaCompleta();
 }
 function _lcUpdateBar(){
@@ -13085,6 +13085,22 @@ function _lcUpdateBar(){
   const c=document.getElementById('lc-selcount');
   if(c) c.textContent = n+' seleccionado'+(n===1?'':'s');
 }
+// Quita del rubro el material que corresponde a un ítem reasignado
+function _lcQuitarDeRubro(rubro, texto){
+  const r=current.rubros&&current.rubros[rubro];
+  if(!r||!r.items) return;
+  const i=r.items.findIndex(x=>String(x.desc||'').trim()===String(texto||'').trim());
+  if(i>=0) r.items.splice(i,1);
+}
+// Quita la asignación y devuelve el ítem a la lista sin rubro
+function _lcDesasignar(id){
+  if(!current||!current.listaItems) return;
+  const it=current.listaItems.find(x=>x.id===id); if(!it||!it.asignadoA) return;
+  _lcQuitarDeRubro(it.asignadoA, it.texto);
+  it.asignadoA=null;
+  save(); renderListaCompleta(); renderRubroTabs(); renderRubro(); renderTotal();
+  if(typeof toast==='function') toast('Ítem devuelto a la lista sin rubro');
+}
 function asignarSeleccionados(){
   if(!current) return;
   const rubro=document.getElementById('lc-rubro-sel').value;
@@ -13093,19 +13109,29 @@ function asignarSeleccionados(){
   if(!current.rubros[rubro].items) current.rubros[rubro].items=[];
   const ids=Object.keys(_lcSel);
   if(!ids.length) return;
-  let movidos=0;
+  let movidos=0, reasignados=0;
   ids.forEach(id=>{
     const it=current.listaItems.find(x=>x.id===id);
-    if(it && !it.asignadoA){
-      // Crear el material en el rubro (descripción = texto; cantidades a completar luego)
-      current.rubros[rubro].items.push({ desc:it.texto, cant:'', unidad:'', precio:'', moneda:'ARS' });
-      it.asignadoA=rubro;
+    if(!it) return;
+    if(it.asignadoA===rubro) return;                 // ya está en ese rubro
+    if(it.asignadoA){
+      // REASIGNAR: sacarlo del rubro anterior y llevarlo al nuevo
+      _lcQuitarDeRubro(it.asignadoA, it.texto);
+      reasignados++;
+    } else {
       movidos++;
     }
+    current.rubros[rubro].items.push({ desc:it.texto, cant:'', unidad:'', precio:'', moneda:'ARS' });
+    it.asignadoA=rubro;
   });
   _lcSel={};
   save(); renderListaCompleta(); renderRubroTabs(); renderRubro(); renderTotal();
-  if(typeof toast==='function') toast('📥 '+movidos+' ítem(s) enviados al rubro "'+rubro+'"');
+  if(typeof toast==='function'){
+    const partes=[];
+    if(movidos) partes.push(movidos+' enviado(s)');
+    if(reasignados) partes.push(reasignados+' reasignado(s)');
+    toast('📥 '+(partes.join(' · ')||'sin cambios')+' → rubro "'+rubro+'"');
+  }
 }
 function renderListaCompleta(){
   const cont=document.getElementById('lc-content'); if(!cont||!current) return;
@@ -13134,13 +13160,13 @@ function renderListaCompleta(){
       <div style="border:1px solid var(--border);border-radius:9px;overflow:hidden">`;
     lista.forEach(it=>{
       const asignado=!!it.asignadoA;
-      html+=`<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);${asignado?'opacity:.6;background:var(--s2)':''}">
-        ${asignado?'<span style="width:17px;text-align:center">✓</span>'
-          :`<input type="checkbox" ${_lcSel[it.id]?'checked':''} onchange="PROY._lcToggleSel('${it.id}',this.checked)" style="width:16px;height:16px;flex:none;cursor:pointer">`}
+      html+=`<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);${asignado?'background:rgba(34,197,94,.05)':''}">
+        <input type="checkbox" ${_lcSel[it.id]?'checked':''} onchange="PROY._lcToggleSel('${it.id}',this.checked)" style="width:16px;height:16px;flex:none;cursor:pointer" title="${asignado?'Seleccionar para reasignar a otro rubro':'Seleccionar para asignar'}">
         <span style="flex:1;font-size:13px;color:var(--text)">${_proyEsc(it.texto)}</span>
-        ${asignado?`<span style="font-size:11px;color:#22c55e;font-weight:600;white-space:nowrap">→ ${_proyEsc(it.asignadoA)}</span>`
+        ${asignado?`<span style="font-size:11px;color:#22c55e;font-weight:600;white-space:nowrap">→ ${_proyEsc(it.asignadoA)}</span>
+          <button onclick="PROY._lcDesasignar('${it.id}')" title="Quitar del rubro y devolverlo a la lista" style="background:none;border:none;color:#eab308;cursor:pointer;font-size:13px;white-space:nowrap">↩</button>`
           :'<span style="font-size:11px;color:var(--muted);white-space:nowrap">sin asignar</span>'}
-        <button onclick="PROY._lcDel('${it.id}')" title="Quitar" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px">✕</button>
+        <button onclick="PROY._lcDel('${it.id}')" title="Quitar de la lista" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px">✕</button>
       </div>`;
     });
     html+='</div></div>';
@@ -13192,8 +13218,13 @@ function renderRubro(){
     </tr>`;
   }).join('');
   const rowsCot=cotiz.map((c,i)=>{
-    const embed=c.data?`<span class="tag-embed si">GUARDADO</span>`:`<span class="tag-embed ref">REFERENCIA</span>`;
-    const link=c.data?`<a class="btn-ghost btn-xs" href="${c.data}" download="${_proyEsc(c.file)}" title="Descargar">⬇</a>`:'';
+    const dest = c.url || c.data || '';
+    const embed = c.url
+      ? `<span class="tag-embed si" style="background:rgba(34,197,94,.15);color:#22c55e">EN LA NUBE</span>`
+      : (c.data?`<span class="tag-embed si">GUARDADO</span>`:`<span class="tag-embed ref">SIN ARCHIVO</span>`);
+    const link = dest
+      ? `<a class="btn-ghost btn-xs" href="${dest}" target="_blank" rel="noopener" title="Abrir / descargar">⬇</a>`
+      : '';
     return `<tr>
       <td><span class="file-ico ${icoClass(extOf(c.file||''))}" style="display:inline-flex;width:26px;height:26px;font-size:8px;margin-right:6px;vertical-align:middle">${extOf(c.file||'').toUpperCase().slice(0,3)||'?'}</span>${_proyEsc(c.prov||'—')} ${embed}<div class="fs muted" style="font-size:11px">${_proyEsc(c.file||'')} ${c.size?'· '+fmtBytes(c.size):''}</div></td>
       <td class="num" style="width:120px"><input class="num" style="text-align:right" type="number" value="${c.monto||''}" placeholder="0" onchange="PROY.upCot(${i},'monto',this.value)"></td>
@@ -13237,16 +13268,60 @@ function upItem(i,k,v){current.rubros[curRubro].items[i][k]=v;save();renderRubro
 function delItem(i){current.rubros[curRubro].items.splice(i,1);save();renderRubro();renderRubroTabs();renderTotal()}
 function upCot(i,k,v){current.rubros[curRubro].cotiz[i][k]=v;save();renderRubro();renderTotal()}
 function delCot(i){current.rubros[curRubro].cotiz.splice(i,1);save();renderRubro();renderRubroTabs();renderTotal()}
-function handleCot(files){
-  [...files].forEach(f=>{
-    const ext=extOf(f.name);const rec={id:uid(),prov:'',file:f.name,size:f.size,monto:0,moneda:'ARS',data:null};
-    if(f.size<=MAX_EMBED&&EMBED_EXT.includes(ext)){
-      const rd=new FileReader();rd.onload=e=>{rec.data=e.target.result;save();renderRubro();renderRubroTabs()};rd.readAsDataURL(f);
+async function handleCot(files){
+  if(!current){ toast('Abrí un proyecto primero'); return; }
+  if(!curRubro || !current.rubros || !current.rubros[curRubro]){
+    toast('Elegí un rubro antes de adjuntar'); return;
+  }
+  const lista=[...files]; if(!lista.length) return;
+  const numProy = current.num || current.nombre || 'proyecto';
+
+  for(let i=0;i<lista.length;i++){
+    const f=lista[i];
+    const prov=prompt('Proveedor de la cotización "'+f.name+'":','');
+    if(prov===null) continue;                       // canceló este archivo
+    const montoTxt=prompt('Monto de la cotización (opcional):','');
+    const rec={ id:uid(), prov:prov||'', file:f.name, size:f.size,
+                monto:parseFloat(String(montoTxt||'').replace(/[^0-9.,]/g,'').replace(',','.'))||0,
+                moneda:'ARS', url:'', data:null };
+
+    toast('⏳ Subiendo '+f.name+'...');
+    const url = await _proySubirArchivo(f, 'proyectos/'+_slugProy(numProy)+'/cotizaciones/');
+    if(url){ rec.url=url; }
+    else {
+      // Sin Storage: guardar el archivo dentro del proyecto si es chico
+      if(f.size <= 1.5*1024*1024){
+        rec.data = await _proyLeerDataUrl(f).catch(()=>null);
+      }
+      if(!rec.url && !rec.data){
+        alert('⚠️ No se pudo guardar "'+f.name+'".\n\nRevisá el depósito de archivos con la herramienta de diagnóstico.');
+        continue;
+      }
     }
-    const prov=prompt('Proveedor de la cotización "'+f.name+'":','');rec.prov=prov||'';
-    current.rubros[curRubro].cotiz.push(rec);save();renderRubro();renderRubroTabs();renderTotal();
-  });
-  toast('Cotización adjuntada');
+    current.rubros[curRubro].cotiz.push(rec);
+    save(); renderRubro(); renderRubroTabs(); renderTotal();
+  }
+  toast('✅ Cotización adjuntada');
+}
+
+// Sube un archivo al depósito (mismo bucket que usan las SC) y devuelve su enlace
+async function _proySubirArchivo(file, carpeta){
+  try{
+    const path = carpeta + Date.now() + '_' + _slugProy(file.name);
+    const clean = path.split('/').map(encodeURIComponent).join('/');
+    const r = await fetch(_SB_URL + '/storage/v1/object/nielsen-archivos/' + clean, {
+      method:'POST',
+      headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, 'x-upsert':'true',
+                'Content-Type': file.type || 'application/octet-stream' },
+      body: file
+    });
+    if(!r.ok){ console.warn('subir cotización', r.status, await r.text().catch(()=> '')); return null; }
+    return _SB_URL + '/storage/v1/object/public/nielsen-archivos/' + clean;
+  }catch(e){ console.warn('subir cotización', e); return null; }
+}
+function _slugProy(n){ return String(n||'archivo').replace(/[^a-zA-Z0-9._-]/g,'_'); }
+function _proyLeerDataUrl(file){
+  return new Promise((res,rej)=>{ const rd=new FileReader(); rd.onload=e=>res(e.target.result); rd.onerror=rej; rd.readAsDataURL(file); });
 }
 
 /* =================== TOTAL GLOBAL =================== */
@@ -13553,6 +13628,22 @@ const EXPORT_CSS=`
   .ft{margin-top:18px;font-size:10px;color:#888;border-top:1px solid #eee;padding-top:8px}
   @media print{body{padding:0}}
 `;
+// Si el navegador bloquea las ventanas emergentes, imprime desde un marco oculto
+function _proyImprimirEnIframe(doc){
+  try{
+    const f=document.createElement('iframe');
+    f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0';
+    document.body.appendChild(f);
+    const d=f.contentWindow.document;
+    d.open(); d.write(doc.replace(/<scr'?\+?'?ipt>[\s\S]*?<\/script>/,'')); d.close();
+    setTimeout(()=>{
+      try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){}
+      setTimeout(()=>{ try{ document.body.removeChild(f); }catch(e){} }, 60000);
+    }, 900);
+  }catch(e){
+    if(typeof showToast==='function') showToast('Permití las ventanas emergentes para imprimir','error');
+  }
+}
 function doExport(fmt){
   const scope=document.getElementById('expScope').value;
   const d=buildExport(scope);
@@ -13566,10 +13657,29 @@ function doExport(fmt){
     setTimeout(()=>URL.revokeObjectURL(a.href),1500);
     toast('Excel generado');
   }else{
-    const w=window.open('','_blank');
-    w.document.write(`<html><head><meta charset="UTF-8"><title>Presupuesto ${current.num}</title><link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet"><style>${EXPORT_CSS}</style></head><body>${inner}<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`);
-    w.document.close();
-    toast('Abriendo vista PDF');
+    // Vista de impresión con barra propia: deja elegir impresora, guardar como PDF, etc.
+    const barra = '<div class="no-print" style="position:sticky;top:0;z-index:99;display:flex;gap:10px;align-items:center;'
+      + 'padding:10px 16px;background:#13161E;border-bottom:3px solid #E8611A;font-family:system-ui,sans-serif">'
+      + '<span style="color:#fff;font-weight:700;font-size:13px">Presupuesto ' + _proyEsc(current.num||'') + '</span>'
+      + '<button onclick="window.print()" style="margin-left:auto;padding:9px 18px;border:none;border-radius:8px;background:#E8611A;'
+      + 'color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🖨 Imprimir / Guardar PDF</button>'
+      + '<button onclick="window.close()" style="padding:9px 15px;border:1px solid #2f3546;border-radius:8px;background:#222736;'
+      + 'color:#e9ebf0;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Cerrar</button></div>';
+    const doc = '<html><head><meta charset="UTF-8"><title>Presupuesto ' + _proyEsc(current.num||'') + '</title>'
+      + '<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">'
+      + '<style>' + EXPORT_CSS + '@media print{.no-print{display:none !important}}</style></head><body>'
+      + barra + '<div style="padding:0 4px">' + inner + '</div>'
+      + '<scr'+'ipt>window.addEventListener("load",function(){setTimeout(function(){try{window.print()}catch(e){}},700)})<\/script>'
+      + '</body></html>';
+    const w = window.open('', '_blank');
+    if(w && w.document){
+      w.document.open(); w.document.write(doc); w.document.close();
+      toast('Vista de impresión abierta');
+    } else {
+      // Ventanas emergentes bloqueadas: imprimir desde un marco oculto
+      _proyImprimirEnIframe(doc);
+      toast('Preparando impresión...');
+    }
   }
 }
 
@@ -13715,7 +13825,7 @@ function verSCdesdeProyecto(numEnc){
   toast('Abrí la SC desde Compras › Historial de SC');
 }
 
-return {renderSCAsociadas:renderSCAsociadas, toggleSCPicker:toggleSCPicker, renderSCPicker:renderSCPicker, toggleSCEnProyecto:toggleSCEnProyecto, quitarSC:quitarSC, verSCdesdeProyecto:verSCdesdeProyecto, abrirEditorNums:abrirEditorNums, guardarNum:guardarNum, addItem:addItem, borrarEtapa:borrarEtapa, borrarRubro:borrarRubro, calHoy:calHoy, calMove:calMove, cambiarEstado:cambiarEstado, closeModal:closeModal, delCot:delCot, delItem:delItem, delPlano:delPlano, doExport:doExport, editarProyecto:editarProyecto, eliminarProyecto:eliminarProyecto, goList:goList, guardarEtapa:guardarEtapa, guardarProyecto:guardarProyecto, guardarRubro:guardarRubro, initProyectos:initProyectos, openCargarLista:openCargarLista, openDetail:openDetail, openEtapa:openEtapa, openExport:openExport, openNuevo:openNuevo, openRubro:openRubro, procesarLista:procesarLista, renderList:renderList, selRubro:selRubro, setTab:setTab, upCot:upCot, upItem:upItem, recargarLista:recargarLista, cargarListaPegada:cargarListaPegada, asignarSeleccionados:asignarSeleccionados, toggleTodos:toggleTodos, _lcToggleSel:_lcToggleSel, _lcDel:_lcDel};
+return {renderSCAsociadas:renderSCAsociadas, toggleSCPicker:toggleSCPicker, renderSCPicker:renderSCPicker, toggleSCEnProyecto:toggleSCEnProyecto, quitarSC:quitarSC, verSCdesdeProyecto:verSCdesdeProyecto, abrirEditorNums:abrirEditorNums, guardarNum:guardarNum, addItem:addItem, borrarEtapa:borrarEtapa, borrarRubro:borrarRubro, calHoy:calHoy, calMove:calMove, cambiarEstado:cambiarEstado, closeModal:closeModal, delCot:delCot, delItem:delItem, delPlano:delPlano, doExport:doExport, editarProyecto:editarProyecto, eliminarProyecto:eliminarProyecto, goList:goList, guardarEtapa:guardarEtapa, guardarProyecto:guardarProyecto, guardarRubro:guardarRubro, initProyectos:initProyectos, openCargarLista:openCargarLista, openDetail:openDetail, openEtapa:openEtapa, openExport:openExport, openNuevo:openNuevo, openRubro:openRubro, procesarLista:procesarLista, renderList:renderList, selRubro:selRubro, setTab:setTab, upCot:upCot, upItem:upItem, recargarLista:recargarLista, cargarListaPegada:cargarListaPegada, asignarSeleccionados:asignarSeleccionados, toggleTodos:toggleTodos, _lcToggleSel:_lcToggleSel, _lcDel:_lcDel, _lcDesasignar:_lcDesasignar};
 })();
 function initProyectos(){return window.PROY.initProyectos();}
 </script>
