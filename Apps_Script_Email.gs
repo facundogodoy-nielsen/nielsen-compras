@@ -37,9 +37,19 @@ function doGet(e) {
   if (p.a === 'reindex') return _htmlOut(_reindexarSC(p.sc));
   if (p.a === 'diag') return _htmlOut(_diagSC(p.sc));
   if (p.a === 'carpetas') return _htmlOut(_verCarpetas());
+  if (p.a === 'diagauth') return _htmlOut(_diagAutorizaciones());
   if (!p.t || !p.a) return _htmlOut(_pagina('Web App activa', 'El sistema de Compras de Nielsen está funcionando.', '#13161E'));
   var reg = _sbGetToken(p.t);
-  if (!reg) return _htmlOut(_pagina('Enlace no válido', 'Este enlace no corresponde a ninguna solicitud vigente.', '#dc2626'));
+  if (!reg) {
+    // Distinguir "la tabla no existe" de "el token no está"
+    var _tabla = _sbGet('ccp_autorizaciones?select=token&limit=1');
+    var _detalle = (_tabla === null)
+      ? 'El sistema de autorizaciones no está configurado en la base de datos. '
+        + 'Avisale a Compras: hay que ejecutar <b>SUPABASE_autorizaciones.sql</b> en Supabase y volver a solicitar la autorización.'
+      : 'Este enlace no corresponde a ninguna solicitud vigente. '
+        + 'Puede que la solicitud haya sido reemplazada por una más nueva. Pedile a Compras que la reenvíe.';
+    return _htmlOut(_pagina('Enlace no válido', _detalle, '#dc2626'));
+  }
   if (reg.decision && reg.decision !== 'PENDIENTE' && reg.decision !== 'STANDBY' && p.a !== 'standby') {
     return _htmlOut(_pagina('Ya registrada', 'Tu decisión sobre la CCP ' + reg.num_comp + ' ya fue registrada: <b>' + reg.decision + '</b>.', '#6b7280'));
   }
@@ -49,6 +59,30 @@ function doGet(e) {
   if (accion === 'standby')  return _htmlOut(_accionStandby(reg, p.d));
   return _htmlOut(_pagina('Acción desconocida', 'El enlace no es válido.', '#dc2626'));
 }
+// Diagnóstico: ¿está lista la tabla de autorizaciones?
+function _diagAutorizaciones(){
+  var filas = [];
+  var tabla = _sbGet('ccp_autorizaciones?select=token,num_comp,email,decision&order=creado_at.desc&limit=10');
+  if (tabla === null) {
+    return _pagina('❌ Falta configurar la base',
+      'La tabla <b>ccp_autorizaciones</b> no existe o no tiene permisos.<br><br>'
+      + '<b>Solución:</b> en Supabase → SQL Editor, ejecutá el archivo <b>SUPABASE_autorizaciones.sql</b> '
+      + '(viene en el ZIP del sistema). Después volvé a solicitar la autorización desde el Centro de Control.', '#dc2626');
+  }
+  var html = '<p>La tabla existe. Últimos enlaces generados:</p><table style="width:100%;border-collapse:collapse;font-size:13px">'
+    + '<tr><th style="text-align:left;padding:6px;border-bottom:2px solid #eee">CCP</th>'
+    + '<th style="text-align:left;padding:6px;border-bottom:2px solid #eee">Destinatario</th>'
+    + '<th style="text-align:left;padding:6px;border-bottom:2px solid #eee">Decisión</th></tr>';
+  if (!tabla.length) html += '<tr><td colspan="3" style="padding:10px;color:#888">Todavía no se generó ningún enlace.</td></tr>';
+  tabla.forEach(function(r){
+    html += '<tr><td style="padding:6px;border-bottom:1px solid #f0f0f0">' + _esc(r.num_comp||'') + '</td>'
+      + '<td style="padding:6px;border-bottom:1px solid #f0f0f0">' + _esc(r.email||'') + '</td>'
+      + '<td style="padding:6px;border-bottom:1px solid #f0f0f0">' + _esc(r.decision||'') + '</td></tr>';
+  });
+  html += '</table>';
+  return _pagina('✓ Sistema de autorizaciones', html, '#16a34a');
+}
+
 function _htmlOut(html){ return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); }
 
 function _accionAprobar(reg){
@@ -125,10 +159,19 @@ function _sbGet(path){
 }
 function _sbPost(table, body){
   try{
-    UrlFetchApp.fetch(SB_URL + '/rest/v1/' + table, { method:'post', contentType:'application/json',
+    var r = UrlFetchApp.fetch(SB_URL + '/rest/v1/' + table, { method:'post', contentType:'application/json',
       headers:{ apikey:SB_KEY, Authorization:'Bearer '+SB_KEY, Prefer:'return=minimal' },
       payload:JSON.stringify(body), muteHttpExceptions:true });
-  }catch(e){}
+    var cod = r.getResponseCode();
+    if (cod >= 300) {
+      Logger.log('SB POST ' + table + ' → ' + cod + ' ' + r.getContentText().slice(0,300));
+      return { ok:false, code:cod, msg:r.getContentText().slice(0,300) };
+    }
+    return { ok:true };
+  }catch(e){
+    Logger.log('SB POST ' + table + ' → ' + e);
+    return { ok:false, code:0, msg:String(e) };
+  }
 }
 function _sbPatchToken(token, body){
   try{
@@ -543,12 +586,27 @@ function _ccpAuth(p) {
     }
   } else {
     var cc = (p.copia||[]).map(function(x){ return x.email; }).join(',');
+    var errores = [];
     (p.aprobadores||[]).forEach(function(ap) {
       var token = Utilities.getUuid();
-      _sbPost('ccp_autorizaciones', {
+      var guardado = _sbPost('ccp_autorizaciones', {
         token: token, comp_id: String(p.comp_id), num_comp: p.num_comp || '',
         email: ap.email, nombre: ap.nombre || '', rol: 'APROBADOR', decision: 'PENDIENTE'
       });
+      // Si el token no se pudo registrar, los botones del correo NO funcionarían.
+      // Se avisa a Compras y no se envía el pedido a ese aprobador.
+      if (!guardado || !guardado.ok) {
+        errores.push(ap.email + ' → ' + ((guardado && guardado.msg) || 'no se pudo registrar el enlace'));
+        try {
+          GmailApp.sendEmail(REMITENTE_CC,
+            '⚠️ No se pudo enviar la autorización — CCP ' + (p.num_comp||''),
+            'No se pudo registrar el enlace de decisión para ' + ap.email + '.\n\n'
+            + 'Motivo: ' + ((guardado && guardado.msg) || 'desconocido') + '\n\n'
+            + 'Revisá que la tabla ccp_autorizaciones exista en Supabase '
+            + '(ejecutar SUPABASE_autorizaciones.sql) y volvé a solicitar la autorización.');
+        } catch(e2){}
+        return;   // no manda un correo con botones rotos
+      }
       var html = _tplCCPSolicitud(p, token, false);
       var opts = { name:NOMBRE_REMITENTE, htmlBody:html };
       if (pdf) opts.attachments = [pdf];
@@ -557,7 +615,7 @@ function _ccpAuth(p) {
       enviados.push(ap.email);
     });
   }
-  return ContentService.createTextOutput(JSON.stringify({ ok:true, enviados:enviados }))
+  return ContentService.createTextOutput(JSON.stringify({ ok:true, enviados:enviados, errores:(typeof errores!=='undefined'?errores:[]) }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
