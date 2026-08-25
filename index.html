@@ -4862,21 +4862,28 @@ const _comparativas = JSON.parse(localStorage.getItem('nielsen_comparativas')||'
 function _ccp_getUSDRate() {
   return parseFloat(localStorage.getItem('nielsen_usd_rate')||'0') || 1300;
 }
+// Monto a autorizar = el TOTAL DEL PROVEEDOR ADJUDICADO (con IVA).
+// (Antes calculaba un promedio entre las ofertas, lo que enviaba a autorizar
+//  un importe que no correspondía a ninguna oferta real.)
 function _ccp_montoProm(c) {
-  // Try to get average from all provider totals stored in analisis
   try {
-    const a = typeof c.analisis === 'string' ? JSON.parse(c.analisis) : (c.analisis||{});
-    const totals = a.proveedoresTotales || a.totales || null;
-    if (totals && Array.isArray(totals) && totals.length) {
-      const sum = totals.reduce((acc,v)=>acc+parseFloat(v||0),0);
-      return sum/totals.length;
+    // 1) El precio elegido es la fuente correcta
+    const eleg = parseFloat(c.precio_elegido || 0);
+    if (eleg > 0) return eleg;
+    // 2) Si no está, buscar el total del ganador dentro del análisis
+    const a = typeof c.analisis === 'string' ? JSON.parse(c.analisis) : (c.analisis || {});
+    if (a) {
+      if (a.ganador && parseFloat(a.ganador.totalConIVA || 0) > 0) return parseFloat(a.ganador.totalConIVA);
+      if (parseFloat(a.optimoConIVA || 0) > 0) return parseFloat(a.optimoConIVA);
+      // 3) Último recurso: la oferta MÁS BAJA (nunca un promedio)
+      const totals = a.proveedoresTotales || a.totales || null;
+      if (Array.isArray(totals) && totals.length) {
+        const nums = totals.map(v => parseFloat(v || 0)).filter(v => v > 0);
+        if (nums.length) return Math.min.apply(null, nums);
+      }
     }
-    // Fallback: average of min and max
-    const mn = parseFloat(c.precio_elegido||0);
-    const mx = parseFloat(c.precio_max||0);
-    if (mn>0 && mx>0) return (mn+mx)/2;
-    return mn||mx||0;
-  } catch(e) { return parseFloat(c.precio_elegido||0); }
+    return 0;
+  } catch (e) { return parseFloat(c.precio_elegido || 0); }
 }
 function _ccp_authLevel(c) {
   const rate = _ccp_getUSDRate();
