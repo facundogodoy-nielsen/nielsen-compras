@@ -28,6 +28,11 @@ var REMITENTE_CC = 'facundo.godoy@nielsenexpediciones.com.ar';
 // Si se deja vacía, el sistema la deduce sola (y la corrige a /exec).
 var WEBAPP_URL = '';
 
+function _idImplementacion(u){
+  var m = /\/macros\/s\/([^\/]+)\//.exec(String(u||''));
+  return m ? m[1] : '(desconocida)';
+}
+
 function _urlWebApp(p){
   if (WEBAPP_URL) return WEBAPP_URL;
   if (p && p.webapp_url) return String(p.webapp_url);          // la manda el Centro de Control
@@ -93,6 +98,7 @@ function probarPermisos() {
     var uDet = ScriptApp.getService().getUrl() || '';
     var uUsa = _urlWebApp();
     r.push('URL de la Web App: ' + uUsa);
+    r.push('ID de esta implementación: ' + _idImplementacion(uDet));
     if (/\/dev$/.test(uDet) && !WEBAPP_URL) {
       r.push('AVISO: al ejecutar desde el editor Google devuelve la URL /dev (sólo sirve para vos). '
         + 'Los correos usarán la versión /exec. Si querés asegurarlo, pegá tu URL /exec en la variable WEBAPP_URL '
@@ -666,6 +672,23 @@ function _ccpAuth(p) {
   } else {
     var cc = (p.copia||[]).map(function(x){ return x.email; }).join(',');
     var errores = [];
+    // Si el Centro de Control apunta a una implementación distinta de ésta,
+    // los enlaces del correo irían a un código que puede estar desactualizado.
+    try {
+      var _mia = _idImplementacion(ScriptApp.getService().getUrl());
+      var _suya = _idImplementacion(p.webapp_url || '');
+      if (_suya !== '(desconocida)' && _mia !== '(desconocida)' && _mia !== _suya) {
+        Logger.log('AVISO: el Centro de Control usa la implementación ' + _suya + ' y este código corre en ' + _mia);
+        GmailApp.sendEmail(REMITENTE_CC,
+          '⚠️ Implementaciones distintas — revisar Apps Script',
+          'El Centro de Control envía los correos a la implementación:\n  ' + _suya +
+          '\n\nPero este código está corriendo en:\n  ' + _mia +
+          '\n\nEso hace que las actualizaciones del código no se apliquen a los correos.\n\n' +
+          'Solución: en Apps Script → Implementar → Administrar implementaciones, actualizá a "Versión: Nueva" ' +
+          'la implementación ' + _suya + ' (que es la que usa el sistema), o cambiá MAIL_WEBAPP_URL en el ' +
+          'Centro de Control por la URL de ' + _mia + '.');
+      }
+    } catch(e){}
     (p.aprobadores||[]).forEach(function(ap) {
       var token = Utilities.getUuid();
       var guardado = _sbPost('ccp_autorizaciones', {
