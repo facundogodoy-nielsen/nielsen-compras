@@ -3875,6 +3875,7 @@ async function _confirmarEnvioAuth(){
 
   var payload = {
     tipo:'CCP_AUTH',
+    webapp_url: MAIL_WEBAPP_URL,   // así los enlaces del correo apuntan siempre a la URL pública
     modo: plan.tipo,
     comp_id: String(d.id),
     num_comp: c.num_comp||'',

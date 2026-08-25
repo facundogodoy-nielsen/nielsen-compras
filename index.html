@@ -4995,6 +4995,7 @@ async function autorizarCCP(compId, numComp, asunto, montoStr, nivel) {
   const now = new Date().toISOString().split('T')[0];
   const payload = {
     tipo: 'CCP_AUTH',
+    webapp_url: MAIL_WEBAPP_URL,   // así los enlaces del correo apuntan siempre a la URL pública
     modo: plan.tipo,                       // SOLICITUD | NOTIFICACION
     comp_id: String(compId),
     num_comp: numComp || '',

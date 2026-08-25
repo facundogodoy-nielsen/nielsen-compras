@@ -21,6 +21,20 @@
  ***********************************************************************/
 
 var REMITENTE_CC = 'facundo.godoy@nielsenexpediciones.com.ar';
+
+// URL PÚBLICA de la Web App (la que termina en /exec).
+// Los enlaces de los correos DEBEN usar esta dirección: la de /dev sólo
+// funciona para el dueño del script, y a los demás les daría error.
+// Si se deja vacía, el sistema la deduce sola (y la corrige a /exec).
+var WEBAPP_URL = '';
+
+function _urlWebApp(p){
+  if (WEBAPP_URL) return WEBAPP_URL;
+  if (p && p.webapp_url) return String(p.webapp_url);          // la manda el Centro de Control
+  var u = '';
+  try { u = ScriptApp.getService().getUrl() || ''; } catch(e){}
+  return u.replace(/\/dev$/, '/exec');                          // nunca dejar /dev en un correo
+}
 var NOMBRE_REMITENTE = 'Compras y Abastecimiento — Nielsen';
 
 // Supabase — para escribir los links de Drive en el registro de la SC (que el CC los muestre)
@@ -75,8 +89,16 @@ function probarPermisos() {
   catch (e) { r.push('Enviar correos: SIN PERMISO → ' + e); }
 
   // 5) Dirección pública de la Web App
-  try { r.push('URL de la Web App: ' + ScriptApp.getService().getUrl()); }
-  catch (e) { r.push('URL de la Web App: no disponible → ' + e); }
+  try {
+    var uDet = ScriptApp.getService().getUrl() || '';
+    var uUsa = _urlWebApp();
+    r.push('URL de la Web App: ' + uUsa);
+    if (/\/dev$/.test(uDet) && !WEBAPP_URL) {
+      r.push('AVISO: al ejecutar desde el editor Google devuelve la URL /dev (sólo sirve para vos). '
+        + 'Los correos usarán la versión /exec. Si querés asegurarlo, pegá tu URL /exec en la variable WEBAPP_URL '
+        + 'que está arriba de todo en el código.');
+    }
+  } catch (e) { r.push('URL de la Web App: no disponible → ' + e); }
 
   var txt = r.join('\n');
   Logger.log(txt);
@@ -160,7 +182,7 @@ function _accionAprobar(reg){
 }
 function _accionRechazar(reg, motivo){
   if (!motivo) {
-    var url = ScriptApp.getService().getUrl();
+    var url = _urlWebApp();
     return _pagina('Rechazar la compra',
       'Indicá brevemente el motivo del rechazo de la CCP <b>' + _esc(reg.num_comp) + '</b>:'
       + '<form method="get" action="' + url + '" style="margin-top:18px">'
@@ -176,7 +198,7 @@ function _accionRechazar(reg, motivo){
     'Registramos el <b>rechazo</b> de la CCP <b>' + _esc(reg.num_comp) + '</b>. Compras fue notificado con el motivo indicado.', '#dc2626');
 }
 function _accionStandby(reg, dias){
-  var url = ScriptApp.getService().getUrl();
+  var url = _urlWebApp();
   if (!dias) {
     var op = function(d, txt){ return '<a href="' + url + '?t=' + encodeURIComponent(reg.token) + '&a=standby&d=' + d + '" style="display:inline-block;background:#f59e0b;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold;margin:5px 6px 0 0">' + txt + '</a>'; };
     return _pagina('Dejar en stand by',
@@ -736,7 +758,7 @@ function _tplCCPNotificacion(p) {
 
 // Correo 2 y 3 — Solicitud de autorización (con botones por token)
 function _tplCCPSolicitud(p, token, esRecordatorio) {
-  var url = ScriptApp.getService().getUrl();
+  var url = _urlWebApp(p);
   var link = function(a){ return url + '?t=' + encodeURIComponent(token) + '&a=' + a; };
   var btn = function(href, bg, txt){ return '<a href="' + href + '" style="display:inline-block;background:' + bg + ';color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:11px 20px;border-radius:8px;margin:0 7px 7px 0">' + txt + '</a>'; };
   var reqTxt = (p.requeridas >= 2)
