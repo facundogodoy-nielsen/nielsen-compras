@@ -31,6 +31,63 @@ var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 // doGet — enlaces de decisión: Aprobar / Stand by / Rechazar
 // URL:  ...exec?t=<token>&a=aprobar|standby|rechazar[&d=dias][&m=motivo]
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// PROBAR PERMISOS — ejecutá esta función UNA VEZ desde el editor
+// de Apps Script (botón ▶ Ejecutar). Google va a pedir autorización:
+// aceptá todos los permisos. Después volvé a implementar (versión nueva).
+// ─────────────────────────────────────────────────────────────
+function probarPermisos() {
+  var r = [];
+
+  // 1) Salida a internet (necesario para hablar con Supabase)
+  try {
+    var res = UrlFetchApp.fetch(SB_URL + '/rest/v1/comparativas?select=num_comp&limit=1',
+      { headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }, muteHttpExceptions: true });
+    r.push('Conexión con Supabase: ' + (res.getResponseCode() < 300 ? 'OK' : 'ERROR ' + res.getResponseCode()));
+  } catch (e) { r.push('Conexión con Supabase: SIN PERMISO → ' + e); }
+
+  // 2) Tabla de autorizaciones
+  try {
+    var t = UrlFetchApp.fetch(SB_URL + '/rest/v1/ccp_autorizaciones?select=token&limit=1',
+      { headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }, muteHttpExceptions: true });
+    r.push('Tabla ccp_autorizaciones: ' + (t.getResponseCode() < 300
+      ? 'existe' : 'NO EXISTE (ejecutar SUPABASE_autorizaciones.sql) — ' + t.getResponseCode()));
+  } catch (e) { r.push('Tabla ccp_autorizaciones: no se pudo consultar → ' + e); }
+
+  // 3) Escritura real: crea y borra un registro de prueba
+  try {
+    var tok = 'PRUEBA_' + Utilities.getUuid();
+    var w = UrlFetchApp.fetch(SB_URL + '/rest/v1/ccp_autorizaciones', {
+      method: 'post', contentType: 'application/json',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Prefer: 'return=minimal' },
+      payload: JSON.stringify({ token: tok, comp_id: 'TEST', num_comp: 'PRUEBA', email: 'test@test', decision: 'PENDIENTE' }),
+      muteHttpExceptions: true
+    });
+    r.push('Registrar un enlace: ' + (w.getResponseCode() < 300 ? 'OK' : 'ERROR ' + w.getResponseCode() + ' ' + w.getContentText().slice(0, 150)));
+    if (w.getResponseCode() < 300) {
+      UrlFetchApp.fetch(SB_URL + '/rest/v1/ccp_autorizaciones?token=eq.' + tok, {
+        method: 'delete', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }, muteHttpExceptions: true });
+    }
+  } catch (e) { r.push('Registrar un enlace: ERROR → ' + e); }
+
+  // 4) Correo
+  try { GmailApp.getAliases(); r.push('Enviar correos: OK'); }
+  catch (e) { r.push('Enviar correos: SIN PERMISO → ' + e); }
+
+  // 5) Dirección pública de la Web App
+  try { r.push('URL de la Web App: ' + ScriptApp.getService().getUrl()); }
+  catch (e) { r.push('URL de la Web App: no disponible → ' + e); }
+
+  var txt = r.join('\n');
+  Logger.log(txt);
+  try {
+    GmailApp.sendEmail(REMITENTE_CC, '🔎 Prueba de permisos — Sistema de Compras Nielsen',
+      'Resultado de la verificación:\n\n' + txt +
+      '\n\nSi alguna línea dice SIN PERMISO, volvé a ejecutar esta función y aceptá los permisos que pide Google.');
+  } catch (e) {}
+  return txt;
+}
+
 function doGet(e) {
   var p = (e && e.parameter) ? e.parameter : {};
   // Reparar adjuntos de una SC: ...exec?a=reindex&sc=<N° SC>
