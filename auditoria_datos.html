@@ -54,7 +54,13 @@
   <div class="card">
     <h2>Ejecutar auditoría</h2>
     <div class="hint">Lee la planilla COMPRAS (gasto facturado), las Solicitudes de Compra y las Comparativas. Tarda unos segundos.</div>
-    <button class="btn" onclick="auditar()" id="btn-run">▶️ Auditar mis datos</button>
+    <div class="row" style="align-items:center">
+      <button class="btn" onclick="auditar()" id="btn-run">▶️ Auditar mis datos</button>
+      <span class="muted" style="font-size:12px">— si la planilla no está publicada —</span>
+      <label class="btn ghost" style="cursor:pointer">📂 Cargar CSV de COMPRAS
+        <input type="file" accept=".csv,text/csv" onchange="_cargarCSVManual(this)" style="display:none">
+      </label>
+    </div>
     <div id="estado"></div>
   </div>
 
@@ -79,30 +85,152 @@ function _parseCSV(text){
   if(field!==''||row.length){row.push(field);rows.push(row);}
   return rows;
 }
-function _parseMonto(v){
-  if(typeof v==='number')return v;
-  if(v==null)return 0;
-  var s=String(v).trim(); if(!s)return 0;
-  var neg=/^\(.*\)$/.test(s)||/-/.test(s);
-  s=s.replace(/[^0-9.,]/g,'');
-  if(s.indexOf(',')>-1){ s=s.replace(/\./g,'').replace(',','.'); }
-  else { var p=s.split('.'); if(p.length>2)s=p.join(''); else if(p.length===2&&p[1].length===3)s=p.join(''); }
-  var n=parseFloat(s)||0; return neg?-Math.abs(n):n;
+// ══ Lectura de la planilla COMPRAS — MISMA lógica que usa el Centro de Control ══
+const SHEET_ID='1XZ1jW4O8cRMMK-MQYrlUJtSyS2UgQ6Oo98qAXHRuHUI';
+const SHEET_GID='696441563';
+const SHEET_FALLBACK='https://docs.google.com/spreadsheets/d/'+SHEET_ID+'/export?format=csv&gid='+SHEET_GID;
+
+function _procesarFilasDetalle(rows) {
+  const hdr = (rows[0]||[]).map(h => String(h||'').toLowerCase().trim());
+  const find = (...cands) => hdr.findIndex(h => cands.some(c => h.includes(c)));
+
+  // N° Comprobante = D (no confundir con "FECHA COMPROBANTE" = A)
+  let cComp = hdr.findIndex(h => (h.includes('comprobante')||h.includes('comprob')) && !h.includes('fecha'));
+  if (cComp < 0) cComp = find('n° comp','nº comp','nro comp');
+  if (cComp < 0) cComp = 3;   // D
+
+  // Monto = Q "PRECIO TOTAL + IVA + OTROS IMPUESTOS" (no la J "PRECIO TOTAL" sin IVA)
+  let cMonto = hdr.findIndex(h => h.includes('precio total') && (h.includes('iva')||h.includes('otros')||h.includes('impuesto')||h.includes('+')));
+  if (cMonto < 0) cMonto = find('total + iva','importe total','total c/iva','total con iva');
+  if (cMonto < 0) cMonto = find('precio total');   // último recurso (sin IVA)
+  if (cMonto < 0) cMonto = 16;  // Q
+
+  let cCamp  = find('campamento');           if (cCamp  < 0) cCamp  = 19;  // T
+  let cCat   = find('categoria','categoría');if (cCat   < 0) cCat   = 21;  // V
+  let cArea  = find('area','área');          if (cArea  < 0) cArea  = 22;  // W
+  let cProv  = find('proveedor','razon social','razón social','razonsocial'); if (cProv < 0) cProv = 4;  // E
+  let cFecha = find('fecha');                if (cFecha < 0) cFecha = 0;   // A (FECHA COMPROBANTE)
+  let cAnio  = find('año','anio','ano');     // B
+  let cMes   = hdr.findIndex(h => h === 'mes' || /\bmes\b/.test(h));  // C
+  let cTipo  = find('tipo comprob','tipo de comp','tipo');
+  const hasProv = cProv >= 0;
+
+  const out = [];
+  let ncCount = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i]; if (!r) continue;
+    const comp = String(r[cComp]||'').trim();
+    const camp = String(r[cCamp]||'').trim();
+    const cat  = String(r[cCat]||'').trim();
+    const area = String(r[cArea]||'').trim();
+    const prov = hasProv ? String(r[cProv]||'').trim() : '';
+    let monto  = _parseMonto(r[cMonto]);
+    if (!comp && !camp && !area && !monto && !prov) continue;
+    const tipo = cTipo >= 0 ? String(r[cTipo]||'') : '';
+    if (_esNC(comp, tipo)) { monto = -Math.abs(monto); ncCount++; }
+    let fechaStr = (cFecha >= 0) ? _fechaNormalizar(r[cFecha]) : '';
+    // FECHA COMPROBANTE (A) es la fuente principal. Si falta/es inválida, usar AÑO (B) + MES (C).
+    if (!/^\d{4}-\d{2}-\d{2}/.test(fechaStr) && cAnio >= 0 && cMes >= 0) {
+      const ay = parseInt(String(r[cAnio]).replace(/[^\d]/g,''), 10);
+      let me = parseInt(String(r[cMes]).replace(/[^\d]/g,''), 10);
+      if (!(me >= 1 && me <= 12)) me = _mesNombreANum(r[cMes]);   // "ene" → 1
+      if (ay >= 2000 && ay <= 2100 && me >= 1 && me <= 12) {
+        fechaStr = ay + '-' + String(me).padStart(2,'0') + '-01';
+      }
+    }
+    out.push({
+      comprobante: comp, monto,
+      proveedor:  prov || 'SIN ESPECIFICAR',
+      campamento: camp || 'SIN ESPECIFICAR',
+      categoria:  cat  || 'SIN ESPECIFICAR',
+      area:       area || 'SIN ESPECIFICAR',
+      fecha: fechaStr
+    });
+  }
+  return { out, ncCount, hasProv };
 }
-function _serialAFecha(n){ var d=new Date(Date.UTC(1899,11,30)+Math.round(n)*86400000);
-  return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0'); }
-function _fechaNorm(f){
-  if(f==null||f==='')return '';
-  var s=String(f).trim(); if(!s)return '';
-  if(/^\d{4,6}(\.\d+)?$/.test(s)){var n=parseFloat(s); if(n>=20000&&n<=60000)return _serialAFecha(n);}
-  var dm=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if(dm){var yy=dm[3].length===2?'20'+dm[3]:dm[3];return yy+'-'+dm[2].padStart(2,'0')+'-'+dm[1].padStart(2,'0');}
-  var ymd=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if(ymd)return ymd[1]+'-'+ymd[2].padStart(2,'0')+'-'+ymd[3].padStart(2,'0');
-  return '';
+
+function _parseMonto(v) {
+  if (typeof v === 'number') return v;          // Excel ya devuelve número → tal cual
+  if (v == null) return 0;
+  let s = String(v).trim();
+  if (!s) return 0;
+  const neg = /^\(.*\)$/.test(s) || /-/.test(s);   // (1.234) o -1.234 → negativo
+  s = s.replace(/[^0-9.,]/g, '');
+  if (s.indexOf(',') > -1) {
+    s = s.replace(/\./g, '').replace(',', '.');    // 1.234.567,89 → 1234567.89
+  } else {
+    const parts = s.split('.');
+    if (parts.length > 2) s = parts.join('');                          // 1.234.567 → miles
+    else if (parts.length === 2 && parts[1].length === 3) s = parts.join(''); // 500.000 → miles (3 dígitos)
+    // si no, el punto se interpreta como decimal (ej. 500.50)
+  }
+  let n = parseFloat(s) || 0;
+  return neg ? -Math.abs(n) : n;
 }
-function _esNC(comp,extra){ var t=((comp||'')+' '+(extra||'')).toUpperCase();
-  return /\bNC\b/.test(t)||/\bN\.?C\.?\b/.test(t)||/NOTA\s*DE\s*CR[EÉ]DITO/.test(t); }
+
+function _fechaNormalizar(f) {
+  if (f == null || f === '') return '';
+  if (f instanceof Date) {
+    if (isNaN(f.getTime())) return '';
+    return f.getUTCFullYear() + '-' + String(f.getUTCMonth()+1).padStart(2,'0') + '-' + String(f.getUTCDate()).padStart(2,'0');
+  }
+  if (typeof f === 'number') {
+    return (f >= 20000 && f <= 60000) ? _serialAFecha(f) : '';   // rango ~1954-2064
+  }
+  const s = String(f).trim();
+  if (!s) return '';
+  // Serial numérico como texto (ej. "45863" o "45863.9")
+  if (/^\d{4,6}(\.\d+)?$/.test(s)) {
+    const n = parseFloat(s);
+    if (n >= 20000 && n <= 60000) return _serialAFecha(n);
+  }
+  // DD/MM/AAAA o DD-MM-AAAA
+  const dm = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (dm) { const yy = dm[3].length===2 ? '20'+dm[3] : dm[3]; return yy + '-' + dm[2].padStart(2,'0') + '-' + dm[1].padStart(2,'0'); }
+  // AAAA-MM-DD (con o sin hora)
+  const ymd = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (ymd) return ymd[1] + '-' + ymd[2].padStart(2,'0') + '-' + ymd[3].padStart(2,'0');
+  return s.slice(0,10);
+}
+
+function _esNC(comprobante, extra) {
+  const t = ((comprobante||'') + ' ' + (extra||'')).toUpperCase();
+  return /\bNC\b/.test(t) || /\bN\.?C\.?\b/.test(t) || /NOTA\s*DE\s*CR[EÉ]DITO/.test(t);
+}
+
+function _serialAFecha(n) {
+  const ms = Math.round((n - 25569) * 86400000);   // 25569 = días entre 1899-12-30 y 1970-01-01
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return '';
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
+}
+
+// Trae el CSV probando primero la URL publicada y luego la de exportación
+async function _traerCSVCompras(){
+  const intentos=[
+    {nombre:'planilla publicada', url:SHEET_CSV},
+    {nombre:'exportación directa', url:SHEET_FALLBACK}
+  ];
+  const errores=[];
+  for(const it of intentos){
+    if(!it.url) continue;
+    try{
+      const r=await fetch(it.url,{redirect:'follow',cache:'no-store'});
+      if(!r.ok){ errores.push(it.nombre+': HTTP '+r.status); continue; }
+      const txt=await r.text();
+      if(/^\s*</.test(txt) || /<html/i.test(txt.slice(0,200))){
+        errores.push(it.nombre+': devolvió una página web en vez del CSV (no está publicada)');
+        continue;
+      }
+      if(!txt.trim()){ errores.push(it.nombre+': vino vacía'); continue; }
+      return { texto:txt, origen:it.nombre };
+    }catch(e){ errores.push(it.nombre+': '+e.message); }
+  }
+  const err=new Error(errores.join(' · '));
+  err.detalle=errores;
+  throw err;
+}
 function esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 function fmt(n){ return Math.round(n||0).toLocaleString('es-AR'); }
 function pct(a,b){ return b>0?Math.round(a/b*100):0; }
@@ -115,6 +243,19 @@ function normProv(s){
     .replace(/\s+/g,' ').trim();
 }
 
+var _csvManual=null;
+function _cargarCSVManual(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){
+    _csvManual=rd.result;
+    document.getElementById('estado').innerHTML='<span style="color:var(--green)">Archivo cargado: '+esc(f.name)+'</span>';
+    auditar();
+  };
+  rd.readAsText(f,'UTF-8');
+  input.value='';
+}
+
 async function auditar(){
   var btn=document.getElementById('btn-run'); btn.disabled=true;
   var est=document.getElementById('estado'); var out=document.getElementById('salida');
@@ -123,11 +264,11 @@ async function auditar(){
 
   // ══ 1) PLANILLA COMPRAS — gasto facturado real ══
   try{
-    var r=await fetch(SHEET_CSV,{cache:'no-store'});
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    var rows=_parseCSV(await r.text());
+    var res = _csvManual ? {texto:_csvManual, origen:'archivo cargado a mano'} : await _traerCSVCompras();
+    var rows=_parseCSV(res.texto);
     R.compras=analizarCompras(rows);
-  }catch(e){ R.comprasErr=e.message; }
+    R.comprasOrigen=res.origen;
+  }catch(e){ R.comprasErr=e.message; R.comprasDetalle=e.detalle||null; }
 
   // ══ 2) SOLICITUDES DE COMPRA ══
   est.textContent='Leyendo las Solicitudes de Compra...';
@@ -187,7 +328,7 @@ function analizarCompras(rows){
     if(!comp&&!cat&&!area&&!monto&&!prov)continue;
     var tipo=cTipo>=0?String(r[cTipo]||''):'';
     if(_esNC(comp,tipo)){ monto=-Math.abs(monto); nc++; }
-    var f=cFecha>=0?_fechaNorm(r[cFecha]):'';
+    var f=cFecha>=0?_fechaNormalizar(r[cFecha]):'';
     n++;
     if(!monto)sinMonto++;
     if(!f)sinFecha++; else { if(f<minF)minF=f; if(f>maxF)maxF=f; }
@@ -264,11 +405,21 @@ function render(R){
   // ── BLOQUE 1: gasto facturado ──
   h+='<div class="card"><h2>1 · Gasto facturado (planilla COMPRAS)</h2>';
   if(R.comprasErr){
-    h+='<div class="verd bad"><b>No se pudo leer la planilla</b>'+esc(R.comprasErr)+'</div>';
+    h+='<div class="verd bad"><b>No se pudo leer la planilla de COMPRAS</b>'
+      + esc(R.comprasErr)
+      + '<div style="margin-top:10px;font-size:12.5px;color:#f4d160">'
+      + '<b>Cómo resolverlo:</b><ol style="margin:6px 0 0 18px">'
+      + '<li>Abrí la planilla COMPRAS en Google Sheets.</li>'
+      + '<li><b>Archivo → Compartir → Publicar en la web</b>.</li>'
+      + '<li>Elegí la hoja de datos y el formato <b>Valores separados por comas (.csv)</b>.</li>'
+      + '<li>Tocá <b>Publicar</b> y volvé a auditar.</li>'
+      + '</ol><div style="margin-top:8px">O bien, descargá la hoja como CSV desde Google Sheets '
+      + '(<b>Archivo → Descargar → CSV</b>) y usá el botón <b>📂 Cargar CSV de COMPRAS</b>.</div></div></div>';
   } else if(!R.compras||R.compras.vacio){
     h+='<div class="verd bad"><b>La planilla no devolvió datos</b>Verificá que siga publicada.</div>';
   } else {
     var C=R.compras;
+    if(R.comprasOrigen) h+='<div class="muted" style="font-size:11.5px;margin-bottom:10px">Origen de los datos: <b>'+esc(R.comprasOrigen)+'</b></div>';
     var covCat=pct(C.n-C.sinCat, C.n);
     var covGasto=C.tot>0?pct(C.gastoClasif,C.tot):0;
     h+='<div class="kpis">'
