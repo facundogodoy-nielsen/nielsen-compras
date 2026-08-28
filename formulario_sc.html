@@ -692,35 +692,23 @@ main{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
       <textarea class="pedido-textarea" id="pedido-texto" oninput="onPedidoInput()"
         placeholder="Pegá o escribí el listado acá..."></textarea>
 
-      <!-- GUÍA DE FORMATOS ACEPTADOS -->
+      <!-- GUÍA DE FORMATO ESTÁNDAR -->
       <div style="margin-top:10px;background:var(--s3);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
         <div style="font-size:10px;font-weight:700;color:var(--or);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">
-          📋 Formatos aceptados — el sistema detecta artículo y cantidad automáticamente
+          📋 Formato del pedido — escribí cada ítem en este orden
         </div>
-        <div style="display:grid;gap:5px">
-          <div style="display:flex;align-items:center;gap:10px;font-size:12px">
-            <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0">→</span>
-            <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:3px 8px;border-radius:4px;flex:1">TORNILLOS M8 x 50MM - 300 UNIDADES</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;font-size:12px">
-            <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0">→</span>
-            <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:3px 8px;border-radius:4px;flex:1">LANA DE VIDRIO - 25 MT2</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;font-size:12px">
-            <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0">→</span>
-            <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:3px 8px;border-radius:4px;flex:1">5 u — RODAMIENTO SKF 6205-2RS</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;font-size:12px">
-            <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0">→</span>
-            <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:3px 8px;border-radius:4px;flex:1">CABLE UNIPOLAR 2.5MM x 10 METROS</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;font-size:12px">
-            <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0">→</span>
-            <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:3px 8px;border-radius:4px;flex:1">GUANTES NITRILO TALLE L (sin cantidad = queda en blanco)</span>
-          </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;font-size:12px">
+          <span style="font-family:var(--fm);color:var(--or);width:14px;flex-shrink:0;padding-top:3px">→</span>
+          <span style="font-family:var(--fm);color:var(--text);background:var(--s2);padding:7px 10px;border-radius:4px;flex:1;line-height:1.6;word-break:break-word">1 UNI - PANTALON RIP STOP MODELO CARGO ANTIDESGARRO REFORZADO - SEXO: - COD.: - COLOR: - TALLE: - MARCA: - MODELO: - MATERIAL: -</span>
         </div>
-        <div style="margin-top:8px;font-size:11px;color:var(--muted);font-style:italic">
-          ✏️ Un ítem por línea · Podés editar la tabla que aparece arriba después del parseo
+        <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="_copiarFormatoSC()" style="font-size:11px;padding:5px 11px">📋 Copiar formato</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="_insertarFormatoSC()" style="font-size:11px;padding:5px 11px">➕ Insertar una línea</button>
+        </div>
+        <div style="margin-top:9px;font-size:11px;color:var(--muted);line-height:1.6">
+          ✏️ <b>Un ítem por línea.</b> Empezá siempre con la <b>cantidad</b> y la <b>unidad</b> (UNI, LITROS, KG, MTS...), después el
+          <b>artículo</b> y por último los datos que correspondan. Los campos que no apliquen se dejan vacíos, pero
+          <b>conservá el orden</b>: así todos los pedidos quedan estandarizados y se pueden comparar.
         </div>
       </div>
     </div>
@@ -1214,6 +1202,27 @@ function parsePedidoLine(s) {
 function onPedidoInput() {
   clearTimeout(pedidoTimer);
   pedidoTimer = setTimeout(parsePedido, 250);
+}
+
+// ── Formato estándar de los ítems del pedido ──
+const FORMATO_SC = '1 UNI - PANTALON RIP STOP MODELO CARGO ANTIDESGARRO REFORZADO - SEXO: - COD.: - COLOR: - TALLE: - MARCA: - MODELO: - MATERIAL: -';
+
+function _copiarFormatoSC(){
+  navigator.clipboard.writeText(FORMATO_SC)
+    .then(()=>{ if(typeof toast==='function') toast('📋 Formato copiado'); })
+    .catch(()=>{ prompt('Copiá el formato:', FORMATO_SC); });
+}
+
+// Inserta una línea con el formato listo para completar
+function _insertarFormatoSC(){
+  const ta=document.getElementById('pedido-texto'); if(!ta) return;
+  const actual=ta.value.replace(/\s+$/,'');
+  ta.value = (actual? actual+'\n' : '') + FORMATO_SC;
+  ta.focus();
+  // Dejar el cursor al final para que se pueda editar de una
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  if(typeof parsePedido==='function') parsePedido();
+  if(typeof toast==='function') toast('➕ Línea agregada — completá los datos');
 }
 
 function parsePedido() {
