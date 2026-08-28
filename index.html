@@ -1786,11 +1786,31 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('ahorro', this)">
       <span class="sb-icon">💰</span> Ahorro Generado
     </button>
-    <button class="sidebar-btn" onclick="showView('estrategia', this)">
-      <span class="sb-icon">🎯</span> Análisis Estratégico
-    </button>
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section" data-sid="estrategico">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()"
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))"
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Análisis Estratégico</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
+      <button class="sidebar-btn" onclick="showView('auditoria', this)">
+        <span class="sb-icon">🔍</span> Auditoría de Datos
+      </button>
+      <button class="sidebar-btn" onclick="showView('estrategia', this)">
+        <span class="sb-icon">📊</span> Ley de Pareto (80/20)
+      </button>
+      <button class="sidebar-btn" onclick="showView('kraljic', this)">
+        <span class="sb-icon">🎯</span> Matriz de Kraljic
+      </button>
+    </div></div>
+  </div>
   <div class="sidebar-divider"></div>
 
   <div class="sidebar-section" data-sid="informes">
@@ -2835,10 +2855,55 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   <div id="ind-pane"></div>
 </div>
 
+<!-- ══════════════════════════════════
+     VIEW: AUDITORÍA DE DATOS
+══════════════════════════════════ -->
+<div id="view-auditoria" class="view">
+  <div class="pg-header">
+    <div class="pg-title">AUDITORÍA <span>DE DATOS</span></div>
+    <div class="pg-sub">Qué parte de la gestión es analizable hoy — base para Pareto y Kraljic</div>
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+    <button onclick="renderAuditoria()" style="padding:9px 16px;border-radius:8px;border:none;background:var(--or);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">🔄 Recalcular</button>
+    <button onclick="_audRecargarPlanilla()" id="aud-btn-sheet" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">📊 Actualizar planilla</button>
+    <button onclick="exportarAuditoria()" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">⬇️ Exportar</button>
+    <div id="aud-fuente" style="margin-left:auto;font-size:11.5px;color:var(--muted)"></div>
+  </div>
+  <div id="aud-pane"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     VIEW: MATRIZ DE KRALJIC
+══════════════════════════════════ -->
+<div id="view-kraljic" class="view">
+  <div class="pg-header">
+    <div class="pg-title">MATRIZ DE <span>KRALJIC</span></div>
+    <div class="pg-sub">Estrategia de compra por familia — impacto financiero × riesgo de suministro</div>
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+    <div>
+      <label style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:block;margin-bottom:3px">Período</label>
+      <select id="kra-periodo" onchange="renderKraljic()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)"></select>
+    </div>
+    <div>
+      <label style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:block;margin-bottom:3px">Corte de impacto (% del gasto acumulado)</label>
+      <input type="number" id="kra-corte" value="80" min="10" max="95" oninput="renderKraljic()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;width:110px;font-family:var(--ff)">
+    </div>
+    <div>
+      <label style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:block;margin-bottom:3px">Riesgo alto desde</label>
+      <input type="number" id="kra-riesgo" value="3" min="1" max="5" step="0.5" oninput="renderKraljic()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;width:90px;font-family:var(--ff)">
+    </div>
+    <button onclick="renderKraljic()" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">🔄 Recalcular</button>
+    <button onclick="exportarKraljic()" style="padding:9px 15px;border-radius:8px;border:none;background:var(--or);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">⬇️ Exportar</button>
+  </div>
+  <div id="kra-aviso"></div>
+  <div id="kra-pane"></div>
+</div>
+
 <div id="view-estrategia" class="view">
   <div class="pg-header">
-    <div class="pg-title">ANÁLISIS <span>ESTRATÉGICO</span></div>
-    <div class="pg-sub">Concentración del gasto y de la gestión — Ley de Pareto (80/20)</div>
+    <div class="pg-title">LEY DE <span>PARETO (80/20)</span></div>
+    <div class="pg-sub">Concentración del gasto y de la gestión</div>
   </div>
 
   <!-- Barra de control -->
@@ -3647,6 +3712,8 @@ async function showView(id, btn) {
   if (id === 'ahorro')         renderAhorro();
   if (id === 'estrategia')     renderEstrategia();
   if (id === 'indicadores')    renderIndicadores();
+  if (id === 'auditoria')      renderAuditoria();
+  if (id === 'kraljic')        renderKraljic();
   if (id === 'prov-db')      { await cargarProveedoresSB(); renderProvDB(); }
   if (id === 'prov-compras') { await _asegurarDatosCompras(); renderComprasProv(); }
   if (id === 'prov-area')      { await _asegurarDatosCompras(); renderComprasArea(); }
@@ -5481,6 +5548,402 @@ function _ahoDrawCharts(data, divisa){
   var mKeys=Object.keys(porMes).sort().slice(-12);
   var cM=document.getElementById('aho-chart-mes');
   if(cM) _ahoCharts.mes=new Chart(cM,{type:'bar',data:{labels:mKeys,datasets:[{data:mKeys.map(function(k){return Math.round(porMes[k]);}),backgroundColor:'#22c55e',borderRadius:6}]},options:baseOpts});
+}
+
+// ══════════════════════════════════════════════════════════════
+// MATRIZ DE KRALJIC — estrategia de compra por familia
+// Eje X: impacto financiero (gasto real de la planilla COMPRAS)
+// Eje Y: riesgo de suministro, calculado SOLO con datos disponibles:
+//        cantidad de proveedores por familia y concentración en el principal.
+//        (El plazo de entrega todavía no se captura: se indica como pendiente.)
+// ══════════════════════════════════════════════════════════════
+const KRA_CUADRANTES = {
+  rutinario:   { lbl:'Rutinarios',      col:'#6b7280', desc:'Bajo monto, bajo riesgo',
+    est:'Bajar el costo de gestionarlos: catálogo cerrado, stock de pañol, proveedor único por rubro y un mínimo por debajo del cual no se pide comparativa.' },
+  apalancado:  { lbl:'Apalancados',     col:'#22c55e', desc:'Alto monto, bajo riesgo',
+    est:'Negociar. Tres presupuestos, acuerdos anuales de precio, consolidación de volumen. Es donde más rinde el comparativo.' },
+  cuello:      { lbl:'Cuello de botella', col:'#eab308', desc:'Bajo monto, alto riesgo',
+    est:'Asegurar disponibilidad, no precio: stock de seguridad con punto de reposición, homologar un sustituto y un segundo proveedor.' },
+  estrategico: { lbl:'Estratégicos',    col:'#ef4444', desc:'Alto monto, alto riesgo',
+    est:'Relación de largo plazo: contrato anual, planificación conjunta y evaluación formal de desempeño.' }
+};
+
+function _kraPoblarPeriodo(){
+  const sel=document.getElementById('kra-periodo'); if(!sel||sel.options.length) return;
+  const set={}; (detalleData||[]).forEach(d=>{ const a=String(d.fecha||'').slice(0,4); if(/^\d{4}$/.test(a)) set[a]=1; });
+  const anios=Object.keys(set).sort().reverse();
+  sel.innerHTML='<option value="__all__">Todo el histórico</option>'+anios.map(a=>'<option value="'+a+'">'+a+'</option>').join('');
+  if(anios.length) sel.value=anios[0];
+}
+
+function _kraCalcular(){
+  const per=(document.getElementById('kra-periodo')||{}).value||'__all__';
+  let filas=(detalleData||[]);
+  if(per!=='__all__') filas=filas.filter(d=>String(d.fecha||'').slice(0,4)===per);
+
+  // Agrupar por familia (categoría de la planilla)
+  const fam={};
+  filas.forEach(d=>{
+    const cat=(d.categoria||'').trim();
+    if(!cat || cat==='SIN ESPECIFICAR') return;      // no se inventa: queda fuera
+    const p=_parNormProv(d.proveedor)||'SIN ESPECIFICAR';
+    (fam[cat]=fam[cat]||{gasto:0, n:0, provs:{}});
+    fam[cat].gasto+=(d.monto||0); fam[cat].n++;
+    fam[cat].provs[p]=(fam[cat].provs[p]||0)+(d.monto||0);
+  });
+
+  const totGasto=Object.keys(fam).reduce((a,k)=>a+fam[k].gasto,0);
+  const sinCat=filas.filter(d=>!d.categoria||d.categoria==='SIN ESPECIFICAR').reduce((a,d)=>a+(d.monto||0),0);
+
+  // Ordenar por gasto y marcar las que entran en el corte de impacto
+  const corte=(parseFloat((document.getElementById('kra-corte')||{}).value)||80)/100;
+  const arr=Object.keys(fam).map(k=>({k, ...fam[k]})).sort((a,b)=>b.gasto-a.gasto);
+  let ac=0, yaCruzo=false;
+  arr.forEach(f=>{
+    const acAntes = totGasto?ac/totGasto*100:0;
+    ac+=f.gasto; f.acPct=totGasto?ac/totGasto*100:0; f.pct=totGasto?f.gasto/totGasto*100:0;
+    // Son de alto impacto todas las familias hasta completar el corte, INCLUIDA la que lo cruza.
+    // (Si no, una familia que es el 40% del gasto podría quedar clasificada como de bajo impacto.)
+    f.altoImpacto = !yaCruzo;
+    if(f.acPct >= corte*100 - 0.001) yaCruzo = true;
+
+    // ── Riesgo de suministro (1 a 5) con lo que hay ──
+    const provs=Object.keys(f.provs);
+    const nProv=provs.length;
+    const mayor=provs.reduce((m,p)=>Math.max(m,f.provs[p]),0);
+    const conc=f.gasto>0 ? mayor/f.gasto : 1;      // 0 a 1
+    // Menos proveedores = más riesgo
+    let rProv = nProv>=5?1 : nProv===4?2 : nProv===3?3 : nProv===2?4 : 5;
+    // Más concentración = más riesgo
+    let rConc = conc>=0.95?5 : conc>=0.8?4 : conc>=0.6?3 : conc>=0.4?2 : 1;
+    f.nProv=nProv; f.conc=conc;
+    f.riesgo = +(((rProv+rConc)/2)).toFixed(1);
+    f.rProv=rProv; f.rConc=rConc;
+  });
+
+  const umbral=parseFloat((document.getElementById('kra-riesgo')||{}).value)||3;
+  arr.forEach(f=>{
+    const alto=f.altoImpacto, riesgo=f.riesgo>=umbral;
+    f.cuadrante = alto ? (riesgo?'estrategico':'apalancado') : (riesgo?'cuello':'rutinario');
+  });
+  return { arr, totGasto, sinCat, periodo:per, umbral, corte:corte*100 };
+}
+
+function renderKraljic(){
+  _kraPoblarPeriodo();
+  const pane=document.getElementById('kra-pane'); if(!pane) return;
+  const K=_kraCalcular(); window._kraK=K;
+  const av=document.getElementById('kra-aviso');
+
+  if(!K.arr.length){
+    if(av) av.innerHTML='';
+    pane.innerHTML='<div style="padding:18px;background:var(--s1);border:1px solid var(--border);border-radius:11px;color:var(--muted)">'
+      +'No hay familias con categoría cargada en el período. Revisá la Auditoría de Datos.</div>';
+    return;
+  }
+
+  // Aviso de alcance — honesto sobre qué mide y qué no
+  if(av) av.innerHTML='<div style="padding:12px 15px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.35);border-radius:10px;color:#93c5fd;font-size:12.5px;margin-bottom:16px">'
+    +'<b style="display:block;margin-bottom:3px">Alcance de este análisis</b>'
+    +'El <b>impacto financiero</b> sale del gasto real de la planilla. El <b>riesgo de suministro</b> se calcula hoy con dos factores medidos: '
+    +'la cantidad de proveedores de cada familia y cuánto concentra el principal. '
+    +'Faltan incorporar el <b>plazo de entrega</b> y los <b>quiebres de stock</b>, que todavía no se capturan; '
+    +'cuando estén, el eje de riesgo va a ser más preciso. Mientras tanto, ajustá manualmente la ubicación con tu criterio operativo.'
+    +(K.sinCat>0?('<br><br>Quedan afuera $'+_audN(K.sinCat)+' sin categoría asignada.'):'')+'</div>';
+
+  // KPIs por cuadrante
+  const porCuad={rutinario:[],apalancado:[],cuello:[],estrategico:[]};
+  K.arr.forEach(f=>porCuad[f.cuadrante].push(f));
+  let h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px">';
+  ['estrategico','apalancado','cuello','rutinario'].forEach(c=>{
+    const g=porCuad[c].reduce((a,f)=>a+f.gasto,0);
+    const C=KRA_CUADRANTES[c];
+    h+='<div style="background:var(--s1);border:1px solid '+C.col+'55;border-left:3px solid '+C.col+';border-radius:10px;padding:13px 15px">'
+      +'<div style="font-size:20px;font-weight:800;color:'+C.col+';line-height:1.15">'+porCuad[c].length+'</div>'
+      +'<div style="font-size:11px;font-weight:700;color:var(--text)">'+C.lbl+'</div>'
+      +'<div style="font-size:10.5px;color:var(--muted);margin-top:2px">$'+_audN(g)+' · '+(K.totGasto?Math.round(g/K.totGasto*100):0)+'% del gasto</div></div>';
+  });
+  h+='</div>';
+
+  // ── La matriz visual ──
+  h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:18px;margin-bottom:16px">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px">Matriz</div>'
+    +'<div style="display:flex;gap:10px">'
+    +'<div style="writing-mode:vertical-rl;transform:rotate(180deg);text-align:center;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--muted);text-transform:uppercase;padding:4px 0">Riesgo de suministro →</div>'
+    +'<div style="flex:1"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+  [['cuello','estrategico'],['rutinario','apalancado']].forEach(fila=>{
+    fila.forEach(c=>{
+      const C=KRA_CUADRANTES[c], lista=porCuad[c].sort((a,b)=>b.gasto-a.gasto);
+      h+='<div style="background:var(--s2);border:1px solid '+C.col+'44;border-radius:10px;padding:12px;min-height:170px">'
+        +'<div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">'
+          +'<span style="width:9px;height:9px;border-radius:50%;background:'+C.col+'"></span>'
+          +'<span style="font-size:12px;font-weight:800;color:'+C.col+'">'+C.lbl+'</span>'
+          +'<span style="font-size:10px;color:var(--muted);margin-left:auto">'+C.desc+'</span></div>'
+        + (lista.length ? lista.slice(0,10).map(f=>
+            '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11.5px">'
+            +'<span style="flex:1;color:var(--text)">'+_audE(f.k)+'</span>'
+            +'<span style="color:var(--muted);font-size:10.5px">$'+_audN(f.gasto)+'</span></div>').join('')
+            + (lista.length>10?('<div style="font-size:10.5px;color:var(--muted);margin-top:4px">y '+(lista.length-10)+' más</div>'):'')
+          : '<div style="font-size:11px;color:var(--muted);font-style:italic">Sin familias en este cuadrante</div>')
+        +'</div>';
+    });
+  });
+  h+='</div><div style="text-align:center;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-top:8px">Impacto financiero →</div>'
+    +'</div></div></div>';
+
+  // ── Detalle por familia ──
+  h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:16px">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Detalle por familia</div>'
+    +'<div style="overflow-x:auto;max-height:460px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">'
+    +'<thead><tr style="background:var(--s2);position:sticky;top:0">'
+    +['Familia','Gasto','% acum.','Proveedores','Concentración','Riesgo','Cuadrante'].map((c,i)=>
+      '<th style="padding:7px 9px;text-align:'+(i>=1&&i<=5?'right':'left')+';font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">'+c+'</th>').join('')
+    +'</tr></thead><tbody>';
+  K.arr.forEach(f=>{
+    const C=KRA_CUADRANTES[f.cuadrante];
+    h+='<tr>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)">'+_audE(f.k)+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">$'+_audN(f.gasto)+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;color:var(--muted)">'+Math.round(f.acPct)+'%</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+f.nProv+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;color:'+(f.conc>=0.8?'var(--red)':'var(--muted)')+'">'+Math.round(f.conc*100)+'%</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">'+f.riesgo+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)"><span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;background:'+C.col+'22;color:'+C.col+'">'+C.lbl+'</span></td>'
+      +'</tr>';
+  });
+  h+='</tbody></table></div></div>';
+
+  // ── Estrategia sugerida ──
+  h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Estrategia por cuadrante</div>';
+  ['estrategico','apalancado','cuello','rutinario'].forEach(c=>{
+    const C=KRA_CUADRANTES[c], n=porCuad[c].length;
+    h+='<div style="border-left:3px solid '+C.col+';padding:9px 13px;margin-bottom:10px;background:'+C.col+'0d;border-radius:0 8px 8px 0">'
+      +'<div style="font-size:12.5px;font-weight:800;color:'+C.col+';margin-bottom:3px">'+C.lbl+' <span style="font-weight:400;color:var(--muted);font-size:11px">— '+n+' familia(s)</span></div>'
+      +'<div style="font-size:12px;color:var(--text);line-height:1.5">'+C.est+'</div></div>';
+  });
+  h+='</div>';
+  pane.innerHTML=h;
+}
+
+function exportarKraljic(){
+  const K=window._kraK; if(!K||!K.arr.length){ showToast('Primero calculá la matriz','error'); return; }
+  const f=[['Familia','Gasto','Porcentaje','Acumulado','Proveedores','Concentracion','Riesgo','Cuadrante','Estrategia']];
+  K.arr.forEach(x=>{
+    const C=KRA_CUADRANTES[x.cuadrante];
+    f.push([x.k, Math.round(x.gasto), x.pct.toFixed(1)+'%', Math.round(x.acPct)+'%', x.nProv,
+      Math.round(x.conc*100)+'%', x.riesgo, C.lbl, C.est]);
+  });
+  const csv=f.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='Matriz_Kraljic_'+(K.periodo==='__all__'?'historico':K.periodo)+'.csv'; a.click();
+  showToast('⬇️ Matriz exportada','ok');
+}
+
+// ══════════════════════════════════════════════════════════════
+// AUDITORÍA DE DATOS — mide qué parte de la gestión es analizable.
+// Usa los mismos datos ya cargados: detalleData (planilla COMPRAS) y scs.
+// ══════════════════════════════════════════════════════════════
+function _audN(n){ return Math.round(Number(n)||0).toLocaleString('es-AR'); }
+function _audP(a,b){ return b>0?Math.round(a/b*100):0; }
+function _audE(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+async function _audRecargarPlanilla(){
+  const b=document.getElementById('aud-btn-sheet');
+  if(b){ b.disabled=true; b.textContent='⏳ Actualizando...'; }
+  try{ await traerDetalleDesdeSheet(false); }catch(e){ showToast('No se pudo leer la planilla','error'); }
+  if(b){ b.disabled=false; b.textContent='📊 Actualizar planilla'; }
+  renderAuditoria();
+}
+
+function _audCalcular(){
+  const fac=(detalleData||[]);
+  let tot=0, sinMonto=0, sinFecha=0, sinCat=0, sinProv=0, sinArea=0, sinCamp=0, gastoClasif=0;
+  const porCat={}, provNorm={}, provCrudo={}, minmax=[];
+  fac.forEach(d=>{
+    const m=d.monto||0; tot+=m;
+    if(!m) sinMonto++;
+    const f=String(d.fecha||''); if(!f) sinFecha++; else minmax.push(f.slice(0,10));
+    const cat=(d.categoria||'').trim();
+    const esSin = !cat || cat==='SIN ESPECIFICAR';
+    if(esSin) sinCat++; else gastoClasif+=m;
+    const k=esSin?'(sin categoría)':cat;
+    (porCat[k]=porCat[k]||{m:0,n:0}); porCat[k].m+=m; porCat[k].n++;
+    const p=(d.proveedor||'').trim();
+    if(!p||p==='SIN ESPECIFICAR') sinProv++;
+    else { provCrudo[p]=1; const kn=_parNormProv(p); (provNorm[kn]=provNorm[kn]||{m:0,v:{}}); provNorm[kn].m+=m; provNorm[kn].v[p]=1; }
+    const a=(d.area||'').trim(); if(!a||a==='SIN ESPECIFICAR') sinArea++;
+    const c=(d.campamento||'').trim(); if(!c||c==='SIN ESPECIFICAR') sinCamp++;
+  });
+  minmax.sort();
+  const cats=Object.keys(porCat).filter(k=>k!=='(sin categoría)');
+  // ¿Cuántas categorías concentran el 80%?
+  const orden=cats.map(k=>porCat[k].m).sort((a,b)=>b-a);
+  let ac=0, n80=0;
+  for(const v of orden){ ac+=v; n80++; if(ac>=tot*0.8) break; }
+  // Proveedores con variantes de nombre
+  const dup=Object.keys(provNorm).filter(k=>Object.keys(provNorm[k].v).length>1)
+    .map(k=>({canon:k, variantes:Object.keys(provNorm[k].v), m:provNorm[k].m}))
+    .sort((a,b)=>b.m-a.m);
+
+  // ── Solicitudes ──
+  const sc=(scs||[]);
+  let scSinArea=0, scSinCrit=0, scSinFecha=0, scSinItems=0, urg=0, lineas=0;
+  sc.forEach(x=>{
+    if(!x.area) scSinArea++;
+    const c=String(x.criticidad||'').toUpperCase();
+    if(!c) scSinCrit++; else if(['URGENTE','CRITICA','ALTA'].includes(c)) urg++;
+    if(!x.fecha) scSinFecha++;
+    const it=String(x.items||'').trim();
+    if(!it) scSinItems++;
+    lineas += it? it.split('\n').map(l=>l.trim()).filter(Boolean).length : 0;
+  });
+
+  return { fac, tot, sinMonto, sinFecha, sinCat, sinProv, sinArea, sinCamp, gastoClasif,
+    porCat, cats, n80, dup, nProv:Object.keys(provNorm).length, nProvCrudo:Object.keys(provCrudo).length,
+    minF:minmax[0]||'', maxF:minmax[minmax.length-1]||'',
+    cobertura:_audP(gastoClasif, tot),
+    sc, scSinArea, scSinCrit, scSinFecha, scSinItems, urg, lineas };
+}
+
+function renderAuditoria(){
+  const pane=document.getElementById('aud-pane'); if(!pane) return;
+  const A=_audCalcular(); window._audA=A;
+  const f=document.getElementById('aud-fuente');
+  if(f){
+    const urlEdit='https://docs.google.com/spreadsheets/d/'+_SHEET_ID+'/edit?gid='+_SHEET_GID;
+    f.innerHTML = '<a href="'+urlEdit+'" target="_blank" rel="noopener" style="color:#7cc4ff;text-decoration:none">📊 Planilla COMPRAS ↗</a>'
+      + ' · ' + _audN(A.fac.length) + ' comprobantes'
+      + (A.minF?(' · '+A.minF+' a '+A.maxF):'');
+  }
+  if(!A.fac.length){
+    pane.innerHTML='<div style="padding:18px;background:var(--s1);border:1px solid var(--border);border-radius:11px">'
+      +'<div style="color:var(--yellow);font-weight:700;margin-bottom:6px">⚠️ Todavía no hay datos de la planilla</div>'
+      +'<div style="color:var(--muted);font-size:13px">Tocá <b>📊 Actualizar planilla</b> para traer los comprobantes de compra.</div></div>';
+    return;
+  }
+  const kpi=(v,l,sub,cls)=>{
+    const col = cls==='ok'?'var(--green)':cls==='bad'?'var(--red)':cls==='warn'?'var(--yellow)':'var(--or)';
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:13px 15px">'
+      +'<div style="font-size:21px;font-weight:800;color:'+col+';line-height:1.15">'+v+'</div>'
+      +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:2px">'+l+'</div>'
+      +(sub?'<div style="font-size:10.5px;color:var(--muted);margin-top:3px">'+sub+'</div>':'')+'</div>';
+  };
+  const fila=(nom,vacios,n)=>{
+    const c=_audP(n-vacios,n);
+    const col=c>=90?'var(--green)':c>=60?'var(--yellow)':'var(--red)';
+    return '<tr><td style="padding:7px 9px;border-bottom:1px solid var(--border)">'+nom+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;color:var(--muted)">'+_audN(vacios)+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700;color:'+col+'">'+c+'%</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);width:120px">'
+        +'<div style="height:6px;background:var(--s3);border-radius:3px;overflow:hidden"><i style="display:block;height:100%;width:'+c+'%;background:'+col+'"></i></div></td></tr>';
+  };
+
+  let h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px">'
+    + kpi(_audN(A.fac.length),'Comprobantes')
+    + kpi('$'+_audN(A.tot),'Gasto total','neto de notas de crédito')
+    + kpi(A.cobertura+'%','Gasto con categoría', A.cobertura<100?('$'+_audN(A.tot-A.gastoClasif)+' sin clasificar'):'', A.cobertura>=80?'ok':A.cobertura>=50?'warn':'bad')
+    + kpi(_audN(A.nProv),'Proveedores', A.nProvCrudo>A.nProv?(A.nProvCrudo+' nombres distintos'):'')
+    + kpi(_audN(A.cats.length),'Categorías usadas', A.n80+' concentran el 80%')
+    + '</div>';
+
+  // Completitud
+  h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:14px">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Completitud de la planilla de compras</div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:var(--s2)">'
+    +'<th style="padding:7px 9px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Campo</th>'
+    +'<th style="padding:7px 9px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Vacíos</th>'
+    +'<th style="padding:7px 9px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Completo</th>'
+    +'<th style="padding:7px 9px"></th></tr></thead><tbody>'
+    + fila('Monto', A.sinMonto, A.fac.length)
+    + fila('Fecha', A.sinFecha, A.fac.length)
+    + fila('Proveedor', A.sinProv, A.fac.length)
+    + fila('Categoría', A.sinCat, A.fac.length)
+    + fila('Área', A.sinArea, A.fac.length)
+    + fila('Campamento', A.sinCamp, A.fac.length)
+    +'</tbody></table></div>';
+
+  // Solicitudes
+  h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:14px">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Solicitudes de compra</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px">'
+      + kpi(_audN(A.sc.length),'Solicitudes')
+      + kpi(_audN(A.lineas),'Líneas de ítem','sin familia asignada')
+      + kpi(_audP(A.sc.length-A.scSinArea,A.sc.length)+'%','Con área','', _audP(A.sc.length-A.scSinArea,A.sc.length)>=90?'ok':'warn')
+      + kpi(_audP(A.urg,A.sc.length)+'%','Urgentes / Altas','', _audP(A.urg,A.sc.length)>35?'bad':'ok')
+    +'</div></div>';
+
+  // Proveedores duplicados
+  if(A.dup.length){
+    h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:14px">'
+      +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Proveedores escritos de varias formas</div>'
+      +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">El sistema los unifica automáticamente para los análisis. Conviene normalizarlos también en la planilla.</div>'
+      +'<div style="max-height:240px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+      + A.dup.slice(0,15).map(d=>'<tr><td style="padding:6px 9px;border-bottom:1px solid var(--border);font-weight:600">'+_audE(d.canon)+'</td>'
+        +'<td style="padding:6px 9px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted)">'+d.variantes.map(_audE).join(' · ')+'</td>'
+        +'<td style="padding:6px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">$'+_audN(d.m)+'</td></tr>').join('')
+      +'</table></div></div>';
+  }
+
+  // Veredicto
+  const ver=(nom,ok,det)=>'<tr><td style="padding:7px 9px;border-bottom:1px solid var(--border);width:230px;font-weight:600">'+nom+'</td>'
+    +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);width:110px"><span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:999px;background:'
+    +(ok?'rgba(34,197,94,.18);color:#7ee2a4':'rgba(234,179,8,.18);color:#f4d160')+'">'+(ok?'✔ Sí':'✕ Todavía no')+'</span></td>'
+    +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)">'+det+'</td></tr>';
+  h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Veredicto: qué se puede hacer hoy</div>'
+    +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:4px 0 6px">Computable ahora</div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:12.5px">'
+    + ver('Pareto por proveedor', A.sinProv<A.fac.length*0.3, 'Proveedor y monto en la planilla.')
+    + ver('Pareto por área', A.sinArea<A.fac.length*0.3, 'Requiere el campo Área cargado.')
+    + ver('Pareto por familia', A.cobertura>=60, 'La categoría cubre el '+A.cobertura+'% del gasto.')
+    + ver('Pareto por frecuencia', A.sc.length>0, 'Solicitudes contadas; falta ligarlas a familia.')
+    + ver('Pareto de urgencias', (A.sc.length-A.scSinCrit)>A.sc.length*0.7, 'Requiere criticidad cargada.')
+    + ver('Matriz de Kraljic (parcial)', A.cobertura>=60, 'Eje de riesgo con N° de proveedores y concentración.')
+    +'</table>'
+    +'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:14px 0 6px">Falta capturar</div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:12.5px">'
+    + ver('Plazo de entrega real', false, 'No se registra la fecha de recepción. Es el dato clave del riesgo de Kraljic.')
+    + ver('Quiebres / paradas', false, 'No se registra si la compra fue por rotura o parada de equipo.')
+    + ver('Familia por ítem', false, 'Los ítems son texto libre; conviene un diccionario que aprenda.')
+    +'</table>'
+    +'<div style="margin-top:14px;padding:12px 15px;border-radius:9px;background:'
+      +(A.cobertura>=60?'rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.4);color:#7ee2a4':'rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.4);color:#f4d160')+'">'
+      +'<b style="display:block;margin-bottom:4px">'+(A.cobertura>=60?'Se puede analizar con lo que hay':'Conviene completar la clasificación primero')+'</b>'
+      +'El gasto analizable por familia es el <b>'+A.cobertura+'%</b>. '
+      +'Hoy <b>'+A.n80+'</b> categorías concentran el 80% del gasto: ese es el universo real a normalizar, '
+      +'no las '+A.cats.length+' categorías completas ni las '+_audN(A.lineas)+' líneas de ítem.</div>'
+    +'</div>';
+  pane.innerHTML=h;
+}
+
+function exportarAuditoria(){
+  const A=window._audA; if(!A){ showToast('Primero calculá la auditoría','error'); return; }
+  const f=[['SECCION','INDICADOR','VALOR']];
+  f.push(['PLANILLA','Comprobantes',A.fac.length]);
+  f.push(['PLANILLA','Gasto total',Math.round(A.tot)]);
+  f.push(['PLANILLA','Gasto clasificado',Math.round(A.gastoClasif)]);
+  f.push(['PLANILLA','Cobertura por familia',A.cobertura+'%']);
+  f.push(['PLANILLA','Período',A.minF+' a '+A.maxF]);
+  f.push(['PLANILLA','Proveedores unicos',A.nProv]);
+  f.push(['PLANILLA','Nombres distintos',A.nProvCrudo]);
+  f.push(['PLANILLA','Categorias usadas',A.cats.length]);
+  f.push(['PLANILLA','Categorias que concentran el 80%',A.n80]);
+  ['Monto','Fecha','Proveedor','Categoria','Area','Campamento'].forEach((c,i)=>{
+    const v=[A.sinMonto,A.sinFecha,A.sinProv,A.sinCat,A.sinArea,A.sinCamp][i];
+    f.push(['COMPLETITUD',c+' — vacios',v]);
+  });
+  f.push(['SOLICITUDES','Total',A.sc.length]);
+  f.push(['SOLICITUDES','Lineas de item',A.lineas]);
+  f.push(['SOLICITUDES','Urgentes/Altas',A.urg]);
+  A.dup.slice(0,40).forEach(d=>f.push(['PROVEEDOR DUPLICADO',d.canon,d.variantes.join(' | ')]));
+  Object.keys(A.porCat).sort((a,b)=>A.porCat[b].m-A.porCat[a].m).forEach(k=>f.push(['CATEGORIA',k,Math.round(A.porCat[k].m)]));
+  const csv=f.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='Auditoria_datos_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+  showToast('⬇️ Auditoría exportada','ok');
 }
 
 // ══════════════════════════════════════════════════════════════
