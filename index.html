@@ -13665,6 +13665,30 @@ function guardarRubro(){
   current.rubros[n]={items:[],cotiz:[]};curRubro=n;save();
   closeModal('modalRubro');renderRubroTabs();renderRubro();renderTotal();toast('Rubro agregado');
 }
+function renombrarRubro(){
+  if(!curRubro) return;
+  const nuevo=prompt('Nuevo nombre para el rubro:', curRubro);
+  if(nuevo===null) return;
+  const n=String(nuevo).trim().toUpperCase();
+  if(!n){ toast('El nombre no puede quedar vacío'); return; }
+  if(n===curRubro) return;
+  if(current.rubros[n]){ toast('Ya existe un rubro con ese nombre'); return; }
+  // Reconstruir el objeto conservando el ORDEN de los rubros
+  const nuevos={};
+  Object.keys(current.rubros).forEach(k=>{
+    if(k===curRubro) nuevos[n]=current.rubros[k];
+    else nuevos[k]=current.rubros[k];
+  });
+  current.rubros=nuevos;
+  // Actualizar los ítems de la Lista Completa que apuntaban al nombre viejo
+  if(Array.isArray(current.listaItems)){
+    current.listaItems.forEach(it=>{ if(it.asignadoA===curRubro) it.asignadoA=n; });
+  }
+  curRubro=n; save();
+  renderRubroTabs(); renderRubro(); renderTotal();
+  if(typeof renderListaCompleta==='function'){ try{ renderListaCompleta(); }catch(e){} }
+  toast('Rubro renombrado a "'+n+'"');
+}
 function borrarRubro(){
   if(!confirm('¿Eliminar el rubro "'+curRubro+'" y todo su contenido?'))return;
   delete current.rubros[curRubro];curRubro=Object.keys(current.rubros)[0]||null;save();
@@ -13676,15 +13700,26 @@ function renderRubro(){
   const r=current.rubros[curRubro];
   const items=r.items||[];const cotiz=r.cotiz||[];
   let ars=0,usd=0;
+  let arsNeto=0, usdNeto=0;
   const rowsItems=items.map((it,i)=>{
-    const sub=(Number(it.cant)||0)*(Number(it.precio)||0);it.moneda==='USD'?usd+=sub:ars+=sub;
+    const iva = (it.iva===0 || it.iva===10.5 || it.iva===21) ? it.iva : (it.iva!=null? Number(it.iva) : 21);
+    const neto=(Number(it.cant)||0)*(Number(it.precio)||0);
+    const unitCon=(Number(it.precio)||0)*(1+iva/100);      // precio unitario con IVA
+    const sub=neto*(1+iva/100);                            // subtotal con IVA
+    if(it.moneda==='USD'){ usd+=sub; usdNeto+=neto; } else { ars+=sub; arsNeto+=neto; }
     return `<tr>
       <td><input value="${_proyEsc(it.desc||'')}" placeholder="Descripción del material/requerimiento" onchange="PROY.upItem(${i},'desc',this.value)"></td>
-      <td class="num" style="width:80px"><input class="num" style="text-align:right" type="number" value="${it.cant||''}" onchange="PROY.upItem(${i},'cant',this.value)"></td>
-      <td style="width:80px"><input value="${_proyEsc(it.unidad||'')}" placeholder="u" onchange="PROY.upItem(${i},'unidad',this.value)"></td>
-      <td class="num" style="width:110px"><input class="num" style="text-align:right" type="number" value="${it.precio||''}" onchange="PROY.upItem(${i},'precio',this.value)"></td>
-      <td style="width:70px"><select onchange="PROY.upItem(${i},'moneda',this.value)"><option ${it.moneda!=='USD'?'selected':''}>ARS</option><option ${it.moneda==='USD'?'selected':''}>USD</option></select></td>
-      <td class="num" style="width:120px;font-weight:700">${fmtMoney(sub,it.moneda)}</td>
+      <td class="num" style="width:76px"><input class="num" style="text-align:right" type="number" value="${it.cant||''}" onchange="PROY.upItem(${i},'cant',this.value)"></td>
+      <td style="width:72px"><input value="${_proyEsc(it.unidad||'')}" placeholder="u" onchange="PROY.upItem(${i},'unidad',this.value)"></td>
+      <td class="num" style="width:105px"><input class="num" style="text-align:right" type="number" value="${it.precio||''}" onchange="PROY.upItem(${i},'precio',this.value)"></td>
+      <td style="width:88px"><select onchange="PROY.upItem(${i},'iva',this.value)">
+        <option value="21" ${iva===21?'selected':''}>21%</option>
+        <option value="10.5" ${iva===10.5?'selected':''}>10,5%</option>
+        <option value="0" ${iva===0?'selected':''}>Exento</option>
+      </select></td>
+      <td class="num" style="width:115px;color:var(--muted)" title="Precio unitario con IVA incluido">${fmtMoney(unitCon,it.moneda)}</td>
+      <td style="width:66px"><select onchange="PROY.upItem(${i},'moneda',this.value)"><option ${it.moneda!=='USD'?'selected':''}>ARS</option><option ${it.moneda==='USD'?'selected':''}>USD</option></select></td>
+      <td class="num" style="width:125px;font-weight:700">${fmtMoney(sub,it.moneda)}</td>
       <td style="width:34px"><button class="btn-ghost" onclick="PROY.delItem(${i})" title="Quitar">✕</button></td>
     </tr>`;
   }).join('');
@@ -13707,14 +13742,15 @@ function renderRubro(){
     <div class="panel">
       <h3><span class="lbl section-title">Materiales / Requerimientos — ${_proyEsc(curRubro)}</span>
         <span style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sec btn-sm" onclick="PROY.renombrarRubro()">✎ Editar nombre</button>
           <button class="btn btn-sec btn-sm" onclick="PROY.borrarRubro()">🗑 Rubro</button>
           <button class="btn btn-sec btn-sm" onclick="PROY.openCargarLista()">📋 Cargar lista</button>
           <button class="btn btn-primary btn-sm" onclick="PROY.addItem()">＋ Material</button>
         </span>
       </h3>
       <table>
-        <thead><tr><th>Descripción</th><th class="num">Cant.</th><th>Unidad</th><th class="num">P. unit.</th><th>Mon.</th><th class="num">Subtotal</th><th></th></tr></thead>
-        <tbody>${rowsItems||'<tr><td colspan="7" class="muted" style="text-align:center;padding:18px">Sin materiales cargados. Usá “＋ Material”.</td></tr>'}</tbody>
+        <thead><tr><th>Descripción</th><th class="num">Cant.</th><th>Unidad</th><th class="num">P. unit. s/IVA</th><th>IVA</th><th class="num">P. unit. c/IVA</th><th>Mon.</th><th class="num">Subtotal c/IVA</th><th></th></tr></thead>
+        <tbody>${rowsItems||'<tr><td colspan="9" class="muted" style="text-align:center;padding:18px">Sin materiales cargados. Usá “＋ Material”.</td></tr>'}</tbody>
       </table>
     </div>
     <div class="panel">
@@ -13728,8 +13764,10 @@ function renderRubro(){
         <tbody>${rowsCot||'<tr><td colspan="4" class="muted" style="text-align:center;padding:16px">Sin cotizaciones adjuntas.</td></tr>'}</tbody>
       </table>
       <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap">
-        <div class="total-item" style="flex:0 1 auto"><div class="l">Subtotal rubro (ARS)</div><div class="v">${fmtMoney(ars,'ARS')}</div></div>
-        ${usd>0?`<div class="total-item" style="flex:0 1 auto"><div class="l">Subtotal rubro (USD)</div><div class="v">${fmtMoney(usd,'USD')}</div></div>`:''}
+        <div class="total-item" style="flex:0 1 auto"><div class="l">Neto s/IVA (ARS)</div><div class="v" style="font-size:15px;opacity:.8">${fmtMoney(arsNeto,'ARS')}</div></div>
+        <div class="total-item" style="flex:0 1 auto"><div class="l">IVA (ARS)</div><div class="v" style="font-size:15px;opacity:.8">${fmtMoney(ars-arsNeto,'ARS')}</div></div>
+        <div class="total-item" style="flex:0 1 auto"><div class="l">Subtotal rubro c/IVA (ARS)</div><div class="v">${fmtMoney(ars,'ARS')}</div></div>
+        ${usd>0?`<div class="total-item" style="flex:0 1 auto"><div class="l">Subtotal rubro c/IVA (USD)</div><div class="v">${fmtMoney(usd,'USD')}</div></div>`:''}
       </div>
     </div>`;
   document.getElementById('inpCot').onchange=e=>handleCot(e.target.files);
@@ -14296,7 +14334,7 @@ function verSCdesdeProyecto(numEnc){
   toast('Abrí la SC desde Compras › Historial de SC');
 }
 
-return {renderSCAsociadas:renderSCAsociadas, toggleSCPicker:toggleSCPicker, renderSCPicker:renderSCPicker, toggleSCEnProyecto:toggleSCEnProyecto, quitarSC:quitarSC, verSCdesdeProyecto:verSCdesdeProyecto, abrirEditorNums:abrirEditorNums, guardarNum:guardarNum, addItem:addItem, borrarEtapa:borrarEtapa, borrarRubro:borrarRubro, calHoy:calHoy, calMove:calMove, cambiarEstado:cambiarEstado, closeModal:closeModal, delCot:delCot, delItem:delItem, delPlano:delPlano, doExport:doExport, editarProyecto:editarProyecto, eliminarProyecto:eliminarProyecto, goList:goList, guardarEtapa:guardarEtapa, guardarProyecto:guardarProyecto, guardarRubro:guardarRubro, initProyectos:initProyectos, openCargarLista:openCargarLista, openDetail:openDetail, openEtapa:openEtapa, openExport:openExport, openNuevo:openNuevo, openRubro:openRubro, procesarLista:procesarLista, renderList:renderList, selRubro:selRubro, setTab:setTab, upCot:upCot, upItem:upItem, recargarLista:recargarLista, cargarListaPegada:cargarListaPegada, asignarSeleccionados:asignarSeleccionados, toggleTodos:toggleTodos, _lcToggleSel:_lcToggleSel, _lcDel:_lcDel, _lcDesasignar:_lcDesasignar};
+return {renderSCAsociadas:renderSCAsociadas, toggleSCPicker:toggleSCPicker, renderSCPicker:renderSCPicker, toggleSCEnProyecto:toggleSCEnProyecto, quitarSC:quitarSC, verSCdesdeProyecto:verSCdesdeProyecto, abrirEditorNums:abrirEditorNums, guardarNum:guardarNum, addItem:addItem, borrarEtapa:borrarEtapa, borrarRubro:borrarRubro, renombrarRubro:renombrarRubro, calHoy:calHoy, calMove:calMove, cambiarEstado:cambiarEstado, closeModal:closeModal, delCot:delCot, delItem:delItem, delPlano:delPlano, doExport:doExport, editarProyecto:editarProyecto, eliminarProyecto:eliminarProyecto, goList:goList, guardarEtapa:guardarEtapa, guardarProyecto:guardarProyecto, guardarRubro:guardarRubro, initProyectos:initProyectos, openCargarLista:openCargarLista, openDetail:openDetail, openEtapa:openEtapa, openExport:openExport, openNuevo:openNuevo, openRubro:openRubro, procesarLista:procesarLista, renderList:renderList, selRubro:selRubro, setTab:setTab, upCot:upCot, upItem:upItem, recargarLista:recargarLista, cargarListaPegada:cargarListaPegada, asignarSeleccionados:asignarSeleccionados, toggleTodos:toggleTodos, _lcToggleSel:_lcToggleSel, _lcDel:_lcDel, _lcDesasignar:_lcDesasignar};
 })();
 function initProyectos(){return window.PROY.initProyectos();}
 </script>
