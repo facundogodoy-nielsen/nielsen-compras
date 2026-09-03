@@ -2358,6 +2358,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
           <option value="finalizado">Finalizado</option>
         </select>
         <button class="btn btn-sec btn-sm" onclick="PROY.editarProyecto()">✎ Editar datos</button>
+        <button class="btn btn-sec btn-sm" onclick="PROY.duplicarProyecto()">⧉ Duplicar</button>
         <button class="btn btn-danger btn-sm" onclick="PROY.eliminarProyecto()">🗑 Eliminar</button>
       </div>
     </div>
@@ -13362,6 +13363,9 @@ function renderList(){
       <div class="card-foot">
         <span class="estado ${p.estado}">${est}</span>
         <span class="card-total">${money}</span>
+        <button class="btn-ghost btn-xs" title="Duplicar proyecto"
+          onclick="event.stopPropagation();PROY.duplicarProyecto('${p.id}')"
+          style="margin-left:8px;padding:3px 9px;font-size:11px">⧉</button>
       </div></div>`;
   }).join('');
 }
@@ -13420,6 +13424,70 @@ function guardarProyecto(){
   editId?null:renderList();
   renderList();
 }
+// ══ DUPLICAR PROYECTO ══
+// Copia la estructura completa (rubros, materiales, etapas) con un número nuevo.
+// Lo que NO se copia: las cotizaciones adjuntas, los planos, las SC asociadas y
+// el estado — porque pertenecen al proyecto original, no a la copia.
+function duplicarProyecto(id){
+  const orig = DB.find(x=>x.id===(id||(current&&current.id)));
+  if(!orig){ toast('No hay proyecto para duplicar'); return; }
+
+  const nombre = prompt('Nombre del proyecto nuevo:', orig.nombre + ' (copia)');
+  if(nombre===null) return;
+  const nom = String(nombre).trim();
+  if(!nom){ toast('El nombre no puede quedar vacío'); return; }
+
+  const conMateriales = confirm(
+    'Duplicar "' + orig.nombre + '"\n\n' +
+    '¿Copiar también los materiales cargados en cada rubro?\n\n' +
+    'Aceptar = copia los rubros CON sus materiales\n' +
+    'Cancelar = copia sólo los rubros vacíos');
+
+  _recalcSeq();
+  const numNuevo = nextNum();
+  seq++;
+
+  // Copia profunda de los rubros
+  const rubros = {};
+  Object.keys(orig.rubros||{}).forEach(r=>{
+    const src = orig.rubros[r] || {};
+    rubros[r] = {
+      items: conMateriales
+        ? (src.items||[]).map(it=>({ desc:it.desc||'', cant:it.cant||'', unidad:it.unidad||'',
+                                     precio:it.precio||'', moneda:it.moneda||'ARS', iva:(it.iva!=null?it.iva:21) }))
+        : [],
+      cotiz: []          // las cotizaciones son del proyecto original
+    };
+  });
+
+  const p = {
+    id: uid(),
+    num: numNuevo,
+    nombre: nom,
+    cliente: orig.cliente||'',
+    ubic: orig.ubic||'',
+    resp: orig.resp||'',
+    notas: orig.notas||'',
+    fini: '', ffin: '',                       // las fechas se cargan de nuevo
+    estado: 'planificacion',
+    creado: new Date().toISOString(),
+    duplicadoDe: orig.num || '',
+    rubros: rubros,
+    planos: [],
+    etapas: (orig.etapas||[]).map(e=>({ ...e, id: uid(), estado:'pendiente' })),
+    listaItems: []
+  };
+
+  DB.push(p);
+  _proyUpsert(p);
+  try{ localStorage.setItem(PROY_LS, JSON.stringify(DB)); }catch(e){}
+  renderList();
+  const nMat = Object.keys(rubros).reduce((a,k)=>a+rubros[k].items.length,0);
+  toast('Proyecto ' + p.num + ' creado como copia de ' + (orig.num||'') + (nMat?(' · '+nMat+' materiales'):''));
+  // Abrir la copia para seguir trabajando
+  setTimeout(()=>{ try{ openDetail(p.id); }catch(e){} }, 250);
+}
+
 async function eliminarProyecto(){
   if(!current||!current.id){ toast('No hay proyecto abierto'); return; }
   if(!confirm('¿Eliminar el proyecto '+current.num+'? Esta acción no se puede deshacer.'))return;
@@ -14334,7 +14402,7 @@ function verSCdesdeProyecto(numEnc){
   toast('Abrí la SC desde Compras › Historial de SC');
 }
 
-return {renderSCAsociadas:renderSCAsociadas, toggleSCPicker:toggleSCPicker, renderSCPicker:renderSCPicker, toggleSCEnProyecto:toggleSCEnProyecto, quitarSC:quitarSC, verSCdesdeProyecto:verSCdesdeProyecto, abrirEditorNums:abrirEditorNums, guardarNum:guardarNum, addItem:addItem, borrarEtapa:borrarEtapa, borrarRubro:borrarRubro, renombrarRubro:renombrarRubro, calHoy:calHoy, calMove:calMove, cambiarEstado:cambiarEstado, closeModal:closeModal, delCot:delCot, delItem:delItem, delPlano:delPlano, doExport:doExport, editarProyecto:editarProyecto, eliminarProyecto:eliminarProyecto, goList:goList, guardarEtapa:guardarEtapa, guardarProyecto:guardarProyecto, guardarRubro:guardarRubro, initProyectos:initProyectos, openCargarLista:openCargarLista, openDetail:openDetail, openEtapa:openEtapa, openExport:openExport, openNuevo:openNuevo, openRubro:openRubro, procesarLista:procesarLista, renderList:renderList, selRubro:selRubro, setTab:setTab, upCot:upCot, upItem:upItem, recargarLista:recargarLista, cargarListaPegada:cargarListaPegada, asignarSeleccionados:asignarSeleccionados, toggleTodos:toggleTodos, _lcToggleSel:_lcToggleSel, _lcDel:_lcDel, _lcDesasignar:_lcDesasignar};
+return {renderSCAsociadas:renderSCAsociadas, toggleSCPicker:toggleSCPicker, renderSCPicker:renderSCPicker, toggleSCEnProyecto:toggleSCEnProyecto, quitarSC:quitarSC, verSCdesdeProyecto:verSCdesdeProyecto, abrirEditorNums:abrirEditorNums, guardarNum:guardarNum, addItem:addItem, borrarEtapa:borrarEtapa, borrarRubro:borrarRubro, renombrarRubro:renombrarRubro, calHoy:calHoy, calMove:calMove, cambiarEstado:cambiarEstado, closeModal:closeModal, delCot:delCot, delItem:delItem, delPlano:delPlano, doExport:doExport, editarProyecto:editarProyecto, eliminarProyecto:eliminarProyecto, duplicarProyecto:duplicarProyecto, goList:goList, guardarEtapa:guardarEtapa, guardarProyecto:guardarProyecto, guardarRubro:guardarRubro, initProyectos:initProyectos, openCargarLista:openCargarLista, openDetail:openDetail, openEtapa:openEtapa, openExport:openExport, openNuevo:openNuevo, openRubro:openRubro, procesarLista:procesarLista, renderList:renderList, selRubro:selRubro, setTab:setTab, upCot:upCot, upItem:upItem, recargarLista:recargarLista, cargarListaPegada:cargarListaPegada, asignarSeleccionados:asignarSeleccionados, toggleTodos:toggleTodos, _lcToggleSel:_lcToggleSel, _lcDel:_lcDel, _lcDesasignar:_lcDesasignar};
 })();
 function initProyectos(){return window.PROY.initProyectos();}
 </script>
