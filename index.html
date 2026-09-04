@@ -2748,7 +2748,12 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     </div>
     <div style="font-size:11px;color:var(--muted);margin-top:8px">Se guarda en la base compartida y aparece también en <strong style="color:var(--or)">Comparativo → Proveedores &amp; PDFs → Base de Datos</strong>.</div>
   </div>
-  <div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--s1)">
+    <!-- Pestañas por ámbito geográfico -->
+  <div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap" id="prov-tabs"></div>
+  <div id="prov-mapa" style="margin-bottom:14px"></div>
+  <div id="prov-subzonas" style="margin-bottom:14px"></div>
+
+<div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--s1)">
     <table style="width:100%;border-collapse:collapse;font-size:12px" id="prov-db-table">
       <thead>
         <tr style="background:var(--s2);border-bottom:2px solid var(--border2)">
@@ -2757,6 +2762,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
           <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Rubro</th>
           <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Email</th>
           <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Tipo</th>
+          <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Zona</th>
           <th data-editor-only style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Acciones</th>
         </tr>
       </thead>
@@ -11603,6 +11609,185 @@ function _fillProvFiltro(id, values){
   if(cur && values.indexOf(cur)>=0) sel.value=cur; else if(cur && cur==='__all') sel.value='__all';
 }
 
+// ══════════════════════════════════════════════════════════════
+// CLASIFICACIÓN GEOGRÁFICA DE PROVEEDORES
+// Local (San Juan) → Gran San Juan / Comunidades · Nacional · Internacional
+// Se deduce de la dirección; se puede corregir a mano y queda guardado.
+// ══════════════════════════════════════════════════════════════
+const GEO_GSJ = ['CAPITAL','SAN JUAN CAPITAL','RAWSON','CHIMBAS','RIVADAVIA','SANTA LUCIA','SANTA LUCÍA','POCITO',
+  'ALBARDON','ALBARDÓN','ULLUM','ZONDA','9 DE JULIO','NUEVE DE JULIO','ANGACO','SAN MARTIN','SAN MARTÍN'];
+const GEO_COM = ['JACHAL','JÁCHAL','SAN JOSE DE JACHAL','IGLESIA','RODEO','CALINGASTA','BARREAL','TAMBERIAS','TAMBERÍAS',
+  'VALLE FERTIL','VALLE FÉRTIL','SAN AGUSTIN','SAN AGUSTÍN','CAUCETE','25 DE MAYO','VEINTICINCO DE MAYO','SARMIENTO','MEDIA AGUA',
+  'LAS FLORES','BELLA VISTA','HUACO','MOGNA','ASTICA','USNO','MALIMAN','MALIMÁN'];
+const GEO_PROV = {
+  'BUENOS AIRES':'centro','CABA':'centro','CIUDAD AUTONOMA':'centro','CAPITAL FEDERAL':'centro','SANTA FE':'centro',
+  'CORDOBA':'centro','CÓRDOBA':'centro','ENTRE RIOS':'centro','ENTRE RÍOS':'centro','LA PAMPA':'centro',
+  'MENDOZA':'cuyo','SAN LUIS':'cuyo','LA RIOJA':'cuyo',
+  'SALTA':'noa','JUJUY':'noa','TUCUMAN':'noa','TUCUMÁN':'noa','CATAMARCA':'noa','SANTIAGO DEL ESTERO':'noa',
+  'CHACO':'nea','CORRIENTES':'nea','MISIONES':'nea','FORMOSA':'nea',
+  'NEUQUEN':'patagonia','NEUQUÉN':'patagonia','RIO NEGRO':'patagonia','RÍO NEGRO':'patagonia','CHUBUT':'patagonia',
+  'SANTA CRUZ':'patagonia','TIERRA DEL FUEGO':'patagonia'
+};
+const GEO_PAIS = {
+  'CHILE':'america','BRASIL':'america','URUGUAY':'america','PARAGUAY':'america','BOLIVIA':'america','PERU':'america',
+  'PERÚ':'america','COLOMBIA':'america','MEXICO':'america','MÉXICO':'america','ESTADOS UNIDOS':'america','EEUU':'america','USA':'america','CANADA':'america',
+  'ESPAÑA':'europa','ITALIA':'europa','ALEMANIA':'europa','FRANCIA':'europa','PORTUGAL':'europa','REINO UNIDO':'europa','HOLANDA':'europa','SUECIA':'europa','SUIZA':'europa',
+  'CHINA':'asia','JAPON':'asia','JAPÓN':'asia','INDIA':'asia','COREA':'asia','TAIWAN':'asia','TAIWÁN':'asia','TURQUIA':'asia','TURQUÍA':'asia','VIETNAM':'asia',
+  'SUDAFRICA':'africa','SUDÁFRICA':'africa','MARRUECOS':'africa','EGIPTO':'africa',
+  'AUSTRALIA':'oceania','NUEVA ZELANDA':'oceania'
+};
+const GEO_ZONAS_AR = {
+  noa:{lbl:'NOA', det:'Salta · Jujuy · Tucumán · Catamarca · Sgo. del Estero'},
+  nea:{lbl:'NEA', det:'Chaco · Corrientes · Misiones · Formosa'},
+  cuyo:{lbl:'Cuyo', det:'Mendoza · San Luis · La Rioja'},
+  centro:{lbl:'Centro / Buenos Aires', det:'Bs. As. · CABA · Santa Fe · Córdoba · Entre Ríos · La Pampa'},
+  patagonia:{lbl:'Patagonia', det:'Neuquén · Río Negro · Chubut · Santa Cruz · T. del Fuego'},
+  sinzona:{lbl:'Sin zona', det:'Provincia no identificada en la dirección'}
+};
+const GEO_CONTINENTES = {
+  america:{lbl:'América', det:'Chile · Brasil · EE.UU. · resto del continente'},
+  europa:{lbl:'Europa', det:'España · Italia · Alemania · resto de Europa'},
+  asia:{lbl:'Asia', det:'China · Japón · India · resto de Asia'},
+  africa:{lbl:'África', det:'Sudáfrica · Marruecos · resto de África'},
+  oceania:{lbl:'Oceanía', det:'Australia · Nueva Zelanda'},
+  sinzona:{lbl:'Sin continente', det:'País no identificado'}
+};
+
+function _geoTxt(p){
+  return (' '+(p.direccion||'')+' '+(p.localidad||'')+' '+(p.zona||'')+' '+(p.pais||'')+' ')
+    .toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function _geoTiene(txt, lista){
+  return lista.some(function(x){
+    const t=String(x).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    return txt.indexOf(' '+t)>=0 || txt.indexOf(t+' ')>=0 || txt.indexOf(t)>=0;
+  });
+}
+// Devuelve {ambito, zona} — usa lo cargado a mano si existe
+function geoDe(p){
+  if(p.ambito && p.geoZona) return {ambito:p.ambito, zona:p.geoZona};
+  const txt=_geoTxt(p);
+  // 1) ¿País extranjero?
+  for(const k in GEO_PAIS){
+    const t=k.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if(txt.indexOf(t)>=0) return {ambito:'internacional', zona:GEO_PAIS[k]};
+  }
+  // 2) Departamentos de San Juan con nombre propio (no se confunden con otras provincias)
+  if(_geoTiene(txt, GEO_COM)) return {ambito:'local', zona:'comunidades'};
+  // 3) Mención explícita a San Juan
+  if(txt.indexOf('SAN JUAN')>=0) return {ambito:'local', zona:'gsj'};
+  // 4) Otra provincia argentina — se evalúa ANTES que los nombres genéricos
+  //    (si no, una dirección de "Salta Capital" caería en Gran San Juan por la palabra "Capital")
+  for(const k in GEO_PROV){
+    const t=k.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if(txt.indexOf(t)>=0) return {ambito:'nacional', zona:GEO_PROV[k]};
+  }
+  // 5) Recién ahora, los departamentos del Gran San Juan de nombre genérico
+  if(_geoTiene(txt, GEO_GSJ)) return {ambito:'local', zona:'gsj'};
+  return {ambito:'sinclasificar', zona:'sinzona'};
+}
+
+let _provTab='todos', _provZona=null;
+
+function _provSetTab(t){ _provTab=t; _provZona=null; renderProvDB(); }
+function _provSetZona(z){ _provZona = (_provZona===z? null : z); renderProvDB(); }
+
+// Cuenta proveedores por ámbito y por zona
+const GEO_COLOR={local:'#22c55e', nacional:'#60a5fa', internacional:'#eab308', sinclasificar:'#6b7280'};
+function _geoBadge(p){
+  const g=geoDe(p);
+  const lblZona = (GEO_ZONAS_AR[g.zona]&&GEO_ZONAS_AR[g.zona].lbl)
+    || (GEO_CONTINENTES[g.zona]&&GEO_CONTINENTES[g.zona].lbl)
+    || (g.zona==='gsj'?'Gran San Juan':(g.zona==='comunidades'?'Comunidades':''));
+  const col=GEO_COLOR[g.ambito]||'#6b7280';
+  return '<span style="font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:'+col+'22;color:'+col+'">'
+    + (lblZona||'—') + '</span>';
+}
+
+function _provConteos(){
+  const c={todos:0, local:0, nacional:0, internacional:0, sinclasificar:0};
+  const z={gsj:0, comunidades:0, noa:0, nea:0, cuyo:0, centro:0, patagonia:0,
+           america:0, europa:0, asia:0, africa:0, oceania:0, sinzona:0};
+  (provData||[]).forEach(function(p){
+    const g=geoDe(p); c.todos++;
+    if(c[g.ambito]!=null) c[g.ambito]++;
+    if(z[g.zona]!=null) z[g.zona]++;
+  });
+  return {c:c, z:z};
+}
+
+// ── Mapa esquemático de Argentina por zonas ──
+function _mapaArgentina(z, activa){
+  const zona=function(id, path, cx, cy){
+    const n=z[id]||0, act=(activa===id);
+    const col = act? '#E8611A' : (n? 'rgba(232,97,26,.35)' : 'rgba(255,255,255,.07)');
+    const bor = act? '#E8611A' : 'rgba(255,255,255,.2)';
+    return '<g style="cursor:pointer" onclick="_provSetZona(\''+id+'\')">'
+      +'<path d="'+path+'" fill="'+col+'" stroke="'+bor+'" stroke-width="1.5"/>'
+      +'<text x="'+cx+'" y="'+cy+'" text-anchor="middle" font-size="11" font-weight="800" fill="'+(act||n?'#fff':'#8b93a7')+'">'+n+'</text>'
+      +'<text x="'+cx+'" y="'+(cy+13)+'" text-anchor="middle" font-size="8" fill="'+(act||n?'#fff':'#8b93a7')+'" letter-spacing=".5">'+GEO_ZONAS_AR[id].lbl.split(' ')[0].toUpperCase()+'</text></g>';
+  };
+  return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px">'
+    +'<div style="font-size:11px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">🗺️ Argentina por zona — tocá una zona para filtrar</div>'
+    +'<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">'
+    +'<svg viewBox="0 0 200 400" style="width:150px;height:300px;flex:none">'
+      + zona('noa',       'M70,20 L130,20 L135,80 L65,80 Z', 100, 48)
+      + zona('nea',       'M135,25 L180,35 L175,95 L137,85 Z', 157, 58)
+      + zona('cuyo',      'M55,85 L105,85 L108,165 L52,165 Z', 80, 122)
+      + zona('centro',    'M110,88 L178,98 L172,180 L110,172 Z', 142, 132)
+      + zona('patagonia', 'M60,170 L165,182 L120,370 L85,370 Z', 112, 250)
+    +'</svg>'
+    +'<div style="flex:1;min-width:210px">'
+      + Object.keys(GEO_ZONAS_AR).filter(function(k){return k!=='sinzona'||z.sinzona;}).map(function(k){
+          const n=z[k]||0, act=(activa===k);
+          return '<div onclick="_provSetZona(\''+k+'\')" style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;cursor:pointer;margin-bottom:5px;'
+            +'background:'+(act?'rgba(232,97,26,.14)':'var(--s2)')+';border:1px solid '+(act?'var(--or)':'var(--border)')+'">'
+            +'<span style="font-size:15px;font-weight:800;color:'+(n?'var(--or)':'var(--muted)')+';min-width:26px;text-align:right">'+n+'</span>'
+            +'<span style="flex:1"><span style="font-size:12.5px;font-weight:700;color:var(--text)">'+GEO_ZONAS_AR[k].lbl+'</span>'
+            +'<div style="font-size:10px;color:var(--muted)">'+GEO_ZONAS_AR[k].det+'</div></span></div>';
+        }).join('')
+    +'</div></div></div>';
+}
+
+// ── Mapa mundial por continentes ──
+function _mapaMundo(z, activa){
+  const c=function(id, x, y, w, h, r){
+    const n=z[id]||0, act=(activa===id);
+    const col = act? '#E8611A' : (n? 'rgba(232,97,26,.35)' : 'rgba(255,255,255,.07)');
+    return '<g style="cursor:pointer" onclick="_provSetZona(\''+id+'\')">'
+      +'<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(r||10)+'" fill="'+col+'" stroke="'+(act?'#E8611A':'rgba(255,255,255,.2)')+'" stroke-width="1.5"/>'
+      +'<text x="'+(x+w/2)+'" y="'+(y+h/2-2)+'" text-anchor="middle" font-size="13" font-weight="800" fill="'+(act||n?'#fff':'#8b93a7')+'">'+n+'</text>'
+      +'<text x="'+(x+w/2)+'" y="'+(y+h/2+13)+'" text-anchor="middle" font-size="9" fill="'+(act||n?'#fff':'#8b93a7')+'">'+GEO_CONTINENTES[id].lbl+'</text></g>';
+  };
+  return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px">'
+    +'<div style="font-size:11px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">🌎 Mundo por continente — tocá uno para filtrar</div>'
+    +'<svg viewBox="0 0 460 210" style="width:100%;max-width:560px;height:auto">'
+      + c('america', 10, 20, 105, 165)
+      + c('europa', 130, 15, 90, 75)
+      + c('africa', 130, 100, 90, 90)
+      + c('asia', 235, 15, 130, 105)
+      + c('oceania', 300, 130, 90, 62)
+    +'</svg>'
+    +'<div style="font-size:11px;color:var(--muted);margin-top:8px">Esquema de referencia — las proporciones no son geográficas.</div>'
+    +'</div>';
+}
+
+// ── Sub-zonas de San Juan ──
+function _subzonasLocal(z, activa){
+  const b=function(id, lbl, det){
+    const n=z[id]||0, act=(activa===id);
+    return '<div onclick="_provSetZona(\''+id+'\')" style="flex:1;min-width:220px;cursor:pointer;padding:13px 15px;border-radius:10px;'
+      +'background:'+(act?'rgba(232,97,26,.14)':'var(--s1)')+';border:1px solid '+(act?'var(--or)':'var(--border)')+'">'
+      +'<div style="font-size:22px;font-weight:800;color:'+(n?'var(--or)':'var(--muted)')+'">'+n+'</div>'
+      +'<div style="font-size:12.5px;font-weight:700;color:var(--text)">'+lbl+'</div>'
+      +'<div style="font-size:10.5px;color:var(--muted);margin-top:2px">'+det+'</div></div>';
+  };
+  return '<div style="display:flex;gap:12px;flex-wrap:wrap">'
+    + b('gsj','Gran San Juan','Capital · Rawson · Chimbas · Rivadavia · Santa Lucía · Pocito · Albardón · Ullum · Zonda · 9 de Julio · Angaco · San Martín')
+    + b('comunidades','Comunidades','Jáchal · Iglesia · Calingasta · Valle Fértil · Caucete · 25 de Mayo · Sarmiento')
+    +'</div>';
+}
+
 function renderProvDB() {
   const q = (document.getElementById('prov-buscar')?.value || '').toLowerCase();
   // Poblar filtros de rubro y tipo con los valores presentes
@@ -11612,9 +11797,37 @@ function renderProvDB() {
   _fillProvFiltro('prov-filtro-tipo', Object.keys(tipos).sort());
   var fRubro = (document.getElementById('prov-filtro-rubro')?.value)||'__all';
   var fTipo  = (document.getElementById('prov-filtro-tipo')?.value)||'__all';
+  // ── Pestañas por ámbito y mapas ──
+  const CT=_provConteos();
+  const TABS=[
+    {id:'todos', lbl:'🌐 Todos', n:CT.c.todos},
+    {id:'local', lbl:'📍 Locales (San Juan)', n:CT.c.local},
+    {id:'nacional', lbl:'🇦🇷 Nacionales', n:CT.c.nacional},
+    {id:'internacional', lbl:'🌎 Internacionales', n:CT.c.internacional}
+  ];
+  if(CT.c.sinclasificar) TABS.push({id:'sinclasificar', lbl:'❓ Sin clasificar', n:CT.c.sinclasificar});
+  const tabsEl=document.getElementById('prov-tabs');
+  if(tabsEl) tabsEl.innerHTML = TABS.map(function(t){
+    return '<button onclick="_provSetTab(\''+t.id+'\')" style="padding:9px 15px;border:none;background:none;cursor:pointer;font-family:var(--ff);font-size:12.5px;font-weight:700;'
+      +'color:'+(_provTab===t.id?'var(--or)':'var(--muted)')+';border-bottom:2px solid '+(_provTab===t.id?'var(--or)':'transparent')+'">'
+      + t.lbl + ' <span style="font-size:10.5px;opacity:.75">('+t.n+')</span></button>';
+  }).join('');
+
+  const mapaEl=document.getElementById('prov-mapa');
+  const subEl=document.getElementById('prov-subzonas');
+  if(mapaEl && subEl){
+    if(_provTab==='nacional'){ mapaEl.innerHTML=_mapaArgentina(CT.z,_provZona); subEl.innerHTML=''; }
+    else if(_provTab==='internacional'){ mapaEl.innerHTML=_mapaMundo(CT.z,_provZona); subEl.innerHTML=''; }
+    else if(_provTab==='local'){ mapaEl.innerHTML=''; subEl.innerHTML=_subzonasLocal(CT.z,_provZona); }
+    else { mapaEl.innerHTML=''; subEl.innerHTML=''; }
+  }
+
   let data = provData;
+  // Filtro por ámbito y zona
+  if(_provTab!=='todos') data = data.filter(function(p){ return geoDe(p).ambito===_provTab; });
+  if(_provZona) data = data.filter(function(p){ return geoDe(p).zona===_provZona; });
   if (q) data = data.filter(p =>
-    (p.nombre+p.cuit+p.rubro+p.email+p.tipo).toLowerCase().includes(q));
+    (p.nombre+p.cuit+p.rubro+p.email+p.tipo+(p.direccion||'')).toLowerCase().includes(q));
   if (fRubro && fRubro!=='__all') data = data.filter(p => (p.rubro||'').trim()===fRubro);
   if (fTipo  && fTipo !=='__all') data = data.filter(p => (p.tipo||'').trim()===fTipo);
   const cnt = document.getElementById('prov-count');
@@ -11622,7 +11835,7 @@ function renderProvDB() {
   const tb = document.getElementById('prov-db-body');
   if (!tb) return;
   if (!data.length) {
-    tb.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--muted)">Sin proveedores que coincidan.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--muted)">Sin proveedores que coincidan.</td></tr>';
     return;
   }
   tb.innerHTML = data.map(p => {
@@ -11634,6 +11847,7 @@ function renderProvDB() {
       + '<td style="padding:8px 12px;color:var(--muted)">' + (p.rubro||'—') + '</td>'
       + '<td style="padding:8px 12px;font-size:11px;color:var(--muted)">' + (p.email||'—') + '</td>'
       + '<td style="padding:8px 12px"><span style="font-size:10px;font-weight:700;color:' + tipoColor + '">' + (p.tipo||'—') + '</span></td>'
+      + '<td style="padding:8px 12px">' + _geoBadge(p) + '</td>'
       + '<td data-editor-only style="padding:8px 12px"><button data-nombre="' + nombreAttr + '" onclick="editarProvCC(this)" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--s2);color:var(--or);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✏️ Editar</button></td>'
       + '</tr>';
   }).join('');
