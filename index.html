@@ -5759,6 +5759,7 @@ function _audE(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</
 async function _audRecargarPlanilla(){
   const b=document.getElementById('aud-btn-sheet');
   if(b){ b.disabled=true; b.textContent='⏳ Actualizando...'; }
+  _detalleSheetTS = 0;                       // fuerza la relectura, sin usar la caché de 45s
   try{ await traerDetalleDesdeSheet(false); }catch(e){ showToast('No se pudo leer la planilla','error'); }
   if(b){ b.disabled=false; b.textContent='📊 Actualizar planilla'; }
   renderAuditoria();
@@ -5814,8 +5815,13 @@ function _audCalcular(){
     sc, scSinArea, scSinCrit, scSinFecha, scSinItems, urg, lineas };
 }
 
-function renderAuditoria(){
+async function renderAuditoria(){
   const pane=document.getElementById('aud-pane'); if(!pane) return;
+  // Traer la planilla COMPRAS automáticamente, igual que en Compras por Proveedor/Área/Campamento
+  if(typeof _asegurarDatosCompras==='function'){
+    pane.innerHTML='<div style="padding:22px;text-align:center;color:var(--muted);font-size:13px">⏳ Leyendo la planilla de compras...</div>';
+    try{ await _asegurarDatosCompras(); }catch(e){ console.warn('auditoría:', e); }
+  }
   const A=_audCalcular(); window._audA=A;
   const f=document.getElementById('aud-fuente');
   if(f){
