@@ -118,6 +118,10 @@ aside.collapsed { width: 0; opacity: 0; padding: 0; border: none; pointer-events
 }
 .sidebar-btn:hover { color: var(--text); background: var(--s2); }
 .sidebar-btn.active { color: var(--or); background: rgba(232,93,37,.07); border-left-color: var(--or); }
+.sidebar-btn-cta.bloqueado-rol { opacity:.38; cursor:not-allowed; filter:grayscale(.7); }
+.sidebar-section.seccion-bloqueada .sidebar-section-hdr { opacity:.5; }
+.sidebar-section.seccion-bloqueada .sidebar-btn { opacity:.45; }
+.login-tab.direccion.active { border-color:#eab308; color:#eab308; }
 .sidebar-btn .sb-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
 .sidebar-btn .sb-cnt {
   margin-left: auto; background: var(--or); color: #fff;
@@ -1624,7 +1628,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="hdr-clock" id="clock"></div>
     <button class="hdr-settings-btn" onclick="abrirSettingsPin()" title="Configuración">⚙️ Ajustes</button>
     <div class="mode-badge lector" id="mode-badge" onclick="clickModeBadge()" title="Clic para cambiar modo">
-      <span id="mode-icon">👁</span><span id="mode-lbl">LECTOR</span>
+      <span id="mode-icon">👁</span><span id="mode-lbl">SOLICITANTE</span>
     </div>
   </div>
 </header>
@@ -1706,7 +1710,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="sidebar-toggle">▾</span>
     </div>
     <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
-    <button class="sidebar-btn-cta pa" onclick="window.open('inventario','_blank')">
+    <button class="sidebar-btn-cta pa" onclick="_abrirHerramienta('inventario','Central de Depósitos')">
       <span class="sb-icon">📦</span> Central de Depósitos
       <span class="cta-arrow">↗</span>
     </button>
@@ -1724,7 +1728,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="sidebar-toggle">▾</span>
     </div>
     <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
-    <button class="sidebar-btn-cta" onclick="window.open('recorridos','_blank')">
+    <button class="sidebar-btn-cta" onclick="_abrirHerramienta('recorridos','Control de Recorridos')">
       <span class="sb-icon">🗺️</span> Control de Recorridos
       <span class="cta-arrow">↗</span>
     </button>
@@ -1773,7 +1777,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="sidebar-toggle">▾</span>
     </div>
     <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
-    <button class="sidebar-btn-cta" style="background:rgba(234,179,8,.12);border-left-color:#eab308;color:#fbbf24" onclick="abrirComparativoLink()">
+    <button class="sidebar-btn-cta" style="background:rgba(234,179,8,.12);border-left-color:#eab308;color:#fbbf24" onclick="_abrirHerramienta('__comparativo__','Nuevo Comparativo (CCP)')">
       <span class="sb-icon">📊</span> Nuevo CCP
       <span class="cta-arrow">↗</span>
     </button>
@@ -3382,7 +3386,7 @@ let modoEditarSC = false;
 let _epinBuf = '';
 
 function toggleEditarSCMode() {
-  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor', 'error'); return; }
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Administrador', 'error'); return; }
   if (modoEditarSC) { desactivarEditarSC(); return; }
   // Show PIN confirmation
   cerrarSettings();
@@ -3699,6 +3703,19 @@ async function showView(id, btn) {
   // PA views have their own DOM IDs
   const paViews = ['panel-pa','historial-pa','kanban-pa'];
   if (paViews.includes(id)) { showViewPA(id, btn); return; }
+  // ── Restricción por rol ──
+  if (!rolPuedeVer(id)) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const vEl = document.getElementById('view-' + id);
+    if (vEl) {
+      const titulo = (btn && btn.textContent ? btn.textContent.replace(/[^\wÁÉÍÓÚÑáéíóúñ\s]/g,'').trim() : '');
+      vEl.innerHTML = _pantallaSinAcceso(titulo ? '<b>'+titulo+'</b>' : 'esta sección');
+      vEl.classList.add('active');
+    }
+    document.querySelectorAll('.sidebar-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    return;
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + id).classList.add('active');
   document.querySelectorAll('.sidebar-btn').forEach(b => b.classList.remove('active'));
@@ -3927,7 +3944,7 @@ function renderAprovPedidos(){
   el.innerHTML=h;
 }
 function planificarPedido(paNum){
-  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   var pa=(paData||[]).find(function(p){ return String(p.numPA)===String(paNum); }); if(!pa){ showToast('No se encontró el pedido','error'); return; }
   if(aprovData.some(function(a){ return a.campamento===_aprovCamp && String(a.pedido_ref)===String(paNum); })){ showToast('Ese pedido ya está planificado','error'); return; }
   var id='apr_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
@@ -3944,7 +3961,7 @@ function abrirPedidoRef(paNum){
   if(i>=0) verPA(i); else showToast('El pedido '+paNum+' no está disponible','error');
 }
 function agregarAprovCamp(){
-  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   const n=prompt('Nombre del nuevo campamento:'); if(n===null) return;
   const name=n.trim().toUpperCase(); if(!name) return;
   if(!aprovCampsDB.includes(name)) aprovCampsDB.push(name);
@@ -4010,7 +4027,7 @@ function _aprovSet(id, field, val){
   _aprovTimer=setTimeout(()=>{ sbPatch('aprovisionamientos','id',id,{[field]:val}); try{_lsSet('nielsen_aprov',JSON.stringify(aprovData));}catch(e){} renderAprovCalendar(); renderAprovGantt(); },500);
 }
 function agregarAprovRow(fechaPre){
-  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   const id='apr_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
   const fecha=(typeof fechaPre==='string' && /^\d{4}-\d{2}-\d{2}$/.test(fechaPre))?fechaPre:'';
   const row={ id, campamento:_aprovCamp, fecha, carga:'', vehiculo:'', chofer:'', responsable:'', estado:'PLANIFICADO', observaciones:'', fecha_fin:'', pedido_ref:'' };
@@ -4020,7 +4037,7 @@ function agregarAprovRow(fechaPre){
   renderAprovTable(); renderAprovCalendar(); renderAprovGantt();
 }
 function eliminarAprovRow(id){
-  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   if(!confirm('¿Eliminar este renglón de aprovisionamiento?')) return;
   aprovData=aprovData.filter(x=>x.id!==id);
   sbDelete('aprovisionamientos','id',id);
@@ -4147,8 +4164,93 @@ iniciarAutoSync();
 // ══════════════════════════════════════════════════════════
 // LOGIN SCREEN
 // ══════════════════════════════════════════════════════════
-const CLAVE_LECTOR = 'lector2026';
-const CLAVE_EDITOR_LOGIN = 'editor2026';
+const CLAVE_LECTOR = '2026';        // SOLICITANTE — clave numérica de 4 dígitos
+const CLAVE_EDITOR_LOGIN = '1102';  // ADMINISTRADOR — clave numérica de 4 dígitos
+const CLAVE_DIRECCION = '1947';     // ALTA DIRECCIÓN — ve todo, sin modificar
+
+// ══ ROLES Y PERMISOS ══
+// solicitante → sólo Compras y Abastecimiento · puede crear SC y PA
+// admin       → todo · único que puede modificar y eliminar
+// direccion   → ve todo · no modifica nada
+let rolActual = 'solicitante';
+function esRolAdmin(){ return rolActual === 'admin'; }
+function esRolDireccion(){ return rolActual === 'direccion'; }
+function esRolSolicitante(){ return rolActual === 'solicitante'; }
+
+// Secciones que el SOLICITANTE puede ver por completo
+const SECCIONES_SOLICITANTE = ['compras','abastecimiento'];
+// Vistas permitidas al solicitante
+const VISTAS_SOLICITANTE = ['panel','nueva-sc','historial','pa-nuevo','pa-historial','pa-panel','lector-landing'];
+
+// Aplica las restricciones del rol a botones y accesos
+// Abre una herramienta externa sólo si el rol lo permite
+function _abrirHerramienta(destino, nombre){
+  if(esRolSolicitante()){
+    showToast('🔒 ' + nombre + ' no está disponible para el rol Solicitante','error');
+    return;
+  }
+  if(destino==='__comparativo__'){ abrirComparativoLink(); return; }
+  window.open(destino,'_blank');
+}
+
+function _aplicarPermisosRol(){
+  const sol = esRolSolicitante();
+  // Accesos directos que el solicitante NO puede usar
+  document.querySelectorAll('.sidebar-btn-cta').forEach(function(b){
+    const acc=(b.getAttribute('onclick')||'');
+    // El solicitante sólo puede crear Solicitudes de Compra y Pedidos de Abastecimiento
+    const permitido = acc.indexOf('abrirFormulario')>=0 || acc.indexOf('abrirLinkPA')>=0;
+    if(sol && !permitido){
+      b.classList.add('bloqueado-rol');
+      b.setAttribute('data-bloqueado','1');
+      b.title='Disponible para Administrador y Alta Dirección';
+    } else {
+      b.classList.remove('bloqueado-rol');
+      b.removeAttribute('data-bloqueado');
+    }
+  });
+  // Secciones del menú que el solicitante ve pero no puede abrir
+  document.querySelectorAll('.sidebar-section').forEach(function(sec){
+    const sid=sec.getAttribute('data-sid')||'';
+    const permitida = !sol || SECCIONES_SOLICITANTE.indexOf(sid)>=0;
+    sec.classList.toggle('seccion-bloqueada', !permitida);
+  });
+  // Etiqueta del rol
+  const lbl=document.getElementById('mode-lbl');
+  if(lbl){
+    if(esRolAdmin()) lbl.textContent='ADMINISTRADOR';
+    else if(esRolDireccion()) lbl.textContent='ALTA DIRECCIÓN';
+    else lbl.textContent='SOLICITANTE';
+  }
+}
+
+// Cartel que se muestra cuando el rol no habilita esa sección
+function _pantallaSinAcceso(titulo){
+  return '<div style="max-width:520px;margin:60px auto;text-align:center;padding:34px 28px;'
+    +'background:var(--s1);border:1px solid var(--border);border-radius:14px">'
+    +'<div style="font-size:42px;margin-bottom:12px">🔒</div>'
+    +'<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:20px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">'
+      +'Sección no disponible</div>'
+    +'<div style="font-size:14px;color:var(--text);line-height:1.6;margin-bottom:6px">'
+      +'Ingresaste como <b style="color:var(--or)">Solicitante</b>.</div>'
+    +'<div style="font-size:13px;color:var(--muted);line-height:1.6">'
+      +'Con este acceso podés trabajar en <b>Compras</b> y <b>Abastecimiento</b>: '
+      +'crear solicitudes, cargar pedidos y consultar su estado.<br><br>'
+      +'Para ver ' + (titulo||'esta sección') + ' necesitás ingresar como '
+      +'<b>Administrador</b> o <b>Alta Dirección</b>.</div>'
+    +'<button onclick="cerrarSesionCC()" style="margin-top:20px;padding:10px 20px;border-radius:9px;border:none;'
+      +'background:var(--or);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--ff)">Cambiar de usuario</button>'
+    +'</div>';
+}
+
+function cerrarSesionCC(){
+  try{ location.reload(); }catch(e){}
+}
+
+function rolPuedeVer(viewId){
+  if(!esRolSolicitante()) return true;
+  return VISTAS_SOLICITANTE.indexOf(viewId) >= 0;
+}
 let loginModeSelected = 'lector';
 
 function selLoginMode(mode) {
@@ -4157,6 +4259,8 @@ function selLoginMode(mode) {
     'login-tab ' + (mode === 'lector' ? 'active lector' : '');
   document.getElementById('ltab-editor').className =
     'login-tab ' + (mode === 'editor' ? 'active editor' : '');
+  const td=document.getElementById('ltab-direccion');
+  if(td) td.className = 'login-tab direccion' + (mode === 'direccion' ? ' active' : '');
   document.getElementById('login-pwd-inp').value = '';
   document.getElementById('login-err').textContent = '';
   document.getElementById('login-pwd-inp').focus();
@@ -4179,12 +4283,26 @@ function ingresarCC() {
 
 function intentarLogin() {
   const pwd = document.getElementById('login-pwd-inp').value;
-  const expected = loginModeSelected === 'editor' ? CLAVE_EDITOR_LOGIN : CLAVE_LECTOR;
+  const expected = loginModeSelected === 'editor' ? CLAVE_EDITOR_LOGIN
+                 : loginModeSelected === 'direccion' ? CLAVE_DIRECCION : CLAVE_LECTOR;
   if (pwd === expected) {
     const ov = document.getElementById('login-overlay');
     ov.classList.add('hidden');
     setTimeout(() => { ov.style.display = 'none'; }, 420);
-    if (loginModeSelected === 'editor') {
+    rolActual = loginModeSelected === 'editor' ? 'admin'
+              : loginModeSelected === 'direccion' ? 'direccion' : 'solicitante';
+    _aplicarPermisosRol();
+    if (loginModeSelected === 'direccion') {
+      // Alta Dirección: ve todo el sistema, pero sin poder modificar
+      activarModoLector();
+      document.getElementById('mode-icon').textContent='👔';
+      document.getElementById('mode-lbl').textContent='ALTA DIRECCIÓN';
+      recargarSCsDesdeLS().then(() => {
+        renderPanel();
+        showView('panel', document.querySelector('.sidebar-btn[onclick*="showView(\'panel\'"]'));
+      });
+      renderHistorialPA();
+    } else if (loginModeSelected === 'editor') {
       activarModoEditor();
       // Editor: cargar datos y luego mostrar panel
       recargarSCsDesdeLS().then(() => {
@@ -5055,7 +5173,7 @@ function _memoHTML(c){
 }
 
 async function autorizarCCP(compId, numComp, asunto, montoStr, nivel) {
-  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Administrador','error'); return; }
   const plan = _authPlan(nivel);
   const esSolicitud = plan.tipo === 'SOLICITUD';
   const aviso = esSolicitud
@@ -5207,7 +5325,7 @@ async function _ccpEditGuardar(){
 
 async function eliminarCCP(id, numComp){
 
-  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   if(!confirm('¿Eliminar la comparativa '+(numComp||'')+'?\nEsta acción no se puede deshacer.')) return;
   try{
     const r=await fetch(_SB_URL+'/rest/v1/comparativas?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}});
@@ -6561,7 +6679,7 @@ async function renderAhorro(){
 }
 
 function nuevaComparativa(){
-  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   showToast('Función en desarrollo — próximamente podrás cargar comparativas desde aquí','ok');
 }
 
@@ -6784,7 +6902,7 @@ function verSC(idx) {
         </div>
       </div>
 
-      ${!esModoEditor() ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Lector — solo visualización. Ingresá como Editor para modificar estados.</div>' : '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Seleccioná el estado de cada ítem. Podés indicar cantidades parciales.</div>'}
+      ${!esModoEditor() ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Solicitante — solo visualización. Ingresá como Administrador para modificar estados.</div>' : '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Seleccioná el estado de cada ítem. Podés indicar cantidades parciales.</div>'}
       <div id="compra-alerta-nocomp" style="display:none;margin-bottom:10px;padding:8px 12px;background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.35);border-radius:8px;font-size:12px;color:#f97316;font-weight:600">
         ⚠️ Algunos ítems marcados como NO COMPRADO. La SC se completará en estado de alerta (naranja).
       </div>
@@ -6843,12 +6961,12 @@ function abrirModalSC(idx) { verSC(idx); } // alias usado por Panel de Control
 
 // CANCELAR una SC: PIN 2026 + justificación obligatoria. Marca CANCELADA, completa el % y finaliza.
 async function cancelarSC(idx) {
-  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Administrador','error'); return; }
   const sc = scs[idx != null ? idx : window._scIdx]; if (!sc) return;
   if (sc.estado === 'CANCELADA') { showToast('Esta solicitud ya está cancelada','error'); return; }
   const pin = prompt('Para CANCELAR la solicitud ingresá el PIN de confirmación:');
   if (pin === null) return;
-  if (pin.trim() !== '2026') { showToast('⛔ PIN incorrecto — cancelación abortada','error'); return; }
+  if (pin.trim() !== '1102') { showToast('⛔ PIN incorrecto — cancelación abortada','error'); return; }
   let justif = prompt('Justificación de la cancelación (OBLIGATORIA):');
   if (justif === null) return;
   justif = (justif||'').trim();
@@ -6988,7 +7106,7 @@ function _pinEliminar(quePc){
 }
 
 function eliminarSC(idx) {
-  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Administrador','error'); return; }
   const _scDel = scs[idx]; if (!_scDel) return;
   const _num = _scDel.numSC || _scDel.num || '';
   if (!_pinEliminar('la SC ' + _num)) return;
@@ -7428,7 +7546,7 @@ function setEl(id, val) {
 // MODOS LECTOR / EDITOR
 // ══════════════════════════════════════════════════
 const EDITOR_PIN    = '1102';
-const SETTINGS_PIN  = '2026';
+const SETTINGS_PIN  = '1102';   // acciones sensibles: siempre 1102
 let modoActual = 'LECTOR';
 let _pinBuf = '', _spinBuf = '', _lpinBuf = '', _lcpinBuf = '';
 
@@ -7466,14 +7584,15 @@ function verificarEditorPin() {
 function activarModoEditor() {
   modoActual='EDITOR'; document.body.classList.remove('modo-lector');
   const b=document.getElementById('mode-badge'); b.className='mode-badge editor';
-  document.getElementById('mode-icon').textContent='✏️'; document.getElementById('mode-lbl').textContent='EDITOR';
-  showToast('✅ Modo Editor activado','ok');
+  document.getElementById('mode-icon').textContent='✏️'; document.getElementById('mode-lbl').textContent='ADMINISTRADOR';
+  showToast('✅ Modo Administrador activado','ok');
 }
 function activarModoLector() {
   modoActual='LECTOR'; document.body.classList.add('modo-lector');
   const b=document.getElementById('mode-badge'); b.className='mode-badge lector';
-  document.getElementById('mode-icon').textContent='👁'; document.getElementById('mode-lbl').textContent='LECTOR';
-  showToast('Modo Lector — solo lectura','ok');
+  document.getElementById('mode-icon').textContent = esRolDireccion()? '👔' : '👁';
+  document.getElementById('mode-lbl').textContent = esRolDireccion()? 'ALTA DIRECCIÓN' : 'SOLICITANTE';
+  showToast('Modo Solicitante — solo lectura','ok');
 }
 
 // ── Settings PIN ──
@@ -7610,7 +7729,7 @@ window.addEventListener('resize', () => {
 let _limpiarSel = new Set();
 
 function pedirPinLimpiar() {
-  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Administrador','error'); return; }
   _lpinBuf=''; _updPinDots('lpd','lpin-err'); document.getElementById('lpin-err').textContent='';
   document.getElementById('limpiar-pin-ov').classList.add('open');
 }
@@ -7770,7 +7889,7 @@ function _shake(ovId) {
 
 // ── Guards ──
 async function cambiarEstado(idx, estado) {
-  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Administrador','error'); return; }
 }
 
 // ══ TOAST ══
@@ -8370,7 +8489,7 @@ function descargarPlantillaSC() {
 }
 
 function importarSCsExcel(event) {
-  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Editor','error'); event.target.value=''; return; }
+  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Administrador','error'); event.target.value=''; return; }
   const file = event.target.files[0]; if (!file) return;
   if (typeof XLSX === 'undefined') { showToast('Librería Excel no disponible', 'error'); return; }
 
@@ -8874,7 +8993,7 @@ function actualizarBarraCompra(count, total) {
 
 
 function setItemEst(idx, estado, total) {
-  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   const sc = scs[window._scIdx]; if(!sc) return;
   if(!sc.itemsDetalle) sc.itemsDetalle = {};
   const d = sc.itemsDetalle[idx] || {estado:'PENDIENTE',cantidad:'',justificacion:''};
@@ -8892,7 +9011,7 @@ function setItemQty(idx, val) {
   sc.itemsDetalle[idx].cantidad=val;
 }
 async function confirmarCompraFinal() {
-  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   const sc = scs[window._scIdx]; if(!sc) return;
   _pauseReload = true; // congelar polling durante el guardado
   const lineas = (sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
@@ -9014,7 +9133,7 @@ function _presupBtnHTML(i, d, dis){
   return '<button class="btn btn-ghost btn-sm"'+dis+' onclick="setPresupuestoLink('+i+')">📎 PRESUPUESTO (agregar link de Drive)</button>';
 }
 function setPresupuestoLink(idx){
-  if(!esModoEditor()){ showToast('⛔ Solo en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   const sc=scs[window._scIdx]; if(!sc) return;
   if(!sc.itemsDetalle) sc.itemsDetalle={};
   if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'PRESUPUESTADO',cantidad:'',justificacion:''};
@@ -9144,7 +9263,7 @@ function _recalcCI(det, total) {
 }
 
 function confirmarCompra() {
-  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Administrador','error'); return; }
   const sc = scs[window._scIdx];
   if (!sc) return;
   const lineas = (sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
@@ -9589,7 +9708,7 @@ document.querySelectorAll('#modal-op, #modal-ver-op').forEach(m =>
 );
 
 function guardarOP() {
-  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Administrador','error'); return; }
   const num = generarNumOPManual();
   const op = {
     id: 'op_'+Date.now()+'_'+Math.random().toString(36).slice(2,5), num,
@@ -9617,7 +9736,7 @@ function guardarOP() {
 }
 
 function eliminarOP(idx) {
-  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Editor','error'); return; }
+  if(!esModoEditor()){ showToast('⛔ Solo disponible en Modo Administrador','error'); return; }
   if (!confirm('¿Eliminar esta OP?')) return;
   const _op = ops[idx];
   if (_op && _op.id) sbDelete('ordenes_pedido','id', String(_op.id));
@@ -10450,7 +10569,7 @@ async function verPA(idx) {
     + '<div><label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:3px">Entrega</label><span style="font-size:13px">'+(pa.fechaEntrega||pa.entrega?formatFecha(pa.fechaEntrega||pa.entrega):'—')+'</span></div>'
     + '<div><label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:3px">Solicitante</label><span style="font-size:13px">'+(pa.solicitante||'—')+'</span></div>'
     + '</div>'
-    + (!isEditor ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Lector — solo visualización</div>' : '')
+    + (!isEditor ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Solicitante — solo visualización</div>' : '')
     + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:8px">📦 Ítems del pedido ('+items.length+') <span style="font-size:8px;color:var(--muted)">v2</span></div>'
     + '<div id="pa-items-box">' + itemsSection + '</div>'
     + (isEditor ? '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap">'
@@ -10638,7 +10757,7 @@ function _recalcCI_PA(det, total) {
 }
 
 async function confirmarCompraPA() {
-  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Administrador','error'); return; }
   const pa = paData[window._paIdx]; if (!pa) return;
   if (!pa.itemsDetalle) pa.itemsDetalle = {};
   // Collect current factura/justificacion values from DOM
@@ -10760,7 +10879,7 @@ async function _sbInsertPA(pa) {
 }
 
 async function recuperarSCsFaltantes() {
-  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Administrador','error'); return; }
 
   // 1. Get current Supabase records
   showToast('Comparando registros...','ok');
@@ -10989,7 +11108,7 @@ function _notificarCambioPC(sc, oldPC, newPC) {
 
 // ══ REPAIR PA ITEMS: recover from Supabase JSONB ══════════
 async function repararItemsPA() {
-  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor','error'); return; }
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Administrador','error'); return; }
   showToast('Cargando ítems desde Supabase...','ok');
   try {
     // Only fetch num_pa and items (avoid columns that might not exist)
@@ -11069,7 +11188,7 @@ async function diagnosticarItemsPA() {
 }
 
 function cambiarEstadoPA(idx) {
-  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor', 'error'); return; }
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Administrador', 'error'); return; }
   const pa = paData[idx];
   if (!pa) return;
   const estados = ['PENDIENTE','EN PROCESO','ENTREGADO','CANCELADO'];
@@ -11084,7 +11203,7 @@ function cambiarEstadoPA(idx) {
 }
 
 function eliminarPA(idx) {
-  if (!esModoEditor()) { showToast('⛔ Solo en Modo Editor', 'error'); return; }
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Administrador', 'error'); return; }
   const _paDel = paData[idx]; if (!_paDel) return;
   const _num = _paDel.numPA || _paDel._rawNumPA || '';
   if (!_pinEliminar('el PA ' + _num)) return;
@@ -11098,7 +11217,7 @@ function eliminarPA(idx) {
 }
 
 async function importarPAsExcel(event) {
-  if (!esModoEditor()) { showToast('⛔ Solo disponible en Modo Editor','error'); event.target.value=''; return; }
+  if (!esModoEditor()) { showToast('⛔ Solo disponible en Modo Administrador','error'); event.target.value=''; return; }
   const file = event.target.files[0]; if (!file) return;
   if (typeof XLSX === 'undefined') { showToast('Librería Excel no disponible','error'); return; }
   showToast('Procesando pedidos...','ok');
@@ -13095,10 +13214,10 @@ window.addEventListener('orientationchange', () => {
 
 </script>
 
-<!-- ══ PIN MODAL (modo editor) ══ -->
+<!-- ══ PIN MODAL (modo administrador) ══ -->
 <div class="cc-ov" id="pin-ov" onclick="if(event.target===this)cerrarPinModal()">
   <div class="pin-box">
-    <div class="pin-title">🔐 MODO EDITOR</div>
+    <div class="pin-title">🔐 MODO ADMINISTRADOR</div>
     <div class="pin-sub">Ingresá el PIN para editar</div>
     <div class="pin-dots"><div class="pin-dot" id="pd-0"></div><div class="pin-dot" id="pd-1"></div><div class="pin-dot" id="pd-2"></div><div class="pin-dot" id="pd-3"></div></div>
     <div class="pin-err" id="pin-err"></div>
@@ -13429,8 +13548,9 @@ window.addEventListener('orientationchange', () => {
   <div class="login-sub">Nielsen Logística y Expediciones S.A.</div>
   <div class="login-card">
     <div class="login-mode-tabs">
-      <button class="login-tab active lector" id="ltab-lector" onclick="selLoginMode('lector')">👁 Lector</button>
-      <button class="login-tab editor" id="ltab-editor" onclick="selLoginMode('editor')">✏️ Editor</button>
+      <button class="login-tab active lector" id="ltab-lector" onclick="selLoginMode('lector')">👁 Solicitante</button>
+      <button class="login-tab editor" id="ltab-editor" onclick="selLoginMode('editor')">✏️ Administrador</button>
+      <button class="login-tab direccion" id="ltab-direccion" onclick="selLoginMode('direccion')">👔 Alta Dirección</button>
     </div>
     <label class="login-field-label" for="login-pwd-inp">Clave de acceso</label>
     <div class="login-pwd-wrap">
