@@ -2752,7 +2752,9 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     </div>
     <div style="font-size:11px;color:var(--muted);margin-top:8px">Se guarda en la base compartida y aparece también en <strong style="color:var(--or)">Comparativo → Proveedores &amp; PDFs → Base de Datos</strong>.</div>
   </div>
-    <!-- Pestañas por ámbito geográfico -->
+    <div id="prov-sync"></div>
+  <div id="prov-sync-detalle"></div>
+  <!-- Pestañas por ámbito geográfico -->
   <div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap" id="prov-tabs"></div>
   <div id="prov-mapa" style="margin-bottom:14px"></div>
   <div id="prov-subzonas" style="margin-bottom:14px"></div>
@@ -3738,7 +3740,13 @@ async function showView(id, btn) {
   if (id === 'indicadores')    renderIndicadores();
   if (id === 'auditoria')      renderAuditoria();
   if (id === 'kraljic')        renderKraljic();
-  if (id === 'prov-db')      { await cargarProveedoresSB(); renderProvDB(); }
+  if (id === 'prov-db')      {
+    // Sincroniza SIEMPRE: proveedores de la nube (compartidos con el Comparativo)
+    // + planilla COMPRAS, para detectar los que facturan y no están en la base.
+    await cargarProveedoresSB();
+    if(typeof _asegurarDatosCompras==='function'){ try{ await _asegurarDatosCompras(); }catch(e){} }
+    renderProvDB();
+  }
   if (id === 'prov-compras') { await _asegurarDatosCompras(); renderComprasProv(); }
   if (id === 'prov-area')      { await _asegurarDatosCompras(); renderComprasArea(); }
   if (id === 'prov-campamento'){ await _asegurarDatosCompras(); renderComprasCampamento(); }
@@ -11725,6 +11733,136 @@ async function cargarProveedoresSB() {
   try { _lsSet('nielsen_proveedores', JSON.stringify(provData)); } catch(e){}
 }
 
+// ══════════════════════════════════════════════════════════════
+// SINCRONIZACIÓN CON LA PLANILLA COMPRAS
+// Detecta proveedores que aparecen en las facturas y no están en la base.
+// SOLO AGREGA: nunca borra ni pisa los que se cargaron por otra vía.
+// ══════════════════════════════════════════════════════════════
+// Claves de comparación de un nombre: la completa y la previa al paréntesis.
+// Muchos proveedores están cargados como "FENICIA S.R.L. (FENICIA NEUMATICOS)"
+// y en la planilla figuran como "Fenicia SRL": deben reconocerse como el mismo.
+function _provClaves(nombre){
+  const n=String(nombre||'');
+  const claves=[];
+  const completa=_parNormProv(n);
+  if(completa) claves.push(completa);
+  const sinParen=_parNormProv(n.replace(/\([^)]*\)/g,' '));
+  if(sinParen && claves.indexOf(sinParen)<0) claves.push(sinParen);
+  // También el contenido del paréntesis (a veces la planilla usa el nombre de fantasía)
+  const m=n.match(/\(([^)]*)\)/);
+  if(m){ const alias=_parNormProv(m[1]); if(alias && claves.indexOf(alias)<0) claves.push(alias); }
+  return claves.filter(Boolean);
+}
+
+function _provNombresBase(){
+  const set={};
+  (provData||[]).forEach(function(p){
+    _provClaves(p.nombre).forEach(function(k){ set[k]=p; });
+  });
+  return set;
+}
+
+// Proveedores de la planilla que faltan en la base
+function _provFaltantesDePlanilla(){
+  const enBase=_provNombresBase();
+  const nuevos={};
+  (detalleData||[]).forEach(function(d){
+    const nom=String(d.proveedor||'').trim();
+    if(!nom || nom==='SIN ESPECIFICAR') return;
+    const claves=_provClaves(nom);
+    if(!claves.length) return;
+    if(claves.some(function(c){ return enBase[c]; })) return;   // ya está en la base
+    // Agrupar las variantes entre sí con la clave principal
+    let k=claves[0];
+    for(const c of claves){ if(nuevos[c]){ k=c; break; } }
+    if(!nuevos[k]) nuevos[k]={ nombre:nom, monto:0, comprobantes:0, ultima:'', areas:{}, camps:{}, claves:claves };
+    nuevos[k].monto += (d.monto||0);
+    nuevos[k].comprobantes++;
+    const f=String(d.fecha||'').slice(0,10);
+    if(f>nuevos[k].ultima) nuevos[k].ultima=f;
+    if(d.area) nuevos[k].areas[d.area]=1;
+    if(d.campamento && d.campamento!=='SIN ESPECIFICAR') nuevos[k].camps[d.campamento]=1;
+    // Conservar la razón social más larga (suele ser la más completa)
+    if(nom.length > nuevos[k].nombre.length) nuevos[k].nombre=nom;
+  });
+  return Object.keys(nuevos).map(function(k){ return nuevos[k]; })
+    .sort(function(a,b){ return b.monto-a.monto; });
+}
+
+let _provNuevosDetectados = [];
+
+// Panel que avisa cuántos proveedores nuevos trae la planilla
+function _renderAvisoSync(){
+  const cont=document.getElementById('prov-sync'); if(!cont) return;
+  _provNuevosDetectados=_provFaltantesDePlanilla();
+  if(!_provNuevosDetectados.length){
+    cont.innerHTML = (detalleData||[]).length
+      ? '<div style="padding:9px 13px;background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.3);border-radius:9px;font-size:11.5px;color:#7ee2a4;margin-bottom:12px">'
+        +'✅ La base está al día con la planilla de compras — todos los proveedores facturados ya figuran acá.</div>'
+      : '';
+    return;
+  }
+  const tot=_provNuevosDetectados.reduce(function(a,x){ return a+x.monto; },0);
+  cont.innerHTML='<div style="padding:12px 15px;background:rgba(232,97,26,.08);border:1px solid rgba(232,97,26,.4);border-radius:10px;margin-bottom:12px">'
+    +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+      +'<span style="font-size:13px;font-weight:800;color:var(--or)">🔄 '+_provNuevosDetectados.length+' proveedor(es) facturan y no están en la base</span>'
+      +'<span style="font-size:11.5px;color:var(--muted)">$'+_audN(tot)+' en compras</span>'
+      +'<button onclick="_verProvNuevos()" style="margin-left:auto;padding:6px 13px;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:11.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">Ver cuáles</button>'
+      +(esModoEditor()
+        ? '<button onclick="_agregarProvDePlanilla()" style="padding:6px 13px;border-radius:7px;border:none;background:var(--or);color:#fff;font-size:11.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">➕ Agregar todos</button>'
+        : '<span style="font-size:11px;color:var(--muted)">Ingresá como Administrador para agregarlos</span>')
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-top:6px">Se agregan a la base sin tocar los existentes. Los datos que no vienen en la planilla (email, teléfono, contacto) se completan después.</div>'
+    +'</div>';
+}
+
+let _provDetalleAbierto=false;
+function _verProvNuevos(){
+  _provDetalleAbierto = !_provDetalleAbierto;
+  const cont=document.getElementById('prov-sync-detalle'); if(!cont) return;
+  if(!_provDetalleAbierto || !_provNuevosDetectados.length){ cont.innerHTML=''; return; }
+  const filas=_provNuevosDetectados.slice(0,60).map(function(x){
+    const areas=Object.keys(x.areas).slice(0,3).join(', ');
+    return '<tr><td style="padding:6px 9px;border-bottom:1px solid var(--border);font-size:12px">'+_audE(x.nombre)+'</td>'
+      +'<td style="padding:6px 9px;border-bottom:1px solid var(--border);text-align:right;font-size:12px;font-weight:700">$'+_audN(x.monto)+'</td>'
+      +'<td style="padding:6px 9px;border-bottom:1px solid var(--border);text-align:center;font-size:12px">'+x.comprobantes+'</td>'
+      +'<td style="padding:6px 9px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted)">'+_audE(areas||'—')+'</td>'
+      +'<td style="padding:6px 9px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted)">'+_audE(x.ultima||'—')+'</td></tr>';
+  }).join('');
+  cont.innerHTML='<div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Proveedores detectados en la planilla</div>'
+    +'<div style="max-height:340px;overflow:auto"><table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr style="background:var(--s2);position:sticky;top:0">'
+    +['Proveedor','Facturado','Comprob.','Áreas','Última compra'].map(function(c,i2){
+      return '<th style="padding:7px 9px;text-align:'+(i2===1?'right':i2===2?'center':'left')+';font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">'+c+'</th>';
+    }).join('')+'</tr></thead><tbody>'+filas+'</tbody></table></div>'
+    +(_provNuevosDetectados.length>60?'<div style="font-size:11px;color:var(--muted);margin-top:8px">Se muestran los 60 de mayor facturación, de '+_provNuevosDetectados.length+'.</div>':'')
+    +'</div>';
+}
+
+// Agrega los proveedores nuevos a la base (local + nube, para que el Comparativo los vea)
+async function _agregarProvDePlanilla(){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede agregar proveedores','error'); return; }
+  if(!_provNuevosDetectados.length) return;
+  if(!confirm('Se van a agregar '+_provNuevosDetectados.length+' proveedor(es) a la base.\n\n'
+    +'Los proveedores que ya existen NO se modifican ni se borran.\n\n¿Continuar?')) return;
+
+  showToast('⏳ Agregando proveedores...','ok');
+  let ok=0;
+  for(const x of _provNuevosDetectados){
+    const nuevo={ nombre:x.nombre, cuit:'', rubro:'', email:'', tel:'', dir:'', contacto:'', pago:'', tipo:'',
+                  origen:'PLANILLA COMPRAS' };
+    provData.push(nuevo);
+    ok++;
+  }
+  provData.sort(function(a,b){ return String(a.nombre||'').localeCompare(String(b.nombre||'')); });
+  try { _lsSet('nielsen_proveedores', JSON.stringify(provData)); } catch(e){}
+  // Subir a la nube: así el Comparativo los ve al instante
+  try { await subirProveedoresNube(false); } catch(e){ console.warn('subir proveedores', e); }
+  showToast('✅ '+ok+' proveedor(es) agregados — ya están disponibles en el Comparativo','ok');
+  renderProvDB();
+}
+
 // ── BASE DE DATOS ──
 function _fillProvFiltro(id, values){
   var sel=document.getElementById(id); if(!sel) return;
@@ -11922,6 +12060,7 @@ function renderProvDB() {
   _fillProvFiltro('prov-filtro-tipo', Object.keys(tipos).sort());
   var fRubro = (document.getElementById('prov-filtro-rubro')?.value)||'__all';
   var fTipo  = (document.getElementById('prov-filtro-tipo')?.value)||'__all';
+  _renderAvisoSync();
   // ── Pestañas por ámbito y mapas ──
   const CT=_provConteos();
   const TABS=[
