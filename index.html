@@ -119,6 +119,15 @@ aside.collapsed { width: 0; opacity: 0; padding: 0; border: none; pointer-events
 .sidebar-btn:hover { color: var(--text); background: var(--s2); }
 .sidebar-btn.active { color: var(--or); background: rgba(232,93,37,.07); border-left-color: var(--or); }
 .sidebar-btn-cta.bloqueado-rol { opacity:.38; cursor:not-allowed; filter:grayscale(.7); }
+/* Solicitante en Proyectos: sólo lectura */
+body.rol-solicitante #view-proyectos .btn-primary,
+body.rol-solicitante #view-proyectos .btn-danger,
+body.rol-solicitante #view-proyectos .btn-sec,
+body.rol-solicitante #view-proyectos .btn-ghost,
+body.rol-solicitante #view-proyectos input,
+body.rol-solicitante #view-proyectos select,
+body.rol-solicitante #view-proyectos textarea { pointer-events:none !important; opacity:.55 !important; }
+body.rol-solicitante #view-proyectos .toolbar .search input { pointer-events:auto !important; opacity:1 !important; }
 .sidebar-section.seccion-bloqueada .sidebar-section-hdr { opacity:.5; }
 .sidebar-section.seccion-bloqueada .sidebar-btn { opacity:.45; }
 .login-tab.direccion.active { border-color:#eab308; color:#eab308; }
@@ -2756,10 +2765,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   <div id="prov-sync-detalle"></div>
   <!-- Pestañas por ámbito geográfico -->
   <div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap" id="prov-tabs"></div>
+  <div id="prov-layout" style="display:block">
   <div id="prov-mapa" style="margin-bottom:14px"></div>
   <div id="prov-subzonas" style="margin-bottom:14px"></div>
 
-<div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--s1)">
+<div id="prov-tabla-wrap" style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--s1)">
     <table style="width:100%;border-collapse:collapse;font-size:12px" id="prov-db-table">
       <thead>
         <tr style="background:var(--s2);border-bottom:2px solid var(--border2)">
@@ -2775,6 +2785,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <tbody id="prov-db-body"></tbody>
     </table>
   </div>
+  </div><!-- /prov-layout -->
 </div>
 
 <!-- ══════════════════════════════════ VIEW: COMPRAS POR PROVEEDOR ══════════════════════════════════ -->
@@ -4186,9 +4197,10 @@ function esRolDireccion(){ return rolActual === 'direccion'; }
 function esRolSolicitante(){ return rolActual === 'solicitante'; }
 
 // Secciones que el SOLICITANTE puede ver por completo
-const SECCIONES_SOLICITANTE = ['compras','abastecimiento'];
+const SECCIONES_SOLICITANTE = ['compras','abastecimiento','presupuestos'];
 // Vistas permitidas al solicitante
-const VISTAS_SOLICITANTE = ['panel','nueva-sc','historial','pa-nuevo','pa-historial','pa-panel','lector-landing'];
+const VISTAS_SOLICITANTE = ['panel','nueva-sc','historial','pa-nuevo','pa-historial','pa-panel','lector-landing',
+  'proyectos'];   // Proyectos: el solicitante lo ve, pero sin poder modificar
 
 // Aplica las restricciones del rol a botones y accesos
 // Abre una herramienta externa sólo si el rol lo permite
@@ -4203,6 +4215,12 @@ function _abrirHerramienta(destino, nombre){
 
 function _aplicarPermisosRol(){
   const sol = esRolSolicitante();
+  // En Presupuestos, el solicitante sólo puede entrar a Proyectos (y en modo lectura)
+  document.querySelectorAll('.sidebar-section[data-sid="presupuestos"] .sidebar-btn').forEach(function(b){
+    const acc=(b.getAttribute('onclick')||'');
+    const esProyectos = acc.indexOf("'proyectos'")>=0;
+    b.style.opacity = (sol && !esProyectos) ? '.45' : '';
+  });
   // Accesos directos que el solicitante NO puede usar
   document.querySelectorAll('.sidebar-btn-cta').forEach(function(b){
     const acc=(b.getAttribute('onclick')||'');
@@ -4223,6 +4241,20 @@ function _aplicarPermisosRol(){
     const permitida = !sol || SECCIONES_SOLICITANTE.indexOf(sid)>=0;
     sec.classList.toggle('seccion-bloqueada', !permitida);
   });
+  document.body.classList.toggle('rol-solicitante', sol);
+  // Aviso de solo lectura en Proyectos
+  const vp=document.getElementById('view-proyectos');
+  if(vp){
+    let av=document.getElementById('proy-solo-lectura');
+    if(sol && !av){
+      av=document.createElement('div');
+      av.id='proy-solo-lectura';
+      av.style.cssText='padding:11px 15px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.4);'
+        +'border-radius:9px;color:#93c5fd;font-size:12.5px;margin-bottom:14px';
+      av.innerHTML='👁 <b>Modo consulta</b> — como Solicitante podés ver los proyectos y sus presupuestos, pero no modificarlos.';
+      vp.insertBefore(av, vp.firstChild);
+    } else if(!sol && av){ av.remove(); }
+  }
   // Etiqueta del rol
   const lbl=document.getElementById('mode-lbl');
   if(lbl){
@@ -11876,53 +11908,53 @@ function _fillProvFiltro(id, values){
 // MAPAS INTERACTIVOS — cada zona es un botón sobre la imagen
 // Coordenadas en % relativo a la imagen (x, y del centro de cada zona)
 // ══════════════════════════════════════════════════════════════
-const MAPA_SJ = { img:'img/mapa_sanjuan.jpg', ratio:974/780, zonas:[
-  {id:'IGLESIA',      lbl:'Iglesia',        x:27, y:27, r:9,  grupo:'comunidades'},
-  {id:'JACHAL',       lbl:'Jáchal',         x:48, y:38, r:9,  grupo:'comunidades'},
-  {id:'VALLE FERTIL', lbl:'Valle Fértil',   x:73, y:50, r:8,  grupo:'comunidades'},
-  {id:'CALINGASTA',   lbl:'Calingasta',     x:19, y:62, r:10, grupo:'comunidades'},
-  {id:'CAUCETE',      lbl:'Caucete',        x:75, y:69, r:8,  grupo:'comunidades'},
-  {id:'25 DE MAYO',   lbl:'25 de Mayo',     x:72, y:79, r:8,  grupo:'comunidades'},
-  {id:'SARMIENTO',    lbl:'Sarmiento',      x:43, y:78, r:7,  grupo:'comunidades'},
-  {id:'ULLUM',        lbl:'Ullum',          x:39, y:51, r:5,  grupo:'gsj'},
-  {id:'ZONDA',        lbl:'Zonda',          x:36, y:63, r:5,  grupo:'gsj'},
-  {id:'ALBARDON',     lbl:'Albardón',       x:52, y:52, r:4.5,grupo:'gsj'},
-  {id:'ANGACO',       lbl:'Angaco',         x:63, y:53, r:4.5,grupo:'gsj'},
-  {id:'SAN MARTIN',   lbl:'San Martín',     x:69, y:60, r:5,  grupo:'gsj'},
-  {id:'CHIMBAS',      lbl:'Chimbas',        x:50, y:57, r:3.2,grupo:'gsj'},
-  {id:'CAPITAL',      lbl:'Capital',        x:52.5,y:60.5,r:2.6,grupo:'gsj'},
-  {id:'SANTA LUCIA',  lbl:'Santa Lucía',    x:58, y:62, r:3.2,grupo:'gsj'},
-  {id:'RIVADAVIA',    lbl:'Rivadavia',      x:45, y:61, r:3.4,grupo:'gsj'},
-  {id:'RAWSON',       lbl:'Rawson',         x:52, y:66, r:3.4,grupo:'gsj'},
-  {id:'POCITO',       lbl:'Pocito',         x:44, y:70, r:5,  grupo:'gsj'},
-  {id:'9 DE JULIO',   lbl:'9 de Julio',     x:59, y:72, r:4.5,grupo:'gsj'}
+const MAPA_SJ = { img:'img/mapa_sanjuan.jpg', ratio:1024/820, zonas:[
+  {id:'IGLESIA',      lbl:'Iglesia',        x:28, y:25, r:10, grupo:'comunidades'},
+  {id:'JACHAL',       lbl:'Jáchal',         x:52, y:40, r:10, grupo:'comunidades'},
+  {id:'VALLE FERTIL', lbl:'Valle Fértil',   x:79, y:51, r:8,  grupo:'comunidades'},
+  {id:'CALINGASTA',   lbl:'Calingasta',     x:19, y:64, r:11, grupo:'comunidades'},
+  {id:'CAUCETE',      lbl:'Caucete',        x:81, y:72, r:9,  grupo:'comunidades'},
+  {id:'25 DE MAYO',   lbl:'25 de Mayo',     x:78, y:84, r:8,  grupo:'comunidades'},
+  {id:'SARMIENTO',    lbl:'Sarmiento',      x:45, y:82, r:7,  grupo:'comunidades'},
+  {id:'ULLUM',        lbl:'Ullum',          x:42, y:54, r:5,  grupo:'gsj'},
+  {id:'ZONDA',        lbl:'Zonda',          x:38, y:66, r:5,  grupo:'gsj'},
+  {id:'ALBARDON',     lbl:'Albardón',       x:56, y:55, r:4.5,grupo:'gsj'},
+  {id:'ANGACO',       lbl:'Angaco',         x:68, y:56, r:4.5,grupo:'gsj'},
+  {id:'SAN MARTIN',   lbl:'San Martín',     x:74, y:63, r:5,  grupo:'gsj'},
+  {id:'CHIMBAS',      lbl:'Chimbas',        x:53, y:59, r:3.2,grupo:'gsj'},
+  {id:'CAPITAL',      lbl:'Capital',        x:56, y:62, r:2.6,grupo:'gsj'},
+  {id:'SANTA LUCIA',  lbl:'Santa Lucía',    x:63, y:63, r:3.2,grupo:'gsj'},
+  {id:'RIVADAVIA',    lbl:'Rivadavia',      x:48, y:63, r:3.4,grupo:'gsj'},
+  {id:'RAWSON',       lbl:'Rawson',         x:57, y:68, r:3.4,grupo:'gsj'},
+  {id:'POCITO',       lbl:'Pocito',         x:47, y:74, r:5,  grupo:'gsj'},
+  {id:'9 DE JULIO',   lbl:'9 de Julio',     x:63, y:77, r:4.5,grupo:'gsj'}
 ]};
 
-const MAPA_AR = { img:'img/mapa_argentina.jpg', ratio:974/780, zonas:[
-  {id:'JUJUY',x:32,y:5.5,r:4.5,zona:'noa'},          {id:'SALTA',x:37,y:10,r:6,zona:'noa'},
-  {id:'FORMOSA',x:52,y:10,r:5,zona:'nea'},           {id:'TUCUMAN',lbl:'Tucumán',x:34,y:15,r:3.5,zona:'noa'},
-  {id:'CHACO',x:49,y:16,r:5,zona:'nea'},             {id:'MISIONES',x:64,y:18,r:4,zona:'nea'},
-  {id:'CATAMARCA',x:26,y:17,r:5,zona:'noa'},         {id:'SANTIAGO DEL ESTERO',lbl:'Sgo. del Estero',x:40,y:18,r:5,zona:'noa'},
-  {id:'CORRIENTES',x:57,y:23,r:5,zona:'nea'},        {id:'LA RIOJA',x:27,y:23,r:5,zona:'cuyo'},
-  {id:'SANTA FE',x:47,y:27,r:5,zona:'centro'},       {id:'CORDOBA',lbl:'Córdoba',x:37,y:30,r:6,zona:'centro'},
-  {id:'ENTRE RIOS',lbl:'Entre Ríos',x:52,y:32,r:4.5,zona:'centro'},
-  {id:'SAN JUAN',x:22,y:28,r:4.5,zona:'local'},      {id:'SAN LUIS',x:30,y:35,r:4,zona:'cuyo'},
-  {id:'MENDOZA',x:22,y:38,r:5,zona:'cuyo'},          {id:'LA PAMPA',x:34,y:46,r:5,zona:'centro'},
-  {id:'BUENOS AIRES',x:51,y:45,r:7,zona:'centro'},   {id:'CABA',lbl:'CABA',x:57,y:38,r:3,zona:'centro'},
-  {id:'NEUQUEN',lbl:'Neuquén',x:19,y:50,r:4.5,zona:'patagonia'},
-  {id:'RIO NEGRO',lbl:'Río Negro',x:30,y:56,r:6,zona:'patagonia'},
-  {id:'CHUBUT',x:25,y:66,r:6,zona:'patagonia'},      {id:'SANTA CRUZ',x:20,y:77,r:6,zona:'patagonia'},
-  {id:'TIERRA DEL FUEGO',lbl:'Tierra del Fuego',x:35,y:93,r:4,zona:'patagonia'}
+const MAPA_AR = { img:'img/mapa_argentina.jpg', ratio:874/700, zonas:[
+  {id:'JUJUY',x:43.5,y:5,r:4,zona:'noa'},              {id:'SALTA',x:43,y:10,r:5.5,zona:'noa'},
+  {id:'FORMOSA',x:56,y:10,r:5,zona:'nea'},             {id:'TUCUMAN',lbl:'Tucumán',x:44,y:16,r:3.2,zona:'noa'},
+  {id:'CHACO',x:57,y:16,r:5,zona:'nea'},               {id:'MISIONES',x:70,y:17.5,r:4,zona:'nea'},
+  {id:'CATAMARCA',x:37.5,y:17.5,r:5,zona:'noa'},       {id:'SANTIAGO DEL ESTERO',lbl:'Sgo. del Estero',x:54,y:21,r:5,zona:'noa'},
+  {id:'CORRIENTES',x:70,y:22,r:5,zona:'nea'},          {id:'LA RIOJA',x:31,y:24,r:5,zona:'cuyo'},
+  {id:'SANTA FE',x:59,y:28.5,r:5,zona:'centro'},       {id:'CORDOBA',lbl:'Córdoba',x:44,y:31,r:6,zona:'centro'},
+  {id:'ENTRE RIOS',lbl:'Entre Ríos',x:65,y:33.5,r:4.5,zona:'centro'},
+  {id:'SAN JUAN',x:28,y:29,r:4.5,zona:'local'},        {id:'SAN LUIS',x:40,y:37.5,r:4,zona:'cuyo'},
+  {id:'MENDOZA',x:32,y:40.5,r:5,zona:'cuyo'},          {id:'LA PAMPA',x:44,y:48,r:5.5,zona:'centro'},
+  {id:'BUENOS AIRES',x:60,y:48,r:7,zona:'centro'},     {id:'CABA',lbl:'CABA',x:70,y:41.5,r:3,zona:'centro'},
+  {id:'NEUQUEN',lbl:'Neuquén',x:33,y:52.5,r:4.5,zona:'patagonia'},
+  {id:'RIO NEGRO',lbl:'Río Negro',x:44,y:57.5,r:6,zona:'patagonia'},
+  {id:'CHUBUT',x:41,y:68,r:6,zona:'patagonia'},        {id:'SANTA CRUZ',x:40,y:80,r:6.5,zona:'patagonia'},
+  {id:'TIERRA DEL FUEGO',lbl:'Tierra del Fuego',x:47,y:93,r:4,zona:'patagonia'}
 ]};
 
-const MAPA_MUNDO = { img:'img/mapa_mundo.jpg', ratio:619/1100, zonas:[
-  {id:'AMERICA DEL NORTE', lbl:'América del Norte', x:16, y:26, r:8},
-  {id:'AMERICA CENTRAL',   lbl:'América Central',   x:12, y:50, r:5},
-  {id:'AMERICA DEL SUR',   lbl:'América del Sur',   x:26, y:66, r:8},
-  {id:'EUROPA',            lbl:'Europa',            x:53, y:30, r:7},
-  {id:'AFRICA',            lbl:'África',            x:50, y:53, r:8},
-  {id:'ASIA',              lbl:'Asia',              x:75, y:32, r:9},
-  {id:'OCEANIA',           lbl:'Oceanía',           x:86, y:76, r:7}
+const MAPA_MUNDO = { img:'img/mapa_mundo.jpg', ratio:647/1150, zonas:[
+  {id:'AMERICA DEL NORTE', lbl:'América del Norte', x:22, y:25, r:9},
+  {id:'AMERICA CENTRAL',   lbl:'América Central',   x:19, y:42, r:5},
+  {id:'AMERICA DEL SUR',   lbl:'América del Sur',   x:31, y:63, r:8},
+  {id:'EUROPA',            lbl:'Europa',            x:54, y:27, r:7},
+  {id:'AFRICA',            lbl:'África',            x:51, y:54, r:8},
+  {id:'ASIA',              lbl:'Asia',              x:71, y:31, r:9},
+  {id:'OCEANIA',           lbl:'Oceanía',           x:81, y:77, r:7}
 ]};
 
 // Dibuja un mapa con sus zonas como botones
@@ -12080,6 +12112,41 @@ function geoDe(p){
 }
 
 let _provTab='todos', _provZona=null;
+
+// Disposición: true = mapa a la izquierda y listado a la derecha (mapa alto, como Argentina)
+function _provLayout(dosColumnas){
+  const lay=document.getElementById('prov-layout');
+  const mapa=document.getElementById('prov-mapa');
+  const tabla=document.getElementById('prov-tabla-wrap');
+  if(!lay||!mapa||!tabla) return;
+  const sub=document.getElementById('prov-subzonas');
+  const angosto = window.innerWidth < 1100;
+  if(dosColumnas && !angosto){
+    lay.style.display='grid';
+    lay.style.gridTemplateColumns='minmax(300px, 420px) 1fr';
+    lay.style.gap='16px';
+    lay.style.alignItems='start';
+    mapa.style.marginBottom='0';
+    mapa.style.position='sticky';
+    mapa.style.top='12px';
+    // El contenedor de sub-zonas está vacío acá: si no se oculta, ocupa una celda
+    // de la grilla y empuja la tabla a la fila siguiente.
+    if(sub) sub.style.display = sub.innerHTML.trim() ? '' : 'none';
+    tabla.style.maxHeight='';
+  } else {
+    if(sub) sub.style.display='';
+    lay.style.display='block';
+    lay.style.gridTemplateColumns='';
+    mapa.style.marginBottom='14px';
+    mapa.style.position='';
+    mapa.style.top='';
+  }
+}
+window.addEventListener('resize', function(){
+  if(document.getElementById('view-prov-db') && document.getElementById('view-prov-db').classList.contains('active')){
+    _provLayout(_provTab==='nacional');
+  }
+});
 
 function _provSetTab(t){ _provTab=t; _provZona=null; renderProvDB(); }
 function _provSetZona(z){ _provZona = (_provZona===z? null : z); renderProvDB(); }
@@ -12267,13 +12334,16 @@ function renderProvDB() {
     if(_provTab==='nacional'){
       mapaEl.innerHTML=_mapaInteractivo(MAPA_AR, CT.sub, _provZona, '🇦🇷 República Argentina — por provincia');
       subEl.innerHTML='';
+      _provLayout(true);    // mapa a la izquierda, listado a la derecha
     } else if(_provTab==='internacional'){
       mapaEl.innerHTML=_mapaInteractivo(MAPA_MUNDO, CT.sub, _provZona, '🌎 Mapa mundial — por continente');
       subEl.innerHTML='';
+      _provLayout(false);
     } else if(_provTab==='local'){
       mapaEl.innerHTML=_mapaInteractivo(MAPA_SJ, CT.sub, _provZona, '📍 Provincia de San Juan — por departamento');
       subEl.innerHTML=_subzonasLocal(CT.z,_provZona);
-    } else { mapaEl.innerHTML=''; subEl.innerHTML=''; }
+      _provLayout(false);
+    } else { mapaEl.innerHTML=''; subEl.innerHTML=''; _provLayout(false); }
   }
 
   let data = provData;
