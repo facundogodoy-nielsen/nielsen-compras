@@ -2768,6 +2768,11 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   <div id="prov-sync-detalle"></div>
   <!-- Pestañas por ámbito geográfico -->
   <div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap" id="prov-tabs"></div>
+  <div id="prov-sel-bar" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 15px;margin-bottom:12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:10px">
+    <span id="prov-sel-info" style="font-size:12.5px;font-weight:700;color:#f87171"></span>
+    <button onclick="_provSelLimpiar()" style="padding:6px 13px;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:11.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">Quitar selección</button>
+    <button onclick="eliminarProveedoresSel()" style="margin-left:auto;padding:7px 16px;border-radius:8px;border:none;background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ff)">🗑 Eliminar selección</button>
+  </div>
   <div id="prov-layout" style="display:block">
   <div id="prov-mapa" style="margin-bottom:14px"></div>
   <div id="prov-subzonas" style="margin-bottom:14px"></div>
@@ -2776,6 +2781,9 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <table style="width:100%;border-collapse:collapse;font-size:12px" id="prov-db-table">
       <thead>
         <tr style="background:var(--s2);border-bottom:2px solid var(--border2)">
+          <th data-editor-only style="padding:9px 8px;text-align:center;width:34px">
+            <input type="checkbox" id="prov-sel-todos" onchange="_provSelTodos(this.checked)" title="Seleccionar todos los visibles" style="width:15px;height:15px;cursor:pointer;accent-color:var(--or)">
+          </th>
           <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Proveedor</th>
           <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">CUIT</th>
           <th style="padding:9px 12px;text-align:left;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Rubro</th>
@@ -12489,6 +12497,93 @@ window.addEventListener('resize', function(){
   }
 });
 
+// ══ SELECCIÓN MÚLTIPLE DE PROVEEDORES ══
+let _provSel = {};   // { nombre: true }
+
+function _provSelUno(nombre, on){
+  if(on) _provSel[nombre]=true; else delete _provSel[nombre];
+  _provSelActualizar();
+}
+function _provSelTodos(on){
+  const visibles=_provVisibles();
+  if(on) visibles.forEach(p=>{ _provSel[p.nombre]=true; });
+  else visibles.forEach(p=>{ delete _provSel[p.nombre]; });
+  renderProvDB();
+}
+function _provSelLimpiar(){ _provSel={}; renderProvDB(); }
+
+// Los proveedores que se están viendo con los filtros actuales
+function _provVisibles(){
+  const q=(document.getElementById('prov-db-search')||{}).value||'';
+  let data=(provData||[]);
+  if(_provTab!=='todos') data=data.filter(p=>geoDe(p).ambito===_provTab);
+  if(_provZona) data=data.filter(p=>{ const g=geoDe(p); return g.sub===_provZona||g.zona===_provZona; });
+  const ql=q.toLowerCase().trim();
+  if(ql) data=data.filter(p=>(p.nombre+p.cuit+p.rubro+p.email+p.tipo+(p.dir||'')).toLowerCase().includes(ql));
+  return data;
+}
+
+function _provSelActualizar(){
+  const n=Object.keys(_provSel).length;
+  const bar=document.getElementById('prov-sel-bar');
+  const info=document.getElementById('prov-sel-info');
+  if(bar) bar.style.display = n ? 'flex' : 'none';
+  if(info) info.textContent = n + ' proveedor' + (n!==1?'es':'') + ' seleccionado' + (n!==1?'s':'');
+  // Estado de la casilla del encabezado
+  const todos=document.getElementById('prov-sel-todos');
+  if(todos){
+    const vis=_provVisibles();
+    const sel=vis.filter(p=>_provSel[p.nombre]).length;
+    todos.checked = vis.length>0 && sel===vis.length;
+    todos.indeterminate = sel>0 && sel<vis.length;
+  }
+}
+
+// Elimina los proveedores seleccionados — pide el PIN de confirmación
+async function eliminarProveedoresSel(){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede eliminar','error'); return; }
+  const nombres=Object.keys(_provSel);
+  if(!nombres.length){ showToast('No hay proveedores seleccionados','error'); return; }
+
+  const muestra = nombres.slice(0,8).join('\n• ');
+  if(!confirm('Vas a eliminar ' + nombres.length + ' proveedor' + (nombres.length!==1?'es':'') + ':\n\n• '
+      + muestra + (nombres.length>8 ? ('\n… y ' + (nombres.length-8) + ' más') : '')
+      + '\n\nSe eliminan de la base compartida (Centro de Control, Recorridos y Comparativo).\n'
+      + 'Las compras ya registradas NO se tocan.\n\n¿Continuar?')) return;
+
+  const pin = prompt('Para confirmar la eliminación, ingresá el código:');
+  if(pin===null) return;
+  if(String(pin).trim() !== SETTINGS_PIN){
+    showToast('⛔ Código incorrecto — no se eliminó nada','error');
+    return;
+  }
+
+  showToast('⏳ Eliminando...','ok');
+  let ok=0, fail=0; const errores=[];
+  for(const nom of nombres){
+    try{
+      const r=await fetch(_SB_URL+'/rest/v1/proveedores?nombre=eq.'+encodeURIComponent(nom), {
+        method:'DELETE',
+        headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY, Prefer:'return=minimal' }
+      });
+      if(!r.ok){ const t=await r.text(); errores.push(nom+': HTTP '+r.status+' '+t.slice(0,80)); fail++; continue; }
+      ok++;
+    }catch(e){ errores.push(nom+': '+e.message); fail++; }
+  }
+  // Quitar de la copia local
+  const borrados={}; nombres.forEach(n=>borrados[n]=1);
+  provData = (provData||[]).filter(p=>!borrados[p.nombre]);
+  try{ _lsSet('nielsen_proveedores', JSON.stringify(provData)); }catch(e){}
+  _provSel={};
+  renderProvDB();
+  if(fail){
+    console.warn('Errores al eliminar:', errores);
+    showToast('⚠️ '+ok+' eliminados · '+fail+' con error','error');
+  } else {
+    showToast('🗑 '+ok+' proveedor'+(ok!==1?'es':'')+' eliminado'+(ok!==1?'s':''),'ok');
+  }
+}
+
 function _provSetTab(t){ _provTab=t; _provZona=null; renderProvDB(); }
 function _provSetZona(z){ _provZona = (_provZona===z? null : z); renderProvDB(); }
 
@@ -12653,6 +12748,7 @@ function renderProvDB() {
   var fRubro = (document.getElementById('prov-filtro-rubro')?.value)||'__all';
   var fTipo  = (document.getElementById('prov-filtro-tipo')?.value)||'__all';
   _renderAvisoSync();
+  _provSelActualizar();
   // ── Pestañas por ámbito y mapas ──
   const CT=_provConteos();
   const TABS=[
@@ -12703,13 +12799,19 @@ function renderProvDB() {
   const tb = document.getElementById('prov-db-body');
   if (!tb) return;
   if (!data.length) {
-    tb.innerHTML = '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--muted)">Sin proveedores que coincidan.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--muted)">Sin proveedores que coincidan.</td></tr>';
     return;
   }
   tb.innerHTML = data.map(p => {
     const tipoColor = /critico/i.test(p.tipo) ? 'var(--red)' : /habitual/i.test(p.tipo) ? 'var(--green)' : 'var(--muted)';
     const nombreAttr = (p.nombre||'').replace(/"/g,'&quot;');
-    return '<tr style="border-bottom:1px solid var(--border)">'
+    const selN = (p.nombre||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    const marcado = _provSel[p.nombre] ? ' checked' : '';
+    return '<tr style="border-bottom:1px solid var(--border)' + (_provSel[p.nombre]?';background:rgba(232,97,26,.07)':'') + '">'
+      + (esModoEditor()
+          ? '<td style="padding:8px;text-align:center"><input type="checkbox"'+marcado
+            +' onchange="_provSelUno(\''+selN+'\',this.checked)" style="width:15px;height:15px;cursor:pointer;accent-color:var(--or)"></td>'
+          : '<td data-editor-only style="padding:8px"></td>')
       + '<td style="padding:8px 12px;font-weight:600">' + (p.nombre||'—') + '</td>'
       + '<td style="padding:8px 12px;font-family:var(--fm);font-size:11px;color:var(--muted)">' + (p.cuit||'—') + '</td>'
       + '<td style="padding:8px 12px;color:var(--muted)">' + (p.rubro||'—') + '</td>'
