@@ -1822,6 +1822,9 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <button class="sidebar-btn" onclick="showView('kraljic', this)">
         <span class="sb-icon">🎯</span> Matriz de Kraljic
       </button>
+      <button class="sidebar-btn" onclick="showView('srm', this)">
+        <span class="sb-icon">🤝</span> SRM · Proveedores
+      </button>
     </div></div>
   </div>
   <div class="sidebar-divider"></div>
@@ -2897,6 +2900,36 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 </div>
 
 <!-- ══════════════════════════════════
+     VIEW: SRM · GESTIÓN DE PROVEEDORES
+══════════════════════════════════ -->
+<div id="view-srm" class="view">
+  <div class="pg-header">
+    <div class="pg-title">SRM · <span>GESTIÓN DE PROVEEDORES</span></div>
+    <div class="pg-sub">Supplier Relationship Management — segmentación, concentración y desempeño</div>
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+    <div>
+      <label style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:block;margin-bottom:3px">Período</label>
+      <select id="srm-periodo" onchange="renderSRM()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)"></select>
+    </div>
+    <div>
+      <label style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:block;margin-bottom:3px">Cuadrante</label>
+      <select id="srm-cuadrante" onchange="renderSRM()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)">
+        <option value="">Todos</option>
+        <option value="estrategico">Estratégicos</option>
+        <option value="apalancado">Apalancados</option>
+        <option value="cuello">Cuello de botella</option>
+        <option value="rutinario">Rutinarios</option>
+      </select>
+    </div>
+    <button onclick="renderSRM()" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">🔄 Recalcular</button>
+    <button onclick="exportarSRM()" style="padding:9px 15px;border-radius:8px;border:none;background:var(--or);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">⬇️ Exportar</button>
+    <div id="srm-fuente" style="margin-left:auto;font-size:11.5px;color:var(--muted)"></div>
+  </div>
+  <div id="srm-pane"></div>
+</div>
+
+<!-- ══════════════════════════════════
      VIEW: MATRIZ DE KRALJIC
 ══════════════════════════════════ -->
 <div id="view-kraljic" class="view">
@@ -3751,6 +3784,7 @@ async function showView(id, btn) {
   if (id === 'indicadores')    renderIndicadores();
   if (id === 'auditoria')      renderAuditoria();
   if (id === 'kraljic')        renderKraljic();
+  if (id === 'srm')            renderSRM();
   if (id === 'prov-db')      {
     // Sincroniza SIEMPRE: proveedores de la nube (compartidos con el Comparativo)
     // + planilla COMPRAS, para detectar los que facturan y no están en la base.
@@ -5716,6 +5750,259 @@ function _ahoDrawCharts(data, divisa){
 }
 
 // ══════════════════════════════════════════════════════════════
+// SRM · GESTIÓN DE PROVEEDORES
+// Se alimenta de: planilla COMPRAS (gasto real), comparativas (ahorro y
+// condiciones) y la Matriz de Kraljic (cuadrante de cada familia).
+// Cada proveedor HEREDA el cuadrante de las familias que le comprás,
+// ponderado por gasto — Kraljic clasifica familias, no proveedores.
+// ══════════════════════════════════════════════════════════════
+function _srmPoblarPeriodo(){
+  const sel=document.getElementById('srm-periodo'); if(!sel||sel.options.length) return;
+  const set={}; (detalleData||[]).forEach(d=>{ const a=String(d.fecha||'').slice(0,4); if(/^\d{4}$/.test(a)) set[a]=1; });
+  const anios=Object.keys(set).sort().reverse();
+  sel.innerHTML='<option value="__all__">Todo el histórico</option>'+anios.map(a=>'<option value="'+a+'">'+a+'</option>').join('');
+  if(anios.length) sel.value=anios[0];
+}
+
+function _srmCalcular(){
+  const per=(document.getElementById('srm-periodo')||{}).value||'__all__';
+  let filas=(detalleData||[]);
+  if(per!=='__all__') filas=filas.filter(d=>String(d.fecha||'').slice(0,4)===per);
+
+  // Cuadrante de cada familia (mismo criterio que la Matriz de Kraljic)
+  const K=(typeof _kraCalcular==='function') ? (function(){
+    try{ return _kraCalcular(); }catch(e){ return {arr:[]}; }
+  })() : {arr:[]};
+  const cuadPorFamilia={};
+  (K.arr||[]).forEach(f=>{ cuadPorFamilia[f.k]=f.cuadrante; });
+
+  // Agregado por proveedor
+  const prov={};
+  filas.forEach(d=>{
+    const k=_parNormProv(d.proveedor);
+    if(!k || k==='SIN ESPECIFICAR') return;
+    if(!prov[k]) prov[k]={ k:k, nombre:d.proveedor, gasto:0, n:0, familias:{}, areas:{}, camps:{},
+                           primera:'9999', ultima:'0000', meses:{} };
+    const p=prov[k];
+    p.gasto+=(d.monto||0); p.n++;
+    if(String(d.proveedor||'').length > String(p.nombre||'').length) p.nombre=d.proveedor;
+    const cat=(d.categoria||'').trim();
+    if(cat && cat!=='SIN ESPECIFICAR') p.familias[cat]=(p.familias[cat]||0)+(d.monto||0);
+    if(d.area) p.areas[d.area]=1;
+    if(d.campamento && d.campamento!=='SIN ESPECIFICAR') p.camps[d.campamento]=1;
+    const f=String(d.fecha||'').slice(0,10);
+    if(f){ if(f<p.primera)p.primera=f; if(f>p.ultima)p.ultima=f; p.meses[f.slice(0,7)]=1; }
+  });
+
+  const arr=Object.keys(prov).map(k=>prov[k]);
+  const total=arr.reduce((a,x)=>a+x.gasto,0);
+
+  // Datos de las comparativas: ahorro aportado y condiciones
+  const cmp={};
+  (window._srmComparativas||[]).forEach(c=>{
+    const k=_parNormProv(c.proveedor_elegido); if(!k) return;
+    if(!cmp[k]) cmp[k]={ adjudicadas:0, ahorro:0, cond:'', ultima:'' };
+    cmp[k].adjudicadas++;
+    cmp[k].ahorro += Number(c.ahorro)||0;
+    if(c.condicion_pago) cmp[k].cond=c.condicion_pago;
+    const f=String(c.fecha||c.creado_at||'').slice(0,10);
+    if(f>cmp[k].ultima) cmp[k].ultima=f;
+  });
+
+  arr.forEach(p=>{
+    p.pct = total? p.gasto/total*100 : 0;
+    // Cuadrante heredado de las familias, ponderado por gasto
+    const acum={};
+    Object.keys(p.familias).forEach(f=>{
+      const c=cuadPorFamilia[f]; if(!c) return;
+      acum[c]=(acum[c]||0)+p.familias[f];
+    });
+    let mejor='', mv=0;
+    Object.keys(acum).forEach(c=>{ if(acum[c]>mv){ mv=acum[c]; mejor=c; } });
+    p.cuadrante = mejor || 'sinclasificar';
+    p.familiaPrincipal = Object.keys(p.familias).sort((a,b)=>p.familias[b]-p.familias[a])[0] || '—';
+    p.nFamilias = Object.keys(p.familias).length;
+    p.nMeses = Object.keys(p.meses).length;
+    p.ticket = p.n? p.gasto/p.n : 0;
+    const c=cmp[p.k]||{};
+    p.adjudicadas=c.adjudicadas||0; p.ahorro=c.ahorro||0; p.cond=c.cond||''; 
+    // Ficha en la Base de Datos
+    const ficha=(provData||[]).find(x=>_provClaves(x.nombre).indexOf(p.k)>=0);
+    p.ficha=ficha||null;
+    p.tieneFicha=!!ficha;
+    // Dependencia: cuánto de cada familia depende de este proveedor
+    p.dependencia=0;
+    Object.keys(p.familias).forEach(f=>{
+      const totalFam=(K.arr||[]).find(x=>x.k===f);
+      if(totalFam && totalFam.gasto>0){
+        const d=p.familias[f]/totalFam.gasto*100;
+        if(d>p.dependencia) p.dependencia=d;
+      }
+    });
+  });
+  arr.sort((a,b)=>b.gasto-a.gasto);
+
+  // Concentración
+  let ac=0; arr.forEach(p=>{ ac+=p.gasto; p.acPct= total? ac/total*100 : 0; });
+  const top5=arr.slice(0,5).reduce((a,x)=>a+x.gasto,0);
+  const top10=arr.slice(0,10).reduce((a,x)=>a+x.gasto,0);
+
+  return { arr, total, top5:total?top5/total*100:0, top10:total?top10/total*100:0,
+           periodo:per, sinFicha:arr.filter(p=>!p.tieneFicha).length,
+           conCuadrante:arr.filter(p=>p.cuadrante!=='sinclasificar').length };
+}
+
+async function renderSRM(){
+  const pane=document.getElementById('srm-pane'); if(!pane) return;
+  _srmPoblarPeriodo();
+  if(typeof _asegurarDatosCompras==='function'){
+    if(!(detalleData||[]).length){
+      pane.innerHTML='<div style="padding:22px;text-align:center;color:var(--muted);font-size:13px">⏳ Leyendo datos de compras...</div>';
+    }
+    try{ await _asegurarDatosCompras(); }catch(e){}
+  }
+  // Traer comparativas una sola vez (ahorro y condiciones por proveedor)
+  if(!window._srmComparativas){
+    try{
+      const r=await fetch(_SB_URL+'/rest/v1/comparativas?select=proveedor_elegido,ahorro,condicion_pago,fecha,creado_at&limit=2000',
+        {headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
+      window._srmComparativas = r.ok ? await r.json() : [];
+    }catch(e){ window._srmComparativas=[]; }
+  }
+  if(!(provData||[]).length){ try{ await cargarProveedoresSB(); }catch(e){} }
+
+  const S=_srmCalcular(); window._srmS=S;
+  const f=document.getElementById('srm-fuente');
+  if(f) f.innerHTML = S.arr.length+' proveedores con compras · '+(window._srmComparativas||[]).length+' comparativas';
+
+  if(!S.arr.length){
+    pane.innerHTML='<div style="padding:18px;background:var(--s1);border:1px solid var(--border);border-radius:11px;color:var(--muted)">'
+      +'No hay compras registradas en el período. Actualizá la planilla desde Auditoría de Datos.</div>';
+    return;
+  }
+
+  const cuadFiltro=(document.getElementById('srm-cuadrante')||{}).value||'';
+  let lista=S.arr;
+  if(cuadFiltro) lista=lista.filter(p=>p.cuadrante===cuadFiltro);
+
+  const kpi=(v,l,sub,cls)=>{
+    const col = cls==='bad'?'var(--red)':cls==='warn'?'var(--yellow)':cls==='ok'?'var(--green)':'var(--or)';
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:13px 15px">'
+      +'<div style="font-size:21px;font-weight:800;color:'+col+';line-height:1.15">'+v+'</div>'
+      +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:2px">'+l+'</div>'
+      +(sub?'<div style="font-size:10.5px;color:var(--muted);margin-top:3px">'+sub+'</div>':'')+'</div>';
+  };
+
+  let h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px">'
+    + kpi(_audN(S.arr.length),'Proveedores activos', S.sinFicha?(S.sinFicha+' sin ficha en la base'):'todos con ficha')
+    + kpi('$'+_audN(S.total),'Gasto del período')
+    + kpi(Math.round(S.top5)+'%','Concentración Top 5', 'Top 10: '+Math.round(S.top10)+'%', S.top5>60?'bad':S.top5>40?'warn':'ok')
+    + kpi(_audN(S.arr.filter(p=>p.cuadrante==='estrategico').length),'Estratégicos', 'gestión 1 a 1')
+    + kpi(_audN(S.arr.filter(p=>p.cuadrante==='cuello').length),'Cuello de botella', 'riesgo de abastecimiento', 'warn')
+    + '</div>';
+
+  // ── Alertas de riesgo ──
+  const alertas=[];
+  if(S.top5>60) alertas.push(['bad','Concentración alta',
+    'El '+Math.round(S.top5)+'% del gasto está en 5 proveedores. Conviene homologar alternativas en las familias más expuestas.']);
+  const dependientes=S.arr.filter(p=>p.dependencia>=85 && p.gasto>S.total*0.01);
+  if(dependientes.length) alertas.push(['warn','Proveedor único en alguna familia',
+    dependientes.slice(0,5).map(p=>_audE(p.nombre)+' ('+Math.round(p.dependencia)+'% de '+_audE(p.familiaPrincipal)+')').join(' · ')
+    + (dependientes.length>5?(' y '+(dependientes.length-5)+' más'):'')
+    + '. Si fallan, no hay con quién reemplazarlos en el corto plazo.']);
+  if(S.sinFicha) alertas.push(['info','Proveedores sin ficha',
+    S.sinFicha+' proveedores facturan pero no están en la Base de Datos. Podés sumarlos desde Proveedores → Base de Datos.']);
+  if(alertas.length){
+    const col={bad:['rgba(239,68,68,.08)','rgba(239,68,68,.35)','#f87171'],
+               warn:['rgba(234,179,8,.08)','rgba(234,179,8,.35)','#f4d160'],
+               info:['rgba(96,165,250,.08)','rgba(96,165,250,.35)','#93c5fd']};
+    h+='<div style="margin-bottom:16px">'+alertas.map(a=>{ const c=col[a[0]];
+      return '<div style="background:'+c[0]+';border:1px solid '+c[1]+';border-radius:10px;padding:12px 15px;margin-bottom:9px;color:'+c[2]+';font-size:12.5px;line-height:1.55">'
+        +'<strong style="display:block;margin-bottom:3px;font-size:13px">'+a[1]+'</strong>'+a[2]+'</div>'; }).join('')+'</div>';
+  }
+
+  // ── Segmentación ──
+  const porCuad={estrategico:[],apalancado:[],cuello:[],rutinario:[],sinclasificar:[]};
+  S.arr.forEach(p=>{ (porCuad[p.cuadrante]||porCuad.sinclasificar).push(p); });
+  h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:16px">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Segmentación de proveedores</div>'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">Cada proveedor toma el cuadrante de las familias que le comprás, ponderado por gasto.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">';
+  ['estrategico','apalancado','cuello','rutinario'].forEach(c=>{
+    const C=KRA_CUADRANTES[c], l=porCuad[c], g=l.reduce((a,x)=>a+x.gasto,0);
+    h+='<div onclick="document.getElementById(\'srm-cuadrante\').value=\''+c+'\';renderSRM()" style="cursor:pointer;background:var(--s2);border:1px solid '+C.col+'55;border-left:3px solid '+C.col+';border-radius:9px;padding:11px 13px">'
+      +'<div style="font-size:19px;font-weight:800;color:'+C.col+'">'+l.length+'</div>'
+      +'<div style="font-size:11.5px;font-weight:700;color:var(--text)">'+C.lbl+'</div>'
+      +'<div style="font-size:10.5px;color:var(--muted);margin-top:2px">$'+_audN(g)+' · '+(S.total?Math.round(g/S.total*100):0)+'%</div>'
+      +'<div style="font-size:10px;color:var(--muted);margin-top:5px;line-height:1.4">'+C.est.split('.')[0]+'.</div></div>';
+  });
+  h+='</div></div>';
+
+  // ── Ranking con scorecard ──
+  h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:16px">'
+    +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">'
+      +'<span style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px">Ranking de proveedores</span>'
+      +'<span style="font-size:11.5px;color:var(--muted)">'+lista.length+' proveedor(es)'+(cuadFiltro?(' · '+KRA_CUADRANTES[cuadFiltro].lbl):'')+'</span>'
+      +(cuadFiltro?'<button onclick="document.getElementById(\'srm-cuadrante\').value=\'\';renderSRM()" style="margin-left:auto;padding:4px 11px;border-radius:6px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--ff)">✕ Ver todos</button>':'')
+    +'</div>'
+    +'<div style="overflow-x:auto;max-height:520px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">'
+    +'<thead><tr style="background:var(--s2);position:sticky;top:0">'
+    +['#','Proveedor','Cuadrante','Gasto','% acum.','Comprob.','Familias','Meses activo','Dependencia','Ahorro aportado'].map((c,i2)=>
+      '<th style="padding:7px 9px;text-align:'+(i2>=3&&i2!==2&&i2!==6?'right':'left')+';font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">'+c+'</th>').join('')
+    +'</tr></thead><tbody>';
+  lista.slice(0,80).forEach((p,i2)=>{
+    const C=KRA_CUADRANTES[p.cuadrante]||{lbl:'Sin clasificar',col:'#6b7280'};
+    const depCol = p.dependencia>=85?'var(--red)':p.dependencia>=60?'var(--yellow)':'var(--muted)';
+    h+='<tr>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px">'+(i2+1)+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)"><b>'+_audE(p.nombre)+'</b>'
+        +(p.tieneFicha?'':'<span title="No está en la Base de Datos" style="color:var(--yellow);margin-left:5px">⚠</span>')
+        +'<div style="font-size:10px;color:var(--muted)">'+_audE(p.familiaPrincipal)+'</div></td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)"><span style="font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:'+C.col+'22;color:'+C.col+'">'+C.lbl+'</span></td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">$'+_audN(p.gasto)+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;color:var(--muted)">'+Math.round(p.acPct)+'%</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+p.n+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:center">'+p.nFamilias+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right">'+p.nMeses+'</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;color:'+depCol+';font-weight:'+(p.dependencia>=60?'700':'400')+'">'+Math.round(p.dependencia)+'%</td>'
+      +'<td style="padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;color:'+(p.ahorro>0?'var(--green)':'var(--muted)')+'">'+(p.ahorro>0?('$'+_audN(p.ahorro)):'—')+'</td>'
+      +'</tr>';
+  });
+  h+='</tbody></table></div>'
+    +(lista.length>80?'<div style="font-size:11px;color:var(--muted);margin-top:8px">Se muestran los 80 de mayor gasto, de '+lista.length+'.</div>':'')
+    +'<div style="font-size:11px;color:var(--muted);margin-top:8px"><b>Dependencia</b>: qué porcentaje de su familia principal le comprás a ese proveedor. Por encima del 85% no hay alternativa inmediata.</div>'
+    +'</div>';
+
+  // ── Qué falta para completar el SRM ──
+  h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Alcance de este módulo</div>'
+    +'<div style="font-size:12.5px;color:var(--muted);line-height:1.65">'
+    +'Se calcula con <b style="color:var(--text)">datos reales</b>: gasto de la planilla de compras, cuadrante de la Matriz de Kraljic, '
+    +'ahorro y condiciones de las comparativas, y las fichas de la Base de Datos.<br><br>'
+    +'<b style="color:var(--text)">Todavía no se puede calcular</b> el OTIF (entregas a tiempo y completas), el lead time real ni la tasa de rechazos, '
+    +'porque no se registran la fecha de recepción ni las incidencias con proveedores. '
+    +'En <b>Auditoría de Datos</b> está el detalle de qué habría que empezar a capturar.</div></div>';
+
+  pane.innerHTML=h;
+}
+
+function exportarSRM(){
+  const S=window._srmS; if(!S||!S.arr.length){ showToast('Primero calculá el SRM','error'); return; }
+  const f=[['#','Proveedor','Cuadrante','Gasto','Porc_acumulado','Comprobantes','Familias','Familia_principal','Meses_activo','Dependencia_max','Ahorro_aportado','Comparativas_adjudicadas','En_base_de_datos','Primera_compra','Ultima_compra']];
+  S.arr.forEach((p,i)=>{
+    const C=KRA_CUADRANTES[p.cuadrante]||{lbl:'Sin clasificar'};
+    f.push([i+1,p.nombre,C.lbl,Math.round(p.gasto),Math.round(p.acPct)+'%',p.n,p.nFamilias,p.familiaPrincipal,
+            p.nMeses,Math.round(p.dependencia)+'%',Math.round(p.ahorro),p.adjudicadas,p.tieneFicha?'SI':'NO',
+            p.primera==='9999'?'':p.primera, p.ultima==='0000'?'':p.ultima]);
+  });
+  const csv=f.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='SRM_proveedores_'+(S.periodo==='__all__'?'historico':S.periodo)+'.csv'; a.click();
+  showToast('⬇️ SRM exportado','ok');
+}
+
+// ══════════════════════════════════════════════════════════════
 // MATRIZ DE KRALJIC — estrategia de compra por familia
 // Eje X: impacto financiero (gasto real de la planilla COMPRAS)
 // Eje Y: riesgo de suministro, calculado SOLO con datos disponibles:
@@ -5973,6 +6260,54 @@ function _audCalcular(){
     sc, scSinArea, scSinCrit, scSinFecha, scSinItems, urg, lineas };
 }
 
+// Qué falta capturar para completar el SRM
+function _audBloqueSRM(){
+  const items=[
+    { ok:true,  t:'Gasto por proveedor',        d:'Planilla COMPRAS — ya disponible.' },
+    { ok:true,  t:'Segmentación (Kraljic)',      d:'Se deriva de las categorías de la planilla.' },
+    { ok:true,  t:'Concentración y dependencia', d:'Calculado sobre el gasto real.' },
+    { ok:true,  t:'Ahorro por proveedor',        d:'De las comparativas guardadas.' },
+    { ok:true,  t:'Condiciones comerciales',     d:'Condición de pago de las comparativas y de la ficha.' },
+    { ok:false, t:'OTIF (entregas a tiempo y completas)', pri:1,
+      d:'<b>Falta:</b> fecha de recepción del pedido y si llegó completo o parcial.<br>'
+        +'<b>Cómo:</b> un botón "Recibido" en el Pedido de Compra que registre la fecha con un clic, más una marca de completo/parcial.<br>'
+        +'<b>Desbloquea:</b> OTIF, lead time real, cumplimiento objetivo por proveedor y el eje de riesgo de Kraljic.' },
+    { ok:false, t:'Tasa de rechazos y reclamos', pri:2,
+      d:'<b>Falta:</b> un registro de incidencias con proveedores (faltantes, material fuera de especificación, demoras, reclamos).<br>'
+        +'<b>Cómo:</b> un formulario breve de incidencia asociada al proveedor y al pedido, con estado y resolución.<br>'
+        +'<b>Desbloquea:</b> indicador de calidad objetivo y el scorecard periódico.' },
+    { ok:false, t:'Evaluación de desempeño', pri:3,
+      d:'<b>Falta:</b> reconectar las planillas de evaluación (R GC 17) y satisfacción (R GC 19) publicadas como CSV.<br>'
+        +'<b>Desbloquea:</b> la capa cualitativa y el NPS interno de las áreas usuarias.' },
+    { ok:false, t:'Familia por ítem', pri:4,
+      d:'<b>Falta:</b> clasificar los ítems de las solicitudes (hoy son texto libre).<br>'
+        +'<b>Desbloquea:</b> el cruce de artículos de bajo monto y alta frecuencia, candidatos a stock de pañol.' },
+    { ok:null,  t:'Costo total de propiedad (TCO)',
+      d:'<b>No recomendado por ahora.</b> Requiere costos de flete, calidad e inventario desagregados por proveedor, '
+        +'que hoy no se registran. Calcularlo con supuestos daría un número que no resiste una revisión.' },
+    { ok:null,  t:'Riesgo financiero / scoring',
+      d:'<b>No disponible.</b> Requiere un servicio externo de información crediticia.' }
+  ];
+  const fila=x=>{
+    const est = x.ok===true ? ['rgba(34,197,94,.18)','#7ee2a4','✔ Disponible']
+              : x.ok===false ? ['rgba(234,179,8,.18)','#f4d160','◷ Falta capturar']
+              : ['rgba(107,114,128,.2)','#9ca3af','— No recomendado'];
+    return '<tr><td style="padding:9px;border-bottom:1px solid var(--border);vertical-align:top;width:230px">'
+      +'<b style="font-size:12.5px">'+(x.pri?('<span style="color:var(--or)">'+x.pri+'. </span>'):'')+x.t+'</b></td>'
+      +'<td style="padding:9px;border-bottom:1px solid var(--border);vertical-align:top;width:130px">'
+        +'<span style="font-size:9.5px;font-weight:800;padding:2px 9px;border-radius:999px;background:'+est[0]+';color:'+est[1]+'">'+est[2]+'</span></td>'
+      +'<td style="padding:9px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);line-height:1.6">'+x.d+'</td></tr>';
+  };
+  return '<div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px">🤝 Qué falta para completar el SRM</div>'
+    +'<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Los puntos numerados están en orden de prioridad: el primero es el que más desbloquea por el esfuerzo que cuesta.</div>'
+    +'<table style="width:100%;border-collapse:collapse">'+items.map(fila).join('')+'</table>'
+    +'<div style="margin-top:12px;padding:11px 14px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.35);border-radius:9px;color:#93c5fd;font-size:12.5px;line-height:1.6">'
+      +'<b>Recomendación:</b> empezar por la <b>fecha de recepción</b>. Es un solo clic al recibir el pedido y habilita cuatro indicadores '
+      +'(OTIF, lead time, cumplimiento y el eje de riesgo). El registro de incidencias es el segundo: barato de implementar y es lo que '
+      +'hoy vive en la memoria y en WhatsApp.</div></div>';
+}
+
 async function renderAuditoria(){
   const pane=document.getElementById('aud-pane'); if(!pane) return;
   // Traer la planilla COMPRAS automáticamente, igual que en Compras por Proveedor/Área/Campamento
@@ -6079,6 +6414,7 @@ async function renderAuditoria(){
     + ver('Quiebres / paradas', false, 'No se registra si la compra fue por rotura o parada de equipo.')
     + ver('Familia por ítem', false, 'Los ítems son texto libre; conviene un diccionario que aprenda.')
     +'</table>'
+    +_audBloqueSRM()
     +'<div style="margin-top:14px;padding:12px 15px;border-radius:9px;background:'
       +(A.cobertura>=60?'rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.4);color:#7ee2a4':'rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.4);color:#f4d160')+'">'
       +'<b style="display:block;margin-bottom:4px">'+(A.cobertura>=60?'Se puede analizar con lo que hay':'Conviene completar la clasificación primero')+'</b>'
@@ -11753,7 +12089,12 @@ async function cargarProveedoresSB() {
       if (rows && rows.length) {
         provData = rows.map(r => ({
           nombre:r.nombre||'', cuit:r.cuit||'', rubro:r.rubro||'', email:r.email||'',
-          tel:r.tel||'', dir:r.direccion||'', contacto:r.contacto||'', pago:r.condicion_pago||'', tipo:r.tipo||''
+          tel:r.tel||'', dir:r.direccion||'', contacto:r.contacto||'', pago:r.condicion_pago||'', tipo:r.tipo||'',
+          // Campos que aportan Recorridos y el Comparativo
+          lat:(r.lat!=null?+r.lat:null), lng:(r.lng!=null?+r.lng:null),
+          tAtencion:+r.t_atencion||0, hm1:r.hm1||'', hm2:r.hm2||'', ht1:r.ht1||'', ht2:r.ht2||'',
+          localidad:r.localidad||'', diasEntrega:r.dias_entrega||'', notas:r.notas||'',
+          ambito:r.ambito||'', geoZona:r.geo_zona||'', geoSub:r.geo_sub||''
         }));
       } else if (provData && provData.length) {
         // La nube está vacía pero hay base local → sembrarla para que Comparativo la vea
@@ -11908,7 +12249,7 @@ function _fillProvFiltro(id, values){
 // MAPAS INTERACTIVOS — cada zona es un botón sobre la imagen
 // Coordenadas en % relativo a la imagen (x, y del centro de cada zona)
 // ══════════════════════════════════════════════════════════════
-const MAPA_SJ = { img:'img/mapa_sanjuan.jpg', ratio:1024/820, zonas:[
+const MAPA_SJ = { img:'img/mapa_sanjuan.png', ratio:1024/820, zonas:[
   {id:'IGLESIA',      lbl:'Iglesia',        x:28, y:25, r:10, grupo:'comunidades'},
   {id:'JACHAL',       lbl:'Jáchal',         x:52, y:40, r:10, grupo:'comunidades'},
   {id:'VALLE FERTIL', lbl:'Valle Fértil',   x:79, y:51, r:8,  grupo:'comunidades'},
@@ -11930,7 +12271,7 @@ const MAPA_SJ = { img:'img/mapa_sanjuan.jpg', ratio:1024/820, zonas:[
   {id:'9 DE JULIO',   lbl:'9 de Julio',     x:63, y:77, r:4.5,grupo:'gsj'}
 ]};
 
-const MAPA_AR = { img:'img/mapa_argentina.jpg', ratio:874/700, zonas:[
+const MAPA_AR = { img:'img/mapa_argentina.png', ratio:874/700, zonas:[
   {id:'JUJUY',x:43.5,y:5,r:4,zona:'noa'},              {id:'SALTA',x:43,y:10,r:5.5,zona:'noa'},
   {id:'FORMOSA',x:56,y:10,r:5,zona:'nea'},             {id:'TUCUMAN',lbl:'Tucumán',x:44,y:16,r:3.2,zona:'noa'},
   {id:'CHACO',x:57,y:16,r:5,zona:'nea'},               {id:'MISIONES',x:70,y:17.5,r:4,zona:'nea'},
@@ -11947,7 +12288,7 @@ const MAPA_AR = { img:'img/mapa_argentina.jpg', ratio:874/700, zonas:[
   {id:'TIERRA DEL FUEGO',lbl:'Tierra del Fuego',x:47,y:93,r:4,zona:'patagonia'}
 ]};
 
-const MAPA_MUNDO = { img:'img/mapa_mundo.jpg', ratio:647/1150, zonas:[
+const MAPA_MUNDO = { img:'img/mapa_mundo.png', ratio:647/1150, zonas:[
   {id:'AMERICA DEL NORTE', lbl:'América del Norte', x:22, y:25, r:9},
   {id:'AMERICA CENTRAL',   lbl:'América Central',   x:19, y:42, r:5},
   {id:'AMERICA DEL SUR',   lbl:'América del Sur',   x:31, y:63, r:8},
@@ -12413,7 +12754,12 @@ function editarProvCC(btn){
 async function _sbUpsertProvCC(p, matchNombre){
   var key = (matchNombre || p.nombre || '');
   var sb = { nombre:p.nombre, cuit:p.cuit, rubro:p.rubro, email:p.email, tel:p.tel,
-             direccion:p.dir||'', contacto:p.contacto, condicion_pago:p.pago||'', tipo:p.tipo };
+             direccion:p.dir||'', contacto:p.contacto, condicion_pago:p.pago||'', tipo:p.tipo,
+             // Campos compartidos con Recorridos y el Comparativo
+             lat:(p.lat!=null?p.lat:null), lng:(p.lng!=null?p.lng:null),
+             t_atencion:p.tAtencion||null, hm1:p.hm1||'', hm2:p.hm2||'', ht1:p.ht1||'', ht2:p.ht2||'',
+             localidad:p.localidad||'', dias_entrega:p.diasEntrega||'', notas:p.notas||'',
+             ambito:p.ambito||null, geo_zona:p.geoZona||null, geo_sub:p.geoSub||null };
   try {
     var q = await fetch(_SB_URL+'/rest/v1/proveedores?select=id&nombre=eq.'+encodeURIComponent(key), {
       headers:{'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY}, cache:'no-store'

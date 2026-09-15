@@ -439,7 +439,8 @@
       <div class="body">
         <div class="picker-hint" id="hint-picker" style="display:none">📍 Modo selección: hacé clic en el mapa de la pestaña "Recorrido" para fijar la ubicación, o cargá lat/long manualmente.</div>
         <div style="position:relative;margin-bottom:12px">
-          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.5;font-size:14px">🔍</span>
+          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.5;font-size:14px">🔍<button class="btn sm" type="button" onclick="_syncProvManual()" style="background:#3e7cb1;white-space:nowrap;margin-right:8px" title="Traer proveedores del Centro de Control y el Comparativo">🔄 Sincronizar base</button>
+        </span>
           <input type="text" id="buscar-prov-gestion" placeholder="Buscar por nombre, rubro o dirección..." oninput="renderProv()"
             style="width:100%;padding:10px 12px 10px 36px;border:1px solid var(--border,#2f3546);border-radius:9px;background:var(--s2,#222736);color:var(--text,#e9ebf0);font-size:14px;font-family:inherit">
         </div>
@@ -636,6 +637,7 @@ async function cargarDesdeNube(){
       // El historial sale SIEMPRE de las filas individuales (única fuente de verdad)
       items.sort((a,b)=> String(b.fecha||'').localeCompare(String(a.fecha||'')));
       DB.historial = items;
+      sincronizarProveedores().catch(function(){});   // base de proveedores compartida
     }
     _recSetStatus('✅ Sincronizado', '#22c55e');
   }catch(e){
@@ -682,6 +684,117 @@ function _fusionarLista(local, remoto, borradosIds){
     out.push(x);                             // lo agregó otro equipo: conservarlo
   });
   return out;
+}
+
+// ══════════════════════════════════════════════════════════════
+// BASE DE PROVEEDORES UNIFICADA
+// Los proveedores viven en la tabla compartida `proveedores` de Supabase,
+// la misma que usan el Centro de Control y el Comparativo.
+// Acá se fusionan con los locales: nunca se pierde nada de ningún lado.
+// ══════════════════════════════════════════════════════════════
+const PROV_SB_URL = REC_SB_URL;
+const PROV_SB_KEY = REC_SB_KEY;
+
+function _provNorm(n){
+  return String(n||'').toUpperCase().replace(/[.,;:'"()]/g,' ')
+    .replace(/\b(S\s*R\s*L|SRL|S\s*A|SA|SAS|SACIFI|SACIF|SCA|LTDA|CIA|E\s*HIJOS|HNOS)\b/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+
+// Trae la base compartida y la fusiona con los proveedores locales
+async function _syncProvManual(){
+  if(typeof toast==='function') toast('⏳ Sincronizando con la base compartida...');
+  const r=await sincronizarProveedores();
+  if(!r){ if(typeof toast==='function') toast('⚠️ No se pudo conectar con la base', true); return; }
+  if(typeof toast==='function'){
+    toast(r.nuevos||r.enriquecidos
+      ? ('✅ '+r.nuevos+' proveedor(es) nuevos · '+r.enriquecidos+' completados')
+      : '✅ Ya estaba todo sincronizado');
+  }
+}
+
+async function sincronizarProveedores(){
+  let remotos=[];
+  try{
+    const r=await fetch(PROV_SB_URL+'/rest/v1/proveedores?select=*&order=nombre.asc&limit=3000',
+      { headers:{ apikey:PROV_SB_KEY, Authorization:'Bearer '+PROV_SB_KEY }, cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    remotos=await r.json();
+  }catch(e){ console.warn('sincronizar proveedores:', e.message); return false; }
+
+  if(!DB.proveedores) DB.proveedores=[];
+  const porClave={};
+  DB.proveedores.forEach(p=>{ const k=_provNorm(p.nombre); if(k) porClave[k]=p; });
+
+  let nuevos=0, enriquecidos=0;
+  remotos.forEach(r=>{
+    const k=_provNorm(r.nombre); if(!k) return;
+    const local=porClave[k];
+    if(!local){
+      // Proveedor que existe en la base compartida y no acá
+      DB.proveedores.push({
+        id:'sb_'+(r.id||uid()), sbId:r.id||null, nombre:r.nombre||'', rubro:r.rubro||'',
+        dir:r.direccion||r.dir||'', lat:(r.lat!=null?+r.lat:null), lng:(r.lng!=null?+r.lng:null),
+        hm1:r.hm1||'', hm2:r.hm2||'', ht1:r.ht1||'', ht2:r.ht2||'', corrido:!!r.corrido,
+        tAtencion:+r.t_atencion||0,
+        email:r.email||'', tel:r.tel||'', contacto:r.contacto||'', pago:r.condicion_pago||'',
+        cuit:r.cuit||'', tipo:r.tipo||''
+      });
+      nuevos++;
+    } else {
+      // Ya está: completar SOLO los campos vacíos, sin pisar lo cargado acá
+      let cambio=false;
+      const set=(campo,valor)=>{ if(valor && !local[campo]){ local[campo]=valor; cambio=true; } };
+      set('rubro', r.rubro); set('dir', r.direccion||r.dir);
+      set('email', r.email); set('tel', r.tel); set('contacto', r.contacto);
+      set('pago', r.condicion_pago); set('cuit', r.cuit); set('tipo', r.tipo);
+      if(local.lat==null && r.lat!=null){ local.lat=+r.lat; local.lng=+r.lng; cambio=true; }
+      if(!local.tAtencion && r.t_atencion){ local.tAtencion=+r.t_atencion; cambio=true; }
+      if(!local.hm1 && r.hm1){ local.hm1=r.hm1; local.hm2=r.hm2||''; local.ht1=r.ht1||''; local.ht2=r.ht2||''; cambio=true; }
+      if(!local.sbId && r.id){ local.sbId=r.id; cambio=true; }
+      if(cambio) enriquecidos++;
+    }
+  });
+  if(nuevos||enriquecidos){ save(true); renderProv(); fillSelects(); }
+  console.log('Proveedores sincronizados: '+nuevos+' nuevos, '+enriquecidos+' completados');
+  return {nuevos, enriquecidos};
+}
+
+// Sube un proveedor a la base compartida (para que el CC y el Comparativo lo vean)
+async function _provSubirUno(p){
+  if(!p || !p.nombre) return false;
+  const fila={
+    nombre:p.nombre, rubro:p.rubro||'', direccion:p.dir||'',
+    lat:(p.lat!=null?p.lat:null), lng:(p.lng!=null?p.lng:null),
+    t_atencion:p.tAtencion||null, hm1:p.hm1||'', hm2:p.hm2||'', ht1:p.ht1||'', ht2:p.ht2||'',
+    corrido:!!p.corrido, actualizado_en:new Date().toISOString()
+  };
+  if(p.email) fila.email=p.email;
+  if(p.tel) fila.tel=p.tel;
+  if(p.contacto) fila.contacto=p.contacto;
+  if(p.pago) fila.condicion_pago=p.pago;
+  if(p.cuit) fila.cuit=p.cuit;
+  if(p.tipo) fila.tipo=p.tipo;
+  try{
+    // Si ya existe, actualizar sólo lo que aporta Recorridos
+    const q=await fetch(PROV_SB_URL+'/rest/v1/proveedores?nombre=eq.'+encodeURIComponent(p.nombre)+'&select=id',
+      { headers:{ apikey:PROV_SB_KEY, Authorization:'Bearer '+PROV_SB_KEY }, cache:'no-store' });
+    const existe = q.ok ? (await q.json()) : [];
+    if(existe && existe.length){
+      const r=await fetch(PROV_SB_URL+'/rest/v1/proveedores?id=eq.'+encodeURIComponent(existe[0].id), {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json', apikey:PROV_SB_KEY, Authorization:'Bearer '+PROV_SB_KEY, Prefer:'return=minimal'},
+        body: JSON.stringify(fila)
+      });
+      return r.ok;
+    }
+    const r=await fetch(PROV_SB_URL+'/rest/v1/proveedores', {
+      method:'POST',
+      headers:{'Content-Type':'application/json', apikey:PROV_SB_KEY, Authorization:'Bearer '+PROV_SB_KEY, Prefer:'return=minimal'},
+      body: JSON.stringify(fila)
+    });
+    return r.ok;
+  }catch(e){ console.warn('subir proveedor:', e.message); return false; }
 }
 
 async function _recPush(){
@@ -3306,6 +3419,8 @@ function editProv(id){
       lat:mval('m-lat')?+mval('m-lat'):null, lng:mval('m-lng')?+mval('m-lng'):null, tAtencion:+mval('m-tatencion')||0};
     if(!o.nombre){ alert('Poné un nombre'); return; }
     if(id) Object.assign(p,o); else DB.proveedores.push({id:uid(),...o});
+    // Compartir con el Centro de Control y el Comparativo
+    _provSubirUno(id ? p : DB.proveedores[DB.proveedores.length-1]).catch(function(){});
     // reflejar horario en paradas ya agregadas
     ruta.forEach(s=>{ if(s.id===(id||'')){ s.corrido=o.corrido;s.hm1=o.hm1;s.hm2=o.hm2;s.ht1=o.ht1;s.ht2=o.ht2; } });
     save(); renderProv(); renderAgenda(); closeModal();
@@ -3369,6 +3484,10 @@ function switchTab(name){
   if(vista==='recorrido' && map) setTimeout(()=>map.invalidateSize(),100);
   if(name==='historial') renderHistorial();
   if(name==='analisis') renderAnalisis();
+  if(name==='proveedores'){
+    // Traer novedades de la base compartida (no pisa lo cargado acá)
+    sincronizarProveedores().catch(function(){});
+  }
 }
 document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 
