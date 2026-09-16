@@ -1420,6 +1420,23 @@ async function _cargarListaSC(){
     return _scListaCache;
   } catch(e){ console.warn('cargar SC:', e.message); _scListaErr = e.message; return null; }
 }
+// Si llega ?sc=SCTL-2026-0001 desde el Centro de Control, asociarla sola
+async function _precargarSCdesdeURL(){
+  try{
+    const p=new URLSearchParams(location.search);
+    const n=p.get('sc');
+    if(!n) return;
+    await _poblarSelectSC();
+    const sel=document.getElementById('scAsociadaSel');
+    if(sel){
+      const existe=Array.prototype.some.call(sel.options, function(o){ return o.value===n; });
+      if(existe){ sel.value=n; _scAsociadaElegir(n); showToast('✔️ '+n+' asociada — cargá los presupuestos','ok'); }
+      else showToast('No se encontró '+n+' en el historial','err');
+    }
+  }catch(e){}
+}
+window.addEventListener('load', function(){ setTimeout(_precargarSCdesdeURL, 900); });
+
 async function _poblarSelectSC(){
   var sel = document.getElementById('scAsociadaSel');
   if (!sel) return;

@@ -2094,7 +2094,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
             <th>N° SC</th><th>Área</th><th>Solicitante</th><th>OS</th>
             <th>Asunto OS</th>
             <th>F. Solicitud</th><th>F. Límite</th><th>Criticidad</th>
-            <th>Estado</th><th>Acciones</th>
+            <th>Estado</th><th>Circuito</th><th>Acciones</th>
           </tr>
         </thead>
         <tbody id="hist-table"></tbody>
@@ -3845,7 +3845,7 @@ async function showView(id, btn) {
   // Await fresh data before rendering
   _initPeriodoSlots();
   if (id === 'panel')       { await recargarSCsDesdeLS(); renderPanel(); }
-  if (id === 'historial')    { await recargarSCsDesdeLS(); renderHistorial(); renderHistorialPedidos(); }
+  if (id === 'historial')    { await recargarSCsDesdeLS(); await _circCargar(); renderHistorial(); renderHistorialPedidos(); }
   if (id === 'kanban')       { await recargarSCsDesdeLS(); renderKanban(); }
   if (id === 'historial-op')   {
     await recargarSCsDesdeLS();
@@ -4897,6 +4897,98 @@ function _periodoMatch(fecha, pref){
   return true;
 }
 
+// ══════════════════════════════════════════════════════════════
+// CIRCUITO DE COMPRA EN EL HISTORIAL DE SC
+// Muestra en qué paso está cada solicitud y ofrece SOLO la acción siguiente,
+// para que el camino Solicitud → Comparación → Autorización → OC sea el habitual.
+// ══════════════════════════════════════════════════════════════
+let _circCache = { comps:[], ocs:[], ts:0 };
+
+async function _circCargar(force){
+  if(!force && _circCache.ts && (Date.now()-_circCache.ts < 60000)) return _circCache;
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/comparativas?select=num_comp,num_sc,proveedor_elegido,precio_elegido,divisa,estado_autorizacion,autorizado_en&limit=2000',
+      {headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
+    if(r.ok) _circCache.comps=await r.json();
+  }catch(e){}
+  try{
+    const r2=await fetch(_SB_URL+'/rest/v1/ordenes_compra?select=num_oc,num_comp,scs,estado,estado_aut,recibida_en&limit=1000',
+      {headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
+    if(r2.ok) _circCache.ocs=await r2.json();
+  }catch(e){}
+  _circCache.ts=Date.now();
+  return _circCache;
+}
+
+// Paso actual de una solicitud
+function circuitoDeSC(numSC){
+  const n=String(numSC||'').trim();
+  if(!n) return {paso:'Solicitada'};
+  const comps=(_circCache.comps||[]).filter(c=>String(c.num_sc||'').indexOf(n)>=0);
+  const ocs=(_circCache.ocs||[]).filter(o=>{
+    const ss=Array.isArray(o.scs)?o.scs:[];
+    return ss.indexOf(n)>=0 || comps.some(c=>c.num_comp===o.num_comp);
+  });
+  const aprobada=comps.find(c=>String(c.estado_autorizacion||'').toUpperCase()==='APROBADA');
+  const standby=comps.find(c=>String(c.estado_autorizacion||'').toUpperCase()==='STANDBY')
+             || ocs.find(o=>o.estado==='STANDBY');
+  const rechazada=comps.find(c=>String(c.estado_autorizacion||'').toUpperCase()==='RECHAZADA');
+  const ocViva=ocs.find(o=>!['ANULADA','RECHAZADA'].includes(o.estado));
+
+  if(standby)  return {paso:'Stand by', comps, ocs, comp:comps[0], oc:ocViva};
+  if(rechazada) return {paso:'Rechazada', comps, ocs, comp:rechazada, oc:null};
+  if(ocViva && ocViva.estado==='CERRADA')  return {paso:'Cerrada', comps, ocs, comp:aprobada, oc:ocViva};
+  if(ocViva && ocViva.recibida_en)         return {paso:'Recibida', comps, ocs, comp:aprobada, oc:ocViva};
+  if(ocViva)                               return {paso:'OC emitida', comps, ocs, comp:aprobada, oc:ocViva};
+  if(aprobada)                             return {paso:'Autorizada', comps, ocs, comp:aprobada, oc:null};
+  if(comps.length)                         return {paso:'En comparación', comps, ocs, comp:comps[0], oc:null};
+  return {paso:'Solicitada', comps:[], ocs:[], comp:null, oc:null};
+}
+
+const CIRC_COLOR = {'Solicitada':'#6b7280','En comparación':'#60a5fa','Autorizada':'#8b5cf6',
+  'OC emitida':'#06b6d4','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308','Rechazada':'#ef4444'};
+
+function circuitoBadge(numSC){
+  const c=circuitoDeSC(numSC);
+  const col=CIRC_COLOR[c.paso]||'#6b7280';
+  const det = c.oc ? c.oc.num_oc : (c.comp ? c.comp.num_comp : '');
+  return '<span style="font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:'+col+'22;color:'+col+'">'+c.paso+'</span>'
+    + (det?'<div style="font-size:9.5px;color:var(--muted);font-family:var(--fm);margin-top:2px">'+_ocE(det)+'</div>':'');
+}
+
+// El botón del paso siguiente — uno solo, el que corresponde
+function circuitoAccion(numSC){
+  const c=circuitoDeSC(numSC);
+  const b=(txt,fn,bg,tit)=>'<button class="btn btn-sm" title="'+(tit||'')+'" onclick="'+fn+'" style="background:'+bg+';color:#fff;border:none;font-size:10.5px;padding:4px 9px;white-space:nowrap">'+txt+'</button>';
+  if(!esModoEditor()) return '';
+  switch(c.paso){
+    case 'Solicitada':
+      return b('📊 Crear CCP','crearCCPdesdeSC(\''+_ocE(numSC)+'\')','#3e7cb1','Armar la comparativa de presupuestos');
+    case 'En comparación':
+      return b('📧 Autorizar','irAComparativa(\''+_ocE(c.comp?c.comp.num_comp:'')+'\')','#2f9e6b','Solicitar la autorización de la comparativa');
+    case 'Autorizada':
+      return b('📄 Generar OC','generarOCdesdeCCP(\''+_ocE(c.comp?c.comp.num_comp:'')+'\')','#60a5fa','Emitir la orden de compra');
+    case 'OC emitida':
+      return b('📦 Recepción','ocRegistrarRecepcion(\''+_ocE(c.oc?c.oc.num_oc:'')+'\')','#22c55e','Registrar la recepción');
+    case 'Recibida':
+      return b('🔒 Cerrar','_ocCambiarEstado(\''+_ocE(c.oc?c.oc.num_oc:'')+'\',\'CERRADA\')','#16a34a','Cerrar el expediente');
+    case 'Stand by':
+      return b('▶️ Retomar','ocReactivar(\''+_ocE(c.oc?c.oc.num_oc:'')+'\')','#eab308','Reactivar lo postergado');
+    default: return '';
+  }
+}
+
+// Abre el Comparativo con la solicitud ya asociada
+function crearCCPdesdeSC(numSC){
+  if(!numSC){ showToast('La SC no tiene número','error'); return; }
+  const base=(typeof COMPARATIVO_URL!=='undefined' && COMPARATIVO_URL) ? COMPARATIVO_URL : 'comparativo';
+  window.open(base + (base.indexOf('?')>=0?'&':'?') + 'sc=' + encodeURIComponent(numSC), '_blank');
+}
+function irAComparativa(numComp){
+  const base=(typeof COMPARATIVO_URL!=='undefined' && COMPARATIVO_URL) ? COMPARATIVO_URL : 'comparativo';
+  window.open(base + (base.indexOf('?')>=0?'&':'?') + 'ccp=' + encodeURIComponent(numComp||''), '_blank');
+}
+
 function renderFilaSC(sc, i, tableId) {
   const areaLabel = sc.subarea
     ? (sc.area === 'MANTENIMIENTO' ? `MANT. › ${sc.subarea}` : `${sc.area} › ${sc.subarea}`)
@@ -4918,8 +5010,10 @@ function renderFilaSC(sc, i, tableId) {
     <td>${formatFecha(sc.fechaLimite)} ${diasStr}</td>
     <td>${critBadge(sc.criticidad)}</td>
     <td>${estBadge(sc)}</td>
+    <td>${circuitoBadge(sc.numSC||sc.num||'')}</td>
     <td style="white-space:nowrap">
       <button class="btn btn-sm btn-ghost" onclick="verSC(${i})">👁 Ver</button>
+      ${circuitoAccion(sc.numSC||sc.num||'')}
     </td>
   </tr>`;
 }
@@ -5075,7 +5169,7 @@ function renderHistorial() {
   const tb = document.getElementById('hist-table');
   tb.innerHTML = data.length
     ? data.map((sc) => renderFilaSC(sc, scs.indexOf(sc), 'hist')).join('')
-    : '<tr class="empty-row"><td colspan="11">Sin resultados para el filtro aplicado.</td></tr>';
+    : '<tr class="empty-row"><td colspan="12">Sin resultados para el filtro aplicado.</td></tr>';
 }
 
 function limpiarFiltrosSC() {
@@ -6557,6 +6651,37 @@ async function renderSRM(){
   });
   h+='</div></div>';
 
+  // ── Matriz de Kraljic con los proveedores ubicados ──
+  h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:18px;margin-bottom:16px">'
+    +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Matriz de Kraljic — proveedores</div>'
+    +'<div style="font-size:11.5px;color:var(--muted);margin-bottom:14px">Cada proveedor ubicado según el impacto de lo que le comprás y el riesgo de reemplazarlo.</div>'
+    +'<div style="display:flex;gap:10px">'
+    +'<div style="writing-mode:vertical-rl;transform:rotate(180deg);text-align:center;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--muted);text-transform:uppercase;padding:4px 0">Riesgo de suministro →</div>'
+    +'<div style="flex:1"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+  [['cuello','estrategico'],['rutinario','apalancado']].forEach(function(fila){
+    fila.forEach(function(c){
+      const C=KRA_CUADRANTES[c], l=(porCuad[c]||[]).slice().sort((a,b)=>b.gasto-a.gasto);
+      const g=l.reduce((a,x)=>a+x.gasto,0);
+      h+='<div style="background:var(--s2);border:1px solid '+C.col+'44;border-radius:10px;padding:13px;min-height:165px">'
+        +'<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">'
+          +'<span style="width:9px;height:9px;border-radius:50%;background:'+C.col+'"></span>'
+          +'<span style="font-size:12px;font-weight:800;color:'+C.col+'">'+C.lbl+'</span>'
+          +'<span style="font-size:10px;color:var(--muted);margin-left:auto">'+l.length+' · $'+_audN(g)+'</span></div>'
+        +'<div style="font-size:9.5px;color:var(--muted);margin-bottom:8px">'+C.desc+'</div>'
+        + (l.length ? l.slice(0,7).map(function(p){
+            return '<div style="display:flex;align-items:center;gap:7px;padding:3px 0;font-size:11.5px">'
+              +'<span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_audE(p.nombre)+'</span>'
+              +'<span style="color:var(--muted);font-size:10px;flex:none">$'+_audN(p.gasto)+'</span>'
+              +(p.dependencia>=85?'<span title="Proveedor único en su familia" style="color:var(--red);font-size:10px;flex:none">⚠</span>':'')
+              +'</div>'; }).join('')
+            + (l.length>7?('<div style="font-size:10px;color:var(--muted);margin-top:4px">y '+(l.length-7)+' más</div>'):'')
+          : '<div style="font-size:11px;color:var(--muted);font-style:italic">Sin proveedores en este cuadrante</div>')
+        +'</div>';
+    });
+  });
+  h+='</div><div style="text-align:center;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-top:8px">Impacto financiero →</div>'
+    +'</div></div></div>';
+
   // ── Ranking con scorecard ──
   h+='<div style="background:var(--s1);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:16px">'
     +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">'
@@ -6564,8 +6689,8 @@ async function renderSRM(){
       +'<span style="font-size:11.5px;color:var(--muted)">'+lista.length+' proveedor(es)'+(cuadFiltro?(' · '+KRA_CUADRANTES[cuadFiltro].lbl):'')+'</span>'
       +(cuadFiltro?'<button onclick="document.getElementById(\'srm-cuadrante\').value=\'\';renderSRM()" style="margin-left:auto;padding:4px 11px;border-radius:6px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--ff)">✕ Ver todos</button>':'')
     +'</div>'
-    +'<div style="overflow-x:auto;max-height:520px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">'
-    +'<thead><tr style="background:var(--s2);position:sticky;top:0">'
+    +'<div style="overflow:auto;max-height:392px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">'
+    +'<thead><tr style="background:var(--s2);position:sticky;top:0;z-index:2">'
     +['#','Proveedor','Cuadrante','Gasto','% acum.','Comprob.','Familias','Meses activo','Dependencia','Ahorro aportado'].map((c,i2)=>
       '<th style="padding:7px 9px;text-align:'+(i2>=3&&i2!==2&&i2!==6?'right':'left')+';font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">'+c+'</th>').join('')
     +'</tr></thead><tbody>';
