@@ -1667,6 +1667,12 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('historial', this)">
       <span class="sb-icon">📋</span> Historial de SC
     </button>
+      <button class="sidebar-btn" onclick="showView('ordenes', this)">
+        <span class="sb-icon">📄</span> Órdenes de Compra
+      </button>
+      <button class="sidebar-btn" onclick="showView('expediente', this)">
+        <span class="sb-icon">🗂️</span> Expediente de Compra
+      </button>
     <button class="sidebar-btn" onclick="showView('historial-op', this)">
       <span class="sb-icon">📋</span> Historial Pedidos
     </button>
@@ -2689,6 +2695,68 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 </div>
 
 <!-- ══════════════════════════════════ VIEW: PROVEEDORES — BASE DE DATOS ══════════════════════════════════ -->
+<!-- ══════════════════════════════════
+     VIEW: ÓRDENES DE COMPRA
+══════════════════════════════════ -->
+<div id="view-ordenes" class="view">
+  <div class="pg-header">
+    <div class="pg-title">ÓRDENES DE <span>COMPRA</span></div>
+    <div class="pg-sub">Emisión, seguimiento y recepción — cierre del circuito de compras</div>
+  </div>
+
+  <div id="oc-alertas"></div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+    <input type="text" id="oc-buscar" oninput="renderOC()" placeholder="🔎 Buscar por N° OC, proveedor, SC o comparativa..."
+      style="flex:1;min-width:230px;padding:9px 14px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)">
+    <select id="oc-estado" onchange="renderOC()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)">
+      <option value="">Todos los estados</option>
+      <option value="BORRADOR">Borrador</option>
+      <option value="EMITIDA">Emitida</option>
+      <option value="ENVIADA">Enviada al proveedor</option>
+      <option value="CONFIRMADA">Confirmada</option>
+      <option value="RECIBIDA">Recibida</option>
+      <option value="CERRADA">Cerrada</option>
+      <option value="STANDBY">⏸ Stand by</option>
+      <option value="ANULADA">Anulada</option>
+    </select>
+    <button onclick="renderOC()" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">🔄 Actualizar</button>
+    <button data-editor-only onclick="nuevaOCDirecta()" style="padding:9px 16px;border-radius:8px;border:none;background:var(--or);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">➕ Nueva OC directa</button>
+    <button onclick="exportarOC()" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">⬇️ Exportar</button>
+  </div>
+
+  <div id="oc-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px"></div>
+  <div id="oc-pendientes"></div>
+  <div id="oc-lista"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     VIEW: EXPEDIENTE DE COMPRA
+══════════════════════════════════ -->
+<div id="view-expediente" class="view">
+  <div class="pg-header">
+    <div class="pg-title">EXPEDIENTE <span>DE COMPRA</span></div>
+    <div class="pg-sub">La cadena completa de cada solicitud: SC → Comparativa → Autorización → OC → Recepción</div>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+    <input type="text" id="exp-buscar" oninput="renderExpediente()" placeholder="🔎 Buscar por N° de SC, comparativa, OC o proveedor..."
+      style="flex:1;min-width:250px;padding:9px 14px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)">
+    <select id="exp-estado" onchange="renderExpediente()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)">
+      <option value="">Todo el circuito</option>
+      <option value="Solicitada">Solicitada</option>
+      <option value="En comparación">En comparación</option>
+      <option value="Autorizada">Autorizada</option>
+      <option value="OC emitida">OC emitida</option>
+      <option value="Recibida">Recibida</option>
+      <option value="Cerrada">Cerrada</option>
+      <option value="Stand by">⏸ Stand by</option>
+    </select>
+    <button onclick="renderExpediente()" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">🔄 Actualizar</button>
+  </div>
+  <div id="exp-embudo" style="margin-bottom:18px"></div>
+  <div id="exp-lista"></div>
+</div>
+
 <div id="view-prov-db" class="view">
   <div class="pg-header">
     <div class="pg-title">BASE DE <span>DATOS DE PROVEEDORES</span></div>
@@ -3793,6 +3861,8 @@ async function showView(id, btn) {
   if (id === 'auditoria')      renderAuditoria();
   if (id === 'kraljic')        renderKraljic();
   if (id === 'srm')            renderSRM();
+  if (id === 'ordenes')        renderOC();
+  if (id === 'expediente')     renderExpediente();
   if (id === 'prov-db')      {
     // Sincroniza SIEMPRE: proveedores de la nube (compartidos con el Comparativo)
     // + planilla COMPRAS, para detectar los que facturan y no están en la base.
@@ -5755,6 +5825,547 @@ function _ahoDrawCharts(data, divisa){
   var mKeys=Object.keys(porMes).sort().slice(-12);
   var cM=document.getElementById('aho-chart-mes');
   if(cM) _ahoCharts.mes=new Chart(cM,{type:'bar',data:{labels:mKeys,datasets:[{data:mKeys.map(function(k){return Math.round(porMes[k]);}),backgroundColor:'#22c55e',borderRadius:6}]},options:baseOpts});
+}
+
+// ══════════════════════════════════════════════════════════════
+// ÓRDENES DE COMPRA — cierre del circuito
+// Criterios acordados con Dirección:
+//  · Umbrales: <USD 200 directa · 200-500 dos presupuestos · >500 tres
+//  · La OC HEREDA la autorización de la comparativa aprobada
+//  · Vuelve a requerir firma si cambia proveedor, si el monto supera el 5%,
+//    si cambian cantidades, o si pasaron más de 30 días de la aprobación
+//  · Stand by posterga sin cerrar, con recordatorio a los 15 días
+// ══════════════════════════════════════════════════════════════
+const OC_REGLAS = {
+  umbralSinComparativa: 200,     // USD — por debajo, compra directa
+  umbralTresPresup:     500,     // USD — por encima, 3 presupuestos
+  toleranciaMonto:      5,       // % de desvío admitido sin re-autorizar
+  vigenciaDias:         30,      // días de validez de la aprobación
+  standbyDias:          15       // recordatorio del stand by
+};
+const OC_ESTADOS = {
+  BORRADOR:  {lbl:'Borrador',   col:'#6b7280'},
+  EMITIDA:   {lbl:'Emitida',    col:'#60a5fa'},
+  ENVIADA:   {lbl:'Enviada',    col:'#8b5cf6'},
+  CONFIRMADA:{lbl:'Confirmada', col:'#06b6d4'},
+  RECIBIDA:  {lbl:'Recibida',   col:'#22c55e'},
+  CERRADA:   {lbl:'Cerrada',    col:'#16a34a'},
+  STANDBY:   {lbl:'Stand by',   col:'#eab308'},
+  RECHAZADA: {lbl:'Rechazada',  col:'#ef4444'},
+  ANULADA:   {lbl:'Anulada',    col:'#ef4444'}
+};
+let ocData = [];
+
+function _ocN(n){ return Math.round(Number(n)||0).toLocaleString('es-AR'); }
+function _ocE(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function _ocHoy(){ return new Date().toISOString().slice(0,10); }
+function _ocDias(desde){
+  if(!desde) return 999;
+  return Math.floor((Date.now()-new Date(desde).getTime())/86400000);
+}
+
+// Nivel de autorización según el monto en dólares
+function ocNivelAut(usd){
+  if(usd > OC_REGLAS.umbralTresPresup) return {nivel:'DIRECCION', firmas:2, lbl:'Alta Dirección'};
+  if(usd >= OC_REGLAS.umbralSinComparativa) return {nivel:'GERENCIA', firmas:1, lbl:'Gerencia General'};
+  return {nivel:'COMPRAS', firmas:0, lbl:'Compras (notifica)'};
+}
+// Presupuestos exigidos según el monto
+function ocPresupuestosExigidos(usd){
+  if(usd > OC_REGLAS.umbralTresPresup) return 3;
+  if(usd >= OC_REGLAS.umbralSinComparativa) return 2;
+  return 0;
+}
+
+// ¿La OC puede heredar la autorización de la comparativa, o vuelve a firma?
+function ocEvaluarHerencia(oc, comp){
+  if(!comp) return {hereda:false, motivo:'La OC no proviene de una comparativa autorizada.'};
+  const est=String(comp.estado_autorizacion||'').toUpperCase();
+  if(est!=='APROBADA') return {hereda:false, motivo:'La comparativa no está aprobada (estado: '+(est||'sin solicitar')+').'};
+
+  const motivos=[];
+  if(_parNormProv(oc.proveedor) !== _parNormProv(comp.proveedor_elegido))
+    motivos.push('cambió el proveedor adjudicado ('+_ocE(comp.proveedor_elegido)+' → '+_ocE(oc.proveedor)+')');
+
+  const autorizado=Number(comp.precio_elegido)||0;
+  const actual=Number(oc.total)||0;
+  if(autorizado>0){
+    const desvio=(actual-autorizado)/autorizado*100;
+    if(desvio > OC_REGLAS.toleranciaMonto)
+      motivos.push('el monto supera en '+desvio.toFixed(1)+'% lo autorizado (tolerancia '+OC_REGLAS.toleranciaMonto+'%)');
+  }
+  const dias=_ocDias(comp.autorizado_en||comp.solicitado_en);
+  if(dias > OC_REGLAS.vigenciaDias)
+    motivos.push('pasaron '+dias+' días desde la aprobación (vigencia '+OC_REGLAS.vigenciaDias+')');
+
+  if(motivos.length) return {hereda:false, motivo:'Requiere nueva autorización porque '+motivos.join(', ')+'.'};
+  return {hereda:true, motivo:'Hereda la autorización de '+_ocE(comp.num_comp||'')+'.'};
+}
+
+// ── EXPEDIENTE: la cadena completa de cada solicitud ──
+const EXP_PASOS = ['Solicitada','En comparación','Autorizada','OC emitida','Recibida','Cerrada'];
+
+function _expEstadoDe(sc, comps, ocs){
+  const cs=comps.filter(c=>String(c.num_sc||'').indexOf(sc.numSC||sc.num_sc||'')>=0);
+  const os=ocs.filter(o=>(Array.isArray(o.scs)?o.scs:[]).some(x=>x===(sc.numSC||sc.num_sc)));
+  if(os.some(o=>o.estado==='STANDBY') || cs.some(c=>String(c.estado_autorizacion||'').toUpperCase()==='STANDBY'))
+    return {paso:'Stand by', comps:cs, ocs:os};
+  if(os.some(o=>o.estado==='CERRADA'))  return {paso:'Cerrada', comps:cs, ocs:os};
+  if(os.some(o=>o.estado==='RECIBIDA')) return {paso:'Recibida', comps:cs, ocs:os};
+  if(os.length)                          return {paso:'OC emitida', comps:cs, ocs:os};
+  if(cs.some(c=>String(c.estado_autorizacion||'').toUpperCase()==='APROBADA')) return {paso:'Autorizada', comps:cs, ocs:os};
+  if(cs.length)                          return {paso:'En comparación', comps:cs, ocs:os};
+  return {paso:'Solicitada', comps:cs, ocs:os};
+}
+
+async function renderExpediente(){
+  const cont=document.getElementById('exp-lista'); if(!cont) return;
+  cont.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">⏳ Armando expedientes...</div>';
+  await recargarSCsDesdeLS();
+  await cargarOC();
+  let comps=[];
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/comparativas?select=num_comp,num_sc,proveedor_elegido,precio_elegido,divisa,estado_autorizacion,autorizado_por,autorizado_en,fecha&limit=2000',
+      {headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
+    if(r.ok) comps=await r.json();
+  }catch(e){}
+
+  const q=((document.getElementById('exp-buscar')||{}).value||'').toLowerCase().trim();
+  const fEstado=(document.getElementById('exp-estado')||{}).value||'';
+
+  const exps=(scs||[]).map(sc=>{
+    const e=_expEstadoDe(sc, comps, ocData||[]);
+    return {sc, ...e};
+  });
+
+  // Embudo
+  const conteo={}; EXP_PASOS.concat(['Stand by']).forEach(p=>conteo[p]=0);
+  exps.forEach(x=>{ conteo[x.paso]=(conteo[x.paso]||0)+1; });
+  const emb=document.getElementById('exp-embudo');
+  if(emb){
+    const colores={'Solicitada':'#6b7280','En comparación':'#60a5fa','Autorizada':'#8b5cf6','OC emitida':'#06b6d4','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308'};
+    emb.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">'
+      + EXP_PASOS.concat(['Stand by']).map(p=>
+        '<div onclick="document.getElementById(\'exp-estado\').value=\''+p+'\';renderExpediente()" style="cursor:pointer;background:var(--s1);border:1px solid '+colores[p]+'44;border-left:3px solid '+colores[p]+';border-radius:9px;padding:11px 13px">'
+        +'<div style="font-size:20px;font-weight:800;color:'+colores[p]+'">'+(conteo[p]||0)+'</div>'
+        +'<div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">'+p+'</div></div>').join('')
+      +'</div>';
+  }
+
+  let lista=exps;
+  if(fEstado) lista=lista.filter(x=>x.paso===fEstado);
+  if(q) lista=lista.filter(x=>((x.sc.numSC||'')+(x.sc.solicitante||'')+(x.sc.area||'')
+    +x.comps.map(c=>c.num_comp).join(' ')+x.ocs.map(o=>o.num_oc+' '+(o.proveedor||'')).join(' ')).toLowerCase().includes(q));
+  lista=lista.slice(0,120);
+
+  if(!lista.length){ cont.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted);background:var(--s1);border:1px solid var(--border);border-radius:11px">Sin expedientes que coincidan.</div>'; return; }
+
+  const colores={'Solicitada':'#6b7280','En comparación':'#60a5fa','Autorizada':'#8b5cf6','OC emitida':'#06b6d4','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308'};
+  cont.innerHTML = lista.map(x=>{
+    const sc=x.sc, col=colores[x.paso]||'#6b7280';
+    const eslabon=(txt,activo,det)=>'<div style="flex:1;min-width:110px;padding:8px 10px;border-radius:8px;background:'+(activo?'rgba(232,97,26,.1)':'var(--s2)')+';border:1px solid '+(activo?'var(--or)':'var(--border)')+'">'
+      +'<div style="font-size:11.5px;font-weight:700;color:'+(activo?'var(--or)':'var(--muted)')+'">'+txt+'</div>'
+      +(det?'<div style="font-size:10px;color:var(--muted);margin-top:2px">'+det+'</div>':'')+'</div>';
+    const comp=x.comps[0], oc=x.ocs[0];
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-left:3px solid '+col+';border-radius:11px;padding:14px 16px;margin-bottom:11px">'
+      +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'
+        +'<b style="color:var(--or);font-family:var(--fm);font-size:13px">'+_ocE(sc.numSC||'')+'</b>'
+        +'<span style="font-size:12px;color:var(--text)">'+_ocE(sc.osAsunto||sc.motivo||'')+'</span>'
+        +'<span style="font-size:11px;color:var(--muted)">'+_ocE(sc.area||'')+' · '+_ocE(sc.solicitante||'')+'</span>'
+        +'<span style="margin-left:auto;font-size:10px;font-weight:800;padding:3px 11px;border-radius:999px;background:'+col+'22;color:'+col+'">'+x.paso+'</span>'
+      +'</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+        + eslabon('📝 Solicitud', true, _ocE(sc.fecha||''))
+        + eslabon('📊 Comparativa', !!comp, comp?_ocE(comp.num_comp):'—')
+        + eslabon('✓ Autorización', comp&&String(comp.estado_autorizacion||'').toUpperCase()==='APROBADA',
+            comp? (String(comp.estado_autorizacion||'').toUpperCase()==='APROBADA'?_ocE(String(comp.autorizado_en||'').slice(0,10)):_ocE(comp.estado_autorizacion||'pendiente')) : '—')
+        + eslabon('📄 Orden de compra', !!oc, oc?_ocE(oc.num_oc):'—')
+        + eslabon('📦 Recepción', !!(oc&&oc.recibida_en), oc&&oc.recibida_en?_ocE(oc.recibida_en):'—')
+      +'</div></div>';
+  }).join('');
+}
+
+// Solicitar autorización de una OC que no pudo heredarla
+async function solicitarAutOC(numOC){
+  const o=(ocData||[]).find(x=>x.num_oc===numOC); if(!o) return;
+  const usd=Number(o.total_usd)||0;
+  const niv=ocNivelAut(usd);
+  if(!confirm('Solicitar autorización de '+numOC+'\n\nNivel: '+niv.lbl+(niv.firmas?(' ('+niv.firmas+' firma/s)'):'')
+    +'\nMotivo: '+(o.motivo_reaut||'—')+'\n\n¿Enviar?')) return;
+  o.estado_aut='PENDIENTE'; o.nivel_aut=niv.nivel;
+  await _ocGuardar(o);
+  try{
+    await fetch(MAIL_WEBAPP_URL, { method:'POST', mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ tipo:'CCP_AUTH', modo:'SOLICITUD', webapp_url:MAIL_WEBAPP_URL,
+        comp_id:String(o.id||''), num_comp:o.num_oc, num_sc:(Array.isArray(o.scs)?o.scs.join(' + '):''),
+        asunto:'Orden de compra '+o.num_oc, nivel:niv.nivel, nivel_label:niv.lbl, requeridas:niv.firmas,
+        monto:String(o.total||''), monto_num:Number(o.total)||0, divisa:o.moneda||'ARS',
+        proveedor:o.proveedor||'', ahorro:0 }) });
+    showToast('📧 Autorización solicitada para '+numOC,'ok');
+  }catch(e){ showToast('No se pudo enviar el correo','error'); }
+  renderOC();
+}
+
+// Nueva OC directa (sin comparativa) — exige justificar la excepción
+async function nuevaOCDirecta(){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede emitir OC','error'); return; }
+  const prov=prompt('Proveedor:');
+  if(prov===null||!String(prov).trim()) return;
+  const montoTxt=prompt('Monto total (con IVA):');
+  if(montoTxt===null) return;
+  const total=parseFloat(String(montoTxt).replace(/[^0-9.,]/g,'').replace(',','.'))||0;
+  const tipo=prompt('Motivo de no hacer comparativa:\n\n1 = Proveedor único\n2 = Urgencia operativa\n3 = Acuerdo vigente','2');
+  if(tipo===null) return;
+  const tipos={'1':'PROVEEDOR_UNICO','2':'URGENCIA','3':'ACUERDO_VIGENTE'};
+  const just=prompt('Justificación (obligatoria):');
+  if(just===null||!String(just).trim()){ showToast('La justificación es obligatoria','error'); return; }
+  await cargarOC();
+  const esUrg = tipos[String(tipo).trim()]==='URGENCIA';
+  const oc={
+    num_oc: await _ocNuevoNumero(), fecha:_ocHoy(), via: esUrg?'URGENCIA':'DIRECTA',
+    proveedor:String(prov).trim(), total:total, moneda:'ARS', scs:[], items:[],
+    excepcion_tipo: tipos[String(tipo).trim()]||'DIRECTA', excepcion_just:String(just).trim(),
+    autorizacion:'REQUERIDA', estado_aut:'PENDIENTE', estado: esUrg?'EMITIDA':'BORRADOR',
+    regularizar: esUrg,
+    emitida_por:(typeof _usuarioActual!=='undefined'?_usuarioActual:'Compras')
+  };
+  if(await _ocGuardar(oc)){
+    ocData.unshift(oc);
+    renderOC();
+    showToast(esUrg? ('⚠️ '+oc.num_oc+' emitida por urgencia — queda pendiente de regularizar') : ('📄 '+oc.num_oc+' creada'),'ok');
+  }
+}
+
+function exportarOC(){
+  if(!(ocData||[]).length){ showToast('No hay órdenes para exportar','error'); return; }
+  const f=[['N_OC','Fecha','Via','SCs','Comparativa','Proveedor','Total','Moneda','Autorizacion','Estado_aut','Estado','Recibida','Completa','Motivo_reautorizacion','Excepcion','Justificacion']];
+  ocData.forEach(o=>f.push([o.num_oc,o.fecha,o.via,(Array.isArray(o.scs)?o.scs.join(' + '):''),o.num_comp||'',
+    o.proveedor||'',Math.round(o.total||0),o.moneda||'',o.autorizacion||'',o.estado_aut||'',o.estado||'',
+    o.recibida_en||'', o.recepcion_completa===false?'PARCIAL':(o.recibida_en?'COMPLETA':''),
+    o.motivo_reaut||'', o.excepcion_tipo||'', o.excepcion_just||'']));
+  const csv=f.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='Ordenes_de_compra_'+_ocHoy()+'.csv'; a.click();
+  showToast('⬇️ Órdenes exportadas','ok');
+}
+
+// Si llega ?oc=CCP-2026-0008 desde el Comparativo, generar esa orden
+(function(){
+  try{
+    const p=new URLSearchParams(location.search);
+    const n=p.get('oc');
+    if(n) window.addEventListener('load', function(){ setTimeout(function(){
+      showView('ordenes', null);
+      setTimeout(function(){ generarOCdesdeCCP(n); }, 600);
+    }, 1200); });
+  }catch(e){}
+})();
+
+async function renderOC(){
+  const cont=document.getElementById('oc-lista'); if(!cont) return;
+  if(!ocData.length){ cont.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">⏳ Cargando órdenes...</div>'; await cargarOC(); }
+  const q=((document.getElementById('oc-buscar')||{}).value||'').toLowerCase().trim();
+  const est=(document.getElementById('oc-estado')||{}).value||'';
+  let lista=(ocData||[]).slice();
+  if(est) lista=lista.filter(o=>o.estado===est || (est==='STANDBY'&&o.estado_aut==='STANDBY'));
+  if(q) lista=lista.filter(o=>((o.num_oc||'')+(o.proveedor||'')+(o.num_comp||'')+JSON.stringify(o.scs||[])).toLowerCase().includes(q));
+
+  // KPIs
+  const k=document.getElementById('oc-kpis');
+  const abiertas=(ocData||[]).filter(o=>!['CERRADA','ANULADA','RECHAZADA'].includes(o.estado));
+  const pendAut=(ocData||[]).filter(o=>o.estado_aut==='PENDIENTE');
+  const standby=(ocData||[]).filter(o=>o.estado_aut==='STANDBY'||o.estado==='STANDBY');
+  const sinRecibir=(ocData||[]).filter(o=>['EMITIDA','ENVIADA','CONFIRMADA'].includes(o.estado));
+  const regular=(ocData||[]).filter(o=>o.regularizar && !o.regularizada_en);
+  const kpi=(v,l,cls)=>{
+    const col=cls==='bad'?'var(--red)':cls==='warn'?'var(--yellow)':cls==='ok'?'var(--green)':'var(--or)';
+    return '<div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:13px 15px">'
+      +'<div style="font-size:21px;font-weight:800;color:'+col+';line-height:1.15">'+v+'</div>'
+      +'<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:2px">'+l+'</div></div>';
+  };
+  if(k) k.innerHTML = kpi(ocData.length,'Órdenes emitidas')
+    + kpi(abiertas.length,'En curso')
+    + kpi(pendAut.length,'Esperando firma', pendAut.length?'warn':'')
+    + kpi(standby.length,'En stand by', standby.length?'warn':'')
+    + kpi(sinRecibir.length,'Sin recibir', sinRecibir.length?'warn':'ok');
+
+  // Alertas: stand by vencidos y urgencias sin regularizar
+  const av=document.getElementById('oc-alertas');
+  const alertas=[];
+  const vencidos=standby.filter(o=>o.standby_recordar && o.standby_recordar<=_ocHoy());
+  if(vencidos.length) alertas.push(['warn','⏸ Stand by cumplido',
+    vencidos.map(o=>o.num_oc).join(', ')+' — pasaron los '+OC_REGLAS.standbyDias+' días. Corresponde retomar la decisión.']);
+  if(regular.length) alertas.push(['bad','Urgencias sin regularizar',
+    regular.length+' orden(es) de urgencia esperan justificación y autorización posterior: '+regular.map(o=>o.num_oc).join(', ')]);
+  if(av){
+    const col={bad:['rgba(239,68,68,.08)','rgba(239,68,68,.35)','#f87171'],warn:['rgba(234,179,8,.08)','rgba(234,179,8,.35)','#f4d160']};
+    av.innerHTML = alertas.map(a=>{ const c=col[a[0]];
+      return '<div style="background:'+c[0]+';border:1px solid '+c[1]+';border-radius:10px;padding:12px 15px;margin-bottom:10px;color:'+c[2]+';font-size:12.5px">'
+        +'<strong style="display:block;margin-bottom:3px">'+a[1]+'</strong>'+a[2]+'</div>'; }).join('');
+  }
+
+  if(!lista.length){
+    cont.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;background:var(--s1);border:1px solid var(--border);border-radius:11px">'
+      +(ocData.length?'No hay órdenes que coincidan con el filtro.':'Todavía no se emitieron órdenes de compra.<br><span style="font-size:11.5px">Se generan desde una comparativa aprobada, o con «Nueva OC directa».</span>')+'</div>';
+    return;
+  }
+
+  const filas=lista.map(o=>{
+    const E=OC_ESTADOS[o.estado]||{lbl:o.estado,col:'#6b7280'};
+    const scs=(Array.isArray(o.scs)?o.scs:[]).join(' + ');
+    const aut = o.estado_aut==='APROBADA' ? '<span style="color:var(--green);font-size:10px;font-weight:700">✓ '+(o.autorizacion==='HEREDADA'?'heredada':'autorizada')+'</span>'
+      : o.estado_aut==='PENDIENTE' ? '<span style="color:var(--yellow);font-size:10px;font-weight:700">⏳ requiere firma</span>'
+      : o.estado_aut==='STANDBY' ? '<span style="color:var(--yellow);font-size:10px;font-weight:700">⏸ stand by</span>'
+      : o.estado_aut==='RECHAZADA' ? '<span style="color:var(--red);font-size:10px;font-weight:700">✕ rechazada</span>' : '';
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      +'<td style="padding:8px 11px"><b style="color:var(--or);font-family:var(--fm)">'+_ocE(o.num_oc)+'</b>'
+        +'<div style="font-size:10px;color:var(--muted)">'+_ocE(o.fecha||'')+'</div></td>'
+      +'<td style="padding:8px 11px;font-size:11.5px">'+(scs?_ocE(scs):'<span style="color:var(--muted)">—</span>')
+        +(o.num_comp?'<div style="font-size:10px;color:var(--muted)">'+_ocE(o.num_comp)+'</div>':'')+'</td>'
+      +'<td style="padding:8px 11px;font-weight:600">'+_ocE(o.proveedor||'—')+'</td>'
+      +'<td style="padding:8px 11px;text-align:right;font-weight:700">'+(o.moneda==='USD'?'USD ':'$')+_ocN(o.total)+'</td>'
+      +'<td style="padding:8px 11px">'+aut+'</td>'
+      +'<td style="padding:8px 11px"><span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:999px;background:'+E.col+'22;color:'+E.col+'">'+E.lbl+'</span>'
+        +(o.estado==='RECIBIDA'&&o.recepcion_completa===false?'<div style="font-size:9.5px;color:var(--yellow)">parcial</div>':'')+'</td>'
+      +'<td style="padding:8px 11px;text-align:right;white-space:nowrap">'
+        +'<button onclick="verOC(\''+_ocE(o.num_oc)+'\')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:10.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">👁 Ver</button>'
+      +'</td></tr>';
+  }).join('');
+
+  cont.innerHTML='<div style="overflow-x:auto;border:1px solid var(--border);border-radius:11px;background:var(--s1)">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:12.5px">'
+    +'<thead><tr style="background:var(--s2);border-bottom:2px solid var(--border)">'
+    +['N° OC','Origen','Proveedor','Total','Autorización','Estado',''].map((c,i2)=>
+      '<th style="padding:9px 11px;text-align:'+(i2===3?'right':'left')+';font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">'+c+'</th>').join('')
+    +'</tr></thead><tbody>'+filas+'</tbody></table></div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-top:8px">'+lista.length+' orden(es)</div>';
+}
+
+// Ficha de la orden con sus acciones
+function verOC(numOC){
+  const o=(ocData||[]).find(x=>x.num_oc===numOC); if(!o) return;
+  const E=OC_ESTADOS[o.estado]||{lbl:o.estado,col:'#6b7280'};
+  const items=Array.isArray(o.items)?o.items:_jparse(o.items,[]);
+  const filas=items.map((it,i)=>'<tr><td style="padding:5px 8px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted)">'+(i+1)+'</td>'
+    +'<td style="padding:5px 8px;border-bottom:1px solid var(--border)">'+_ocE(it.desc||'')+'</td>'
+    +'<td style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:right">'+_ocE(it.cant||'')+' '+_ocE(it.unidad||'')+'</td></tr>').join('');
+
+  const dato=(l,v)=>v?('<div style="display:flex;gap:8px;padding:4px 0;font-size:12.5px"><span style="color:var(--muted);min-width:135px">'+l+'</span><span style="color:var(--text);font-weight:600">'+_ocE(v)+'</span></div>'):'';
+  const btn=(txt,fn,bg)=>'<button onclick="'+fn+'" style="padding:8px 14px;border-radius:8px;border:none;background:'+bg+';color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ff);margin-right:6px;margin-top:6px">'+txt+'</button>';
+  let acciones='';
+  if(esModoEditor()){
+    if(o.estado==='BORRADOR' && o.estado_aut==='APROBADA') acciones+=btn('📤 Emitir','_ocCambiarEstado(\''+numOC+'\',\'EMITIDA\')','#60a5fa');
+    if(o.estado==='BORRADOR' && o.estado_aut==='PENDIENTE') acciones+=btn('📧 Solicitar autorización','solicitarAutOC(\''+numOC+'\')','#2f9e6b');
+    if(o.estado==='EMITIDA')    acciones+=btn('✉️ Marcar enviada','_ocCambiarEstado(\''+numOC+'\',\'ENVIADA\')','#8b5cf6');
+    if(o.estado==='ENVIADA')    acciones+=btn('✓ Confirmada por el proveedor','_ocCambiarEstado(\''+numOC+'\',\'CONFIRMADA\')','#06b6d4');
+    if(['EMITIDA','ENVIADA','CONFIRMADA'].includes(o.estado)) acciones+=btn('📦 Registrar recepción','ocRegistrarRecepcion(\''+numOC+'\')','#22c55e');
+    if(o.estado==='RECIBIDA')   acciones+=btn('🔒 Cerrar','_ocCambiarEstado(\''+numOC+'\',\'CERRADA\')','#16a34a');
+    if(o.estado==='STANDBY')    acciones+=btn('▶️ Reactivar','ocReactivar(\''+numOC+'\')','#60a5fa');
+    else if(!['CERRADA','ANULADA'].includes(o.estado)) acciones+=btn('⏸ Stand by','ocStandBy(\''+numOC+'\')','#eab308');
+    if(!['ANULADA','CERRADA'].includes(o.estado)) acciones+=btn('✕ Anular','ocAnular(\''+numOC+'\')','#ef4444');
+  }
+
+  _provModalCC('📄 '+numOC,
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">'
+      +'<span style="font-size:10px;font-weight:800;padding:3px 11px;border-radius:999px;background:'+E.col+'22;color:'+E.col+'">'+E.lbl+'</span>'
+      +(o.via!=='COMPARATIVA'?'<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(234,179,8,.18);color:#f4d160">'+_ocE(o.via)+'</span>':'')
+    +'</div>'
+    + (o.motivo_reaut?'<div style="padding:10px 13px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.4);border-radius:9px;color:#f4d160;font-size:12px;margin-bottom:12px"><b>Requiere nueva autorización</b><br>'+_ocE(o.motivo_reaut)+'</div>':'')
+    + (o.standby_motivo?'<div style="padding:10px 13px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.4);border-radius:9px;color:#f4d160;font-size:12px;margin-bottom:12px"><b>⏸ En stand by</b><br>'+_ocE(o.standby_motivo)+(o.standby_recordar?'<br><span style="font-size:11px">Recordatorio: '+_ocE(o.standby_recordar)+'</span>':'')+'</div>':'')
+    + (o.excepcion_just?'<div style="padding:10px 13px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.4);border-radius:9px;color:#93c5fd;font-size:12px;margin-bottom:12px"><b>Excepción: '+_ocE(o.excepcion_tipo||'')+'</b><br>'+_ocE(o.excepcion_just)+'</div>':'')
+    + dato('Proveedor', o.proveedor)
+    + dato('Solicitudes', (Array.isArray(o.scs)?o.scs:[]).join(' + '))
+    + dato('Comparativa', o.num_comp)
+    + dato('Total', (o.moneda==='USD'?'USD ':'$')+_ocN(o.total))
+    + dato('Condición de pago', o.condicion_pago)
+    + dato('Autorizada por', o.autorizado_por)
+    + dato('Recibida el', o.recibida_en ? (o.recibida_en + (o.recepcion_completa===false?' (parcial)':' (completa)')) : '')
+    + dato('Observaciones', o.recepcion_obs)
+    + (filas?('<div style="margin-top:12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:5px">Ítems</div>'
+        +'<table style="width:100%;border-collapse:collapse;font-size:12px">'+filas+'</table>'):'')
+    + (acciones?('<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'+acciones+'</div>'):''),
+    null);
+}
+
+// Modal simple reutilizable del Centro de Control
+function _provModalCC(titulo, htmlBody, onOk){
+  let ov=document.getElementById('cc-modal-ov');
+  if(!ov){ ov=document.createElement('div'); ov.id='cc-modal-ov';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(ov); }
+  ov.innerHTML='<div style="background:var(--s1);border:1px solid var(--border);border-radius:14px;max-width:620px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)">'
+    +'<div style="padding:15px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">'
+      +'<span style="font-size:14px;font-weight:800;color:var(--or)">'+titulo+'</span>'
+      +'<button onclick="document.getElementById(\'cc-modal-ov\').style.display=\'none\'" style="margin-left:auto;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button></div>'
+    +'<div style="padding:18px 20px">'+htmlBody+'</div></div>';
+  ov.style.display='flex';
+}
+
+// ── Generar la OC desde una comparativa aprobada ──
+async function generarOCdesdeCCP(numComp){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede emitir OC','error'); return; }
+  let comp=null;
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/comparativas?num_comp=eq.'+encodeURIComponent(numComp)+'&select=*',
+      {headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
+    if(r.ok){ const a=await r.json(); if(a&&a.length) comp=a[0]; }
+  }catch(e){}
+  if(!comp){ showToast('No se encontró la comparativa '+numComp,'error'); return; }
+
+  // ¿Ya tiene OC emitida?
+  await cargarOC();
+  const ya=(ocData||[]).find(o=>o.num_comp===numComp && !['ANULADA','RECHAZADA'].includes(o.estado));
+  if(ya && !confirm('La comparativa '+numComp+' ya tiene la orden '+ya.num_oc+'.\n\n¿Emitir otra igual?')) return;
+
+  const items=_jparse(comp.items,[]).map(it=>({
+    desc: it.desc||'', cant: it.qty||1, unidad: it.unit||'u',
+    precio: 0, iva: 21, subtotal: 0
+  }));
+  const total=Number(comp.precio_elegido)||0;
+  const tc=Number(comp.tc_usado)||0;
+  const usd=(comp.divisa==='USD')? total : (tc>0? total/tc : 0);
+
+  const oc={
+    num_oc: await _ocNuevoNumero(),
+    fecha: _ocHoy(),
+    num_comp: numComp,
+    scs: comp.num_sc ? String(comp.num_sc).split('+').map(x=>x.trim()).filter(Boolean) : [],
+    via: 'COMPARATIVA',
+    proveedor: comp.proveedor_elegido||'',
+    condicion_pago: comp.condicion_pago||'',
+    moneda: comp.divisa||'ARS',
+    items: items,
+    total: total,
+    total_usd: usd||null,
+    tc_usado: tc||null,
+    estado: 'BORRADOR',
+    emitida_por: (typeof _usuarioActual!=='undefined'? _usuarioActual : 'Compras')
+  };
+
+  // ¿Hereda la autorización o vuelve a firma?
+  const h=ocEvaluarHerencia(oc, comp);
+  if(h.hereda){
+    oc.autorizacion='HEREDADA';
+    oc.estado_aut='APROBADA';
+    oc.nivel_aut=comp.nivel_autorizacion||'';
+    oc.autorizado_por=comp.autorizado_por||'';
+    oc.autorizado_en=comp.autorizado_en||null;
+  } else {
+    oc.autorizacion='REQUERIDA';
+    oc.estado_aut='PENDIENTE';
+    oc.motivo_reaut=h.motivo;
+    const niv=ocNivelAut(usd||0);
+    oc.nivel_aut=niv.nivel;
+  }
+
+  const ok=await _ocGuardar(oc);
+  if(!ok) return;
+  ocData.unshift(oc);
+  showToast('📄 '+oc.num_oc+' generada'+(h.hereda?' — autorización heredada':' — requiere nueva firma'),'ok');
+  showView('ordenes', null);
+  setTimeout(()=>verOC(oc.num_oc), 300);
+}
+
+// ── Estados del circuito ──
+async function _ocCambiarEstado(numOC, nuevo, extra){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede cambiar el estado','error'); return; }
+  const oc=(ocData||[]).find(o=>o.num_oc===numOC); if(!oc) return;
+  Object.assign(oc, extra||{});
+  oc.estado=nuevo;
+  if(nuevo==='ENVIADA')    oc.enviada_en=new Date().toISOString();
+  if(nuevo==='CONFIRMADA') oc.confirmada_en=new Date().toISOString();
+  await _ocGuardar(oc);
+  renderOC();
+  showToast('Orden '+numOC+' → '+(OC_ESTADOS[nuevo]?OC_ESTADOS[nuevo].lbl:nuevo),'ok');
+}
+
+// Stand by: posterga sin cerrar, con recordatorio a los 15 días
+async function ocStandBy(numOC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede postergar','error'); return; }
+  const oc=(ocData||[]).find(o=>o.num_oc===numOC); if(!oc) return;
+  const motivo=prompt('¿Por qué se posterga la orden '+numOC+'?\n\n(Queda en espera, no se anula. Se recordará a Dirección en '+OC_REGLAS.standbyDias+' días.)');
+  if(motivo===null) return;
+  if(!String(motivo).trim()){ showToast('La justificación es obligatoria','error'); return; }
+  const rec=new Date(Date.now()+OC_REGLAS.standbyDias*86400000).toISOString().slice(0,10);
+  await _ocCambiarEstado(numOC,'STANDBY',{
+    estado_aut:'STANDBY', standby_desde:new Date().toISOString(),
+    standby_motivo:String(motivo).trim(), standby_recordar:rec, standby_avisado:false });
+  showToast('⏸ '+numOC+' en stand by — se recuerda el '+rec,'ok');
+}
+async function ocReactivar(numOC){
+  const oc=(ocData||[]).find(o=>o.num_oc===numOC); if(!oc) return;
+  if(!confirm('¿Reactivar la orden '+numOC+'?\n\nVuelve al estado en que estaba antes del stand by.')) return;
+  await _ocCambiarEstado(numOC, oc.autorizacion==='REQUERIDA'&&oc.estado_aut!=='APROBADA'?'BORRADOR':'EMITIDA',
+    {estado_aut: oc.autorizacion==='HEREDADA'?'APROBADA':'PENDIENTE', standby_desde:null, standby_recordar:null, standby_motivo:null});
+}
+async function ocAnular(numOC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede anular','error'); return; }
+  const motivo=prompt('Motivo de la anulación de '+numOC+' (obligatorio):');
+  if(motivo===null) return;
+  if(!String(motivo).trim()){ showToast('El motivo es obligatorio','error'); return; }
+  const pin=prompt('Ingresá el código de confirmación:');
+  if(pin===null) return;
+  if(String(pin).trim()!==SETTINGS_PIN){ showToast('⛔ Código incorrecto','error'); return; }
+  await _ocCambiarEstado(numOC,'ANULADA',{motivo_anulacion:String(motivo).trim()});
+}
+
+// Registrar la recepción — alimenta el OTIF y el lead time del SRM
+async function ocRegistrarRecepcion(numOC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede registrar la recepción','error'); return; }
+  const oc=(ocData||[]).find(o=>o.num_oc===numOC); if(!oc) return;
+  const fecha=prompt('Fecha de recepción (AAAA-MM-DD):', _ocHoy());
+  if(fecha===null) return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha).trim())){ showToast('Fecha inválida','error'); return; }
+  const completa=confirm('¿Llegó COMPLETO?\n\nAceptar = completo\nCancelar = parcial o con faltantes');
+  let obs='';
+  if(!completa){
+    obs=prompt('¿Qué faltó o qué problema hubo?')||'';
+  }
+  await _ocCambiarEstado(numOC,'RECIBIDA',{
+    recibida_en:String(fecha).trim(), recepcion_completa:completa,
+    recepcion_obs:obs, recibido_por:(typeof _usuarioActual!=='undefined'?_usuarioActual:'') });
+  showToast(completa?'✅ Recepción completa registrada':'⚠️ Recepción parcial registrada','ok');
+}
+
+// ── Persistencia ──
+async function cargarOC(){
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/ordenes_compra?select=*&order=fecha.desc&limit=1000',
+      {headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    ocData=await r.json();
+    return true;
+  }catch(e){ console.warn('cargar OC:', e.message); ocData=ocData||[]; return false; }
+}
+async function _ocGuardar(oc){
+  const body=Object.assign({}, oc, {actualizado_en:new Date().toISOString()});
+  delete body.id;
+  try{
+    if(oc.id){
+      const r=await fetch(_SB_URL+'/rest/v1/ordenes_compra?id=eq.'+encodeURIComponent(oc.id), {
+        method:'PATCH', headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=minimal'},
+        body:JSON.stringify(body) });
+      return r.ok;
+    }
+    const r=await fetch(_SB_URL+'/rest/v1/ordenes_compra', {
+      method:'POST', headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=representation'},
+      body:JSON.stringify(body) });
+    if(!r.ok){ const t=await r.text(); throw new Error('HTTP '+r.status+' '+t.slice(0,160)); }
+    const creado=await r.json();
+    if(creado && creado[0]) oc.id=creado[0].id;
+    return true;
+  }catch(e){ console.warn('guardar OC:', e.message); showToast('No se pudo guardar la OC: '+e.message,'error'); return false; }
+}
+async function _ocNuevoNumero(){
+  const anio=new Date().getFullYear();
+  let max=0;
+  (ocData||[]).forEach(o=>{
+    const m=/^OC-(\d{4})-(\d+)$/.exec(o.num_oc||'');
+    if(m && +m[1]===anio){ const n=+m[2]; if(n>max) max=n; }
+  });
+  return 'OC-'+anio+'-'+String(max+1).padStart(4,'0');
 }
 
 // ══════════════════════════════════════════════════════════════

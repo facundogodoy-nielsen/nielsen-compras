@@ -3707,6 +3707,9 @@ async function renderHistCCP(){
       +'<td style="padding:7px 10px;text-align:center"><button class="btn btn-orange btn-sm" style="font-size:10px;padding:4px 10px" onclick="cargarComparativaPorId(\''+_jsArg(c.id)+'\')">🔍 Consultar</button></td>'
       +'<td style="padding:7px 10px;text-align:center;white-space:nowrap">'
         +'<button class="btn btn-outline btn-sm" style="font-size:10px;padding:4px 10px;color:#4ade80;border-color:#4ade8055;margin-right:4px" onclick="solicitarAutorizacionCCP(\''+_jsArg(c.id)+'\')">📧 Solicitar autorización</button>'
+        +((String(c.estado_autorizacion||'').toUpperCase()==='APROBADA')
+          ? '<button class="btn btn-outline btn-sm" style="font-size:10px;padding:4px 10px;color:#60a5fa;border-color:#60a5fa55;margin-right:4px" onclick="_irAGenerarOC(\''+_jsArg(c.num_comp||'')+'\')">📄 Generar OC</button>'
+          : '')
         +(_compEsEditor()?'<button class="btn btn-outline btn-sm" style="font-size:10px;padding:4px 10px;color:#f87171;border-color:#f8717155" onclick="eliminarCCP(\''+_jsArg(c.id)+'\',\''+_jsArg(c.num_comp||'')+'\')">🗑 Eliminar</button>':'')
       +'</td></tr>';
   });
@@ -3772,6 +3775,13 @@ function _authNivelC(montoUsd){
     nivelLbl:'Compras autoriza (menos de USD 500) - se notifica' };
 }
 var _authCCPActual = null;
+
+// Lleva al Centro de Control para emitir la Orden de Compra de esta comparativa
+function _irAGenerarOC(numComp){
+  if(!numComp){ showToast('La comparativa no tiene número','err'); return; }
+  const url = 'index.html?oc=' + encodeURIComponent(numComp);
+  window.open(url, '_blank');
+}
 
 async function solicitarAutorizacionCCP(id){
   showToast('Preparando el borrador...','ok');
