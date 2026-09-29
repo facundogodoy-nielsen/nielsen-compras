@@ -1834,6 +1834,22 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     </div></div>
   </div>
   <div class="sidebar-divider"></div>
+  <div class="sidebar-section" data-sid="comex">
+    <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
+      <span class="sb-drag-handle" draggable="true" onmousedown="event.stopPropagation()"
+            ondragstart="sbDragStart(event,this.closest('.sidebar-section'))"
+            ontouchstart="sbTouchStart(event,this.closest('.sidebar-section'))"
+            onclick="event.stopPropagation()">⠿</span>
+      <span class="sidebar-label" style="pointer-events:none;margin:0;padding:0;border:none;background:none;font-size:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">Comercio Internacional</span>
+      <span class="sidebar-toggle">▾</span>
+    </div>
+    <div class="sidebar-section-body"><div class="sidebar-section-body-inner">
+      <button class="sidebar-btn" onclick="showView('comex', this)"><span class="sb-icon">🌎</span> Tablero COMEX</button>
+      <button class="sidebar-btn" onclick="showView('comex-noticias', this)"><span class="sb-icon">📰</span> Noticias</button>
+      <button class="sidebar-btn" onclick="showView('comex-normativa', this)"><span class="sb-icon">📜</span> Normativa vigente</button>
+    </div></div>
+  </div>
+  <div class="sidebar-divider"></div>
 
   <div class="sidebar-section" data-sid="informes">
     <div class="sidebar-section-hdr" onclick="toggleSidebarSection(this)">
@@ -2755,6 +2771,45 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
   </div>
   <div id="exp-embudo" style="margin-bottom:18px"></div>
   <div id="exp-lista"></div>
+</div>
+
+<!-- ══════════ COMERCIO INTERNACIONAL ══════════ -->
+<div id="view-comex" class="view" style="padding:0">
+  <iframe id="comex-frame" data-src="comex" title="Tablero de Comercio Internacional"
+    style="width:100%;height:calc(100vh - 70px);border:0;display:block;background:#0e0c0a"></iframe>
+</div>
+
+<div id="view-comex-noticias" class="view">
+  <div class="pg-header">
+    <div class="pg-title">NOTICIAS DE <span>COMERCIO INTERNACIONAL</span></div>
+    <div class="pg-sub">Comunicados oficiales y novedades de los organismos que intervienen en el comercio exterior — se actualiza sola cada 15 minutos</div>
+  </div>
+  <div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:14px">
+    <button id="cxn-tab-ar" onclick="_cxnPais('ar')" style="padding:10px 18px;border:none;background:none;cursor:pointer;font-family:var(--ff);font-size:13px;font-weight:700">🇦🇷 Argentina</button>
+    <button id="cxn-tab-cl" onclick="_cxnPais('cl')" style="padding:10px 18px;border:none;background:none;cursor:pointer;font-family:var(--ff);font-size:13px;font-weight:700">🇨🇱 Chile</button>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+    <input id="cxn-buscar" oninput="renderNoticiasComex()" placeholder="🔎 Buscar en las noticias..." style="flex:1;min-width:220px;padding:9px 13px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input type="checkbox" id="cxn-norm" onchange="renderNoticiasComex()" style="accent-color:var(--or)"> Sólo normativa</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input type="checkbox" id="cxn-ofi" onchange="renderNoticiasComex()" style="accent-color:var(--or)"> Sólo fuentes oficiales</label>
+    <button onclick="cargarNoticiasComex(_cxn.pais,true)" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ff)">🔄 Actualizar</button>
+    <span id="cxn-estado" style="font-size:11px;color:var(--muted)"></span>
+  </div>
+  <div id="cxn-entidades" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+  <div id="cxn-lista"></div>
+</div>
+
+<div id="view-comex-normativa" class="view">
+  <div class="pg-header">
+    <div class="pg-title">NORMATIVA <span>VIGENTE</span></div>
+    <div class="pg-sub">Alícuotas que usa la calculadora del Tablero COMEX — con alertas cuando una novedad oficial puede modificarlas</div>
+  </div>
+  <div id="cxr-alertas"></div>
+  <div id="cxr-tabla"></div>
+  <div style="margin-top:12px;font-size:11.5px;color:var(--muted);line-height:1.6">
+    Los valores se cambian a mano y con respaldo: una lectura automática errónea de un título de noticia alteraría en silencio todos los costos calculados.
+    El sistema detecta las novedades que pueden afectar cada alícuota y avisa; el Administrador confirma y actualiza en un clic, y el tablero toma el valor nuevo al instante.
+  </div>
 </div>
 
 <div id="view-prov-db" class="view">
@@ -3861,6 +3916,9 @@ async function showView(id, btn) {
   if (id === 'auditoria')      renderAuditoria();
   if (id === 'kraljic')        renderKraljic();
   if (id === 'srm')            renderSRM();
+  if (id === 'comex')          { const f=document.getElementById('comex-frame'); if(f && !f.src) f.src=f.getAttribute('data-src'); }
+  if (id === 'comex-noticias') { _cxnPais(_cxn.pais||'ar'); }
+  if (id === 'comex-normativa'){ renderNormativaComex(); }
   if (id === 'ordenes')        renderOC();
   if (id === 'expediente')     renderExpediente();
   if (id === 'prov-db')      {
@@ -6469,6 +6527,188 @@ async function _ocNuevoNumero(){
 // Cada proveedor HEREDA el cuadrante de las familias que le comprás,
 // ponderado por gasto — Kraljic clasifica familias, no proveedores.
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// COMERCIO INTERNACIONAL · NOTICIAS (Argentina / Chile)
+// Las noticias las junta la función /api/noticias-comex en el servidor
+// (sin restricciones de CORS) y se refrescan solas cada 15 minutos.
+// ══════════════════════════════════════════════════════════════
+const _cxn = { pais:'ar', datos:{}, ent:'', timer:null };
+function _cxnEsc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function _cxnHace(iso){
+  const m=Math.round((Date.now()-new Date(iso).getTime())/60000);
+  if(m<60) return 'hace '+Math.max(1,m)+' min'; const h=Math.round(m/60); if(h<24) return 'hace '+h+' h';
+  const d=Math.round(h/24); return d===1?'ayer':'hace '+d+' días';
+}
+function _cxnPais(p){
+  _cxn.pais=p; _cxn.ent='';
+  ['ar','cl'].forEach(x=>{ const b=document.getElementById('cxn-tab-'+x); if(b){ b.style.color=x===p?'var(--or)':'var(--muted)'; b.style.borderBottom='2px solid '+(x===p?'var(--or)':'transparent'); } });
+  if(_cxn.datos[p]) renderNoticiasComex();
+  cargarNoticiasComex(p,false);
+  clearInterval(_cxn.timer);
+  _cxn.timer=setInterval(()=>{ const v=document.getElementById('view-comex-noticias'); if(v && v.classList.contains('active')) cargarNoticiasComex(_cxn.pais,false); }, 15*60*1000);
+}
+async function cargarNoticiasComex(pais, forzar){
+  const est=document.getElementById('cxn-estado'); if(est) est.textContent='⏳ actualizando...';
+  try{
+    const r=await fetch('/api/noticias-comex?pais='+pais+(forzar?'&force=1':''),{cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json(); _cxn.datos[pais]=d;
+    if(pais===_cxn.pais) renderNoticiasComex();
+    return d;
+  }catch(e){
+    if(pais===_cxn.pais){
+      if(est) est.textContent='';
+      if(!_cxn.datos[pais]){
+        const l=document.getElementById('cxn-lista');
+        if(l) l.innerHTML='<div style="padding:22px;background:var(--s1);border:1px solid var(--border);border-radius:11px;color:var(--muted);font-size:13px;line-height:1.6">'
+          +'⚠️ No se pudieron traer las noticias.<br>Se obtienen desde el servidor del sistema (función <b>/api/noticias-comex</b>). '
+          +'Si recién publicaste esta versión, esperá un minuto y tocá <b>🔄 Actualizar</b>.</div>';
+      }
+    }
+    return null;
+  }
+}
+function renderNoticiasComex(){
+  const d=_cxn.datos[_cxn.pais]; const l=document.getElementById('cxn-lista'); if(!d||!l) return;
+  const est=document.getElementById('cxn-estado');
+  const q=((document.getElementById('cxn-buscar')||{}).value||'').toLowerCase().trim();
+  const soloN=(document.getElementById('cxn-norm')||{}).checked, soloO=(document.getElementById('cxn-ofi')||{}).checked;
+  let it=d.items||[];
+  if(soloN) it=it.filter(x=>x.normativa);
+  if(soloO) it=it.filter(x=>x.oficial);
+  if(_cxn.ent) it=it.filter(x=>(x.entidades||[x.entidad]).indexOf(_cxn.ent)>=0);
+  if(q) it=it.filter(x=>(x.titulo+' '+x.fuente).toLowerCase().includes(q));
+  const caidas=(d.fuentes||[]).filter(f=>!f.ok).length;
+  if(est) est.innerHTML='Actualizado '+_cxnHace(d.actualizado)+' · '+(d.items||[]).length+' noticias'+(caidas?(' · <span style="color:var(--yellow)">'+caidas+' fuente(s) sin respuesta</span>'):'')+(d.aviso?(' · '+_cxnEsc(d.aviso)):'');
+  const ents=document.getElementById('cxn-entidades');
+  if(ents) ents.innerHTML=[''].concat((d.fuentes||[]).map(f=>f.entidad)).map(e=>{
+    const act=_cxn.ent===e; const n=e?(d.items||[]).filter(x=>(x.entidades||[x.entidad]).indexOf(e)>=0).length:(d.items||[]).length;
+    return '<button onclick="_cxn.ent=\''+_cxnEsc(e)+'\';renderNoticiasComex()" style="padding:5px 12px;border-radius:999px;cursor:pointer;font-family:var(--ff);font-size:11.5px;font-weight:600;'
+      +'border:1px solid '+(act?'var(--or)':'var(--border)')+';background:'+(act?'rgba(232,93,37,.14)':'var(--s2)')+';color:'+(act?'var(--or)':'var(--text)')+'">'
+      +(e?_cxnEsc(e):'Todas')+' <span style="opacity:.6">'+n+'</span></button>'; }).join('');
+  if(!it.length){ l.innerHTML='<div style="padding:22px;text-align:center;color:var(--muted);background:var(--s1);border:1px solid var(--border);border-radius:11px">Sin noticias para este filtro.</div>'; return; }
+  l.innerHTML=it.slice(0,80).map(x=>'<a href="'+_cxnEsc(x.link)+'" target="_blank" rel="noopener" style="display:block;text-decoration:none;padding:13px 16px;margin-bottom:9px;border-radius:11px;background:var(--s1);border:1px solid var(--border);'
+      +(x.normativa?'border-left:3px solid var(--or);':'')+'">'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:5px">'
+      +(x.oficial?'<span style="font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(34,197,94,.16);color:#4ade80">OFICIAL</span>':'')
+      +(x.normativa?'<span style="font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(232,93,37,.16);color:var(--or)">NORMATIVA</span>':'')
+      +'<span style="font-size:11px;color:var(--muted)">'+_cxnEsc(x.fuente||'')+' · '+_cxnHace(x.fecha)+'</span>'
+      +'<span style="font-size:10.5px;color:var(--muted);margin-left:auto">'+_cxnEsc((x.entidades||[x.entidad]).join(' · '))+'</span></div>'
+    +'<div style="font-size:14px;font-weight:600;color:var(--text);line-height:1.4">'+_cxnEsc(x.titulo)+' <span style="color:var(--muted);font-weight:400">↗</span></div></a>').join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// COMERCIO INTERNACIONAL · NORMATIVA VIGENTE
+// Tabla compartida `comex_normativa`: la usa la calculadora del tablero.
+// ══════════════════════════════════════════════════════════════
+const COMEX_NORM_BASE=[
+ {clave:'ar_tasa_estadistica',pais:'AR',concepto:'Tasa de estadística',valor:3,unidad:'% CIF',norma:'Decreto 1140/2024',vigente_hasta:'2027-12-31',estado:'verificado',notas:'Tope USD 150.000 por operación',claves:/tasa de estad[ií]stica/i},
+ {clave:'ar_perc_iva_adic_general',pais:'AR',concepto:'Percepción IVA adicional (bienes al 21 %)',valor:20,unidad:'% base',norma:'RG 2937',estado:'verificado',claves:/(percepci[oó]n|IVA adicional|RG 2937)/i},
+ {clave:'ar_perc_iva_adic_reducida',pais:'AR',concepto:'Percepción IVA adicional (bienes al 10,5 %)',valor:10,unidad:'% base',norma:'RG 2937 art. 7 (RG 4461/2019)',estado:'verificado',claves:/(percepci[oó]n|IVA adicional|RG 2937)/i},
+ {clave:'ar_perc_ganancias',pais:'AR',concepto:'Percepción Ganancias (importador inscripto)',valor:6,unidad:'% base',norma:'RG 2281',estado:'verificado',notas:'11 % para no inscriptos',claves:/(percepci[oó]n.{0,40}ganancias|ganancias.{0,40}importaci)/i},
+ {clave:'ar_perc_iva_afip',pais:'AR',concepto:'Percepción IVA AFIP (heredada del tablero)',valor:3.5,unidad:'% base',norma:'Sin norma identificada',estado:'a_verificar',notas:'Confirmar con el despachante si corresponde',claves:/percepci[oó]n/i},
+ {clave:'ar_seguro_presunto',pais:'AR',concepto:'Seguro presunto sin póliza',valor:1,unidad:'% FOB',norma:'A confirmar',estado:'a_verificar',claves:/(seguro|valoraci[oó]n).{0,40}aduan/i},
+ {clave:'cl_iva',pais:'CL',concepto:'IVA de importación',valor:19,unidad:'% CIF + arancel',norma:'DL 825',estado:'verificado',claves:/\bIVA\b/i},
+ {clave:'cl_arancel_general',pais:'CL',concepto:'Arancel general ad valorem',valor:6,unidad:'% CIF',norma:'Arancel Aduanero Nacional',estado:'verificado',notas:'0 % con TLC y certificado de origen',claves:/(arancel|ad valorem)/i},
+ {clave:'cl_seguro_estimado',pais:'CL',concepto:'Seguro de carga estimado',valor:0.8,unidad:'% FOB',norma:'Costo de póliza',estado:'verificado',notas:'Sin póliza, la Aduana presume 2 % del FOB',claves:/seguro/i},
+ {clave:'seguro_tramo_cl_ar',pais:'CL→AR',concepto:'Seguro tramo Chile → Argentina',valor:0.8,unidad:'% factura',norma:'Costo de póliza',estado:'verificado',claves:/seguro/i}
+];
+let _cxr={filas:null, desdeNube:false};
+async function _cxrCargar(){
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/comex_normativa?select=*&order=pais.asc,clave.asc',{headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const rows=await r.json();
+    if(rows.length){ _cxr.filas=COMEX_NORM_BASE.map(b=>Object.assign({},b,rows.find(x=>x.clave===b.clave)||{}));
+      rows.filter(x=>!COMEX_NORM_BASE.some(b=>b.clave===x.clave)).forEach(x=>_cxr.filas.push(x)); _cxr.desdeNube=true; return; }
+  }catch(e){}
+  _cxr.filas=COMEX_NORM_BASE.map(b=>Object.assign({},b)); _cxr.desdeNube=false;
+}
+async function renderNormativaComex(){
+  const t=document.getElementById('cxr-tabla'); if(!t) return;
+  t.innerHTML='<div style="padding:20px;color:var(--muted)">⏳ Cargando normativa...</div>';
+  await _cxrCargar();
+  const hoy=new Date().toISOString().slice(0,10), admin=esModoEditor();
+  const fila=f=>{
+    const venc=f.vigente_hasta? Math.round((new Date(f.vigente_hasta)-new Date(hoy))/86400000) : null;
+    const est=f.estado==='a_verificar'?'<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(234,179,8,.18);color:#f4d160">A VERIFICAR</span>'
+                                       :'<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(34,197,94,.16);color:#4ade80">VERIFICADO</span>';
+    return '<tr><td style="padding:9px 10px;border-bottom:1px solid var(--border);font-weight:700;font-size:12px">'+_cxnEsc(f.pais)+'</td>'
+      +'<td style="padding:9px 10px;border-bottom:1px solid var(--border)"><div style="font-weight:600">'+_cxnEsc(f.concepto)+'</div>'+(f.notas?'<div style="font-size:11px;color:var(--muted)">'+_cxnEsc(f.notas)+'</div>':'')+'</td>'
+      +'<td style="padding:9px 10px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--fm);font-size:15px;font-weight:700;color:var(--or)">'+_cxnEsc(f.valor)+'<span style="font-size:10px;color:var(--muted);margin-left:4px">'+_cxnEsc(f.unidad||'')+'</span></td>'
+      +'<td style="padding:9px 10px;border-bottom:1px solid var(--border);font-size:12px">'+(f.fuente_url?'<a href="'+_cxnEsc(f.fuente_url)+'" target="_blank" rel="noopener" style="color:#7cc4ff">'+_cxnEsc(f.norma)+' ↗</a>':_cxnEsc(f.norma||'—'))+'</td>'
+      +'<td style="padding:9px 10px;border-bottom:1px solid var(--border);font-size:12px;color:'+(venc!==null&&venc<120?'var(--yellow)':'var(--muted)')+'">'+(f.vigente_hasta?f.vigente_hasta.split('-').reverse().join('/'):'—')+(venc!==null&&venc<120?' ⚠':'')+'</td>'
+      +'<td style="padding:9px 10px;border-bottom:1px solid var(--border)">'+est+'</td>'
+      +'<td style="padding:9px 10px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted)">'+(f.revisado_en?String(f.revisado_en).slice(0,10).split('-').reverse().join('/'):'—')+(f.revisado_por?'<br>'+_cxnEsc(f.revisado_por):'')+'</td>'
+      +'<td style="padding:9px 10px;border-bottom:1px solid var(--border);text-align:right">'+(admin?'<button onclick="editarNormativaComex(\''+f.clave+'\')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:11px;cursor:pointer">✎ Actualizar</button>':'')+'</td></tr>';
+  };
+  t.innerHTML=(_cxr.desdeNube?'':'<div style="margin-bottom:12px;padding:11px 14px;border-radius:9px;background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.35);color:#f4d160;font-size:12.5px">Se muestran los valores por defecto: falta crear la tabla en Supabase (<b>SUPABASE_comex_normativa.sql</b>). Hasta entonces no se pueden editar.</div>')
+    +'<div style="overflow-x:auto;border:1px solid var(--border);border-radius:11px;background:var(--s1)"><table style="width:100%;border-collapse:collapse;font-size:12.5px">'
+    +'<thead><tr style="background:var(--s2)">'+['País','Concepto','Valor','Norma','Vigente hasta','Estado','Revisado',''].map((c,i)=>'<th style="padding:9px 10px;text-align:'+(i===2||i===7?'right':'left')+';font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">'+c+'</th>').join('')+'</tr></thead>'
+    +'<tbody>'+_cxr.filas.map(fila).join('')+'</tbody></table></div>';
+  _cxrAlertas();
+}
+// Cruza las noticias con cada alícuota: si una novedad normativa puede afectarla, avisa
+async function _cxrAlertas(){
+  const a=document.getElementById('cxr-alertas'); if(!a) return;
+  const [ar,cl]=await Promise.all([_cxn.datos.ar||cargarNoticiasComex('ar',false), _cxn.datos.cl||cargarNoticiasComex('cl',false)]);
+  const hoy=new Date(), lim=new Date(hoy.getTime()-45*86400000).toISOString();
+  const hall=[];
+  (_cxr.filas||[]).forEach(f=>{
+    const base=(f.pais==='AR'?(ar&&ar.items):(cl&&cl.items))||[];
+    const rx=f.claves instanceof RegExp? f.claves : null; if(!rx) return;
+    base.filter(n=>n.normativa && n.fecha>=lim && rx.test(n.titulo) && (f.pais!=='AR'||/import|aduan|comercio exterior/i.test(n.titulo)||/tasa de estad/i.test(n.titulo)))
+        .slice(0,2).forEach(n=>hall.push({f,n}));
+    if(f.vigente_hasta){ const d=Math.round((new Date(f.vigente_hasta)-hoy)/86400000); if(d<120) hall.push({f,venc:d}); }
+  });
+  const pend=(_cxr.filas||[]).filter(f=>f.estado==='a_verificar');
+  let h='';
+  if(hall.length){
+    h+='<div style="margin-bottom:14px;padding:14px 16px;border-radius:11px;background:rgba(232,93,37,.08);border:1px solid rgba(232,93,37,.4)">'
+      +'<div style="font-size:12px;font-weight:800;color:var(--or);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">⚠ Novedades que pueden cambiar una alícuota</div>'
+      +hall.slice(0,8).map(x=>x.n
+        ?'<div style="font-size:12.5px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)"><b>'+_cxnEsc(x.f.concepto)+'</b> — <a href="'+_cxnEsc(x.n.link)+'" target="_blank" rel="noopener" style="color:#7cc4ff">'+_cxnEsc(x.n.titulo)+'</a> <span style="color:var(--muted)">('+_cxnEsc(x.n.fuente)+', '+_cxnHace(x.n.fecha)+')</span></div>'
+        :'<div style="font-size:12.5px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)"><b>'+_cxnEsc(x.f.concepto)+'</b> — vigente hasta '+x.f.vigente_hasta.split('-').reverse().join('/')+' ('+(x.venc<0?'venció':'faltan '+x.venc+' días')+'). Revisar si se prorrogó.</div>').join('')
+      +'<div style="font-size:11px;color:var(--muted);margin-top:8px">Revisá la norma y, si corresponde, actualizá el valor con ✎.</div></div>';
+  } else if(ar||cl){
+    h+='<div style="margin-bottom:14px;padding:11px 14px;border-radius:9px;background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.3);color:#7ee2a4;font-size:12.5px">✓ Sin novedades en los últimos 45 días que afecten las alícuotas de la calculadora.</div>';
+  }
+  if(pend.length) h+='<div style="margin-bottom:14px;padding:11px 14px;border-radius:9px;background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.35);color:#f4d160;font-size:12.5px">'
+    +pend.length+' parámetro(s) sin respaldo normativo confirmado: '+pend.map(f=>'<b>'+_cxnEsc(f.concepto)+'</b>').join(', ')+'. Conviene validarlos con el despachante.</div>';
+  a.innerHTML=h;
+}
+function editarNormativaComex(clave){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede actualizar la normativa','error'); return; }
+  if(!_cxr.desdeNube){ showToast('Primero hay que crear la tabla en Supabase (SUPABASE_comex_normativa.sql)','error'); return; }
+  const f=(_cxr.filas||[]).find(x=>x.clave===clave); if(!f) return;
+  const campo=(id,lbl,val,tipo)=>'<div style="margin-bottom:11px"><label style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:block;margin-bottom:4px">'+lbl+'</label>'
+    +'<input id="cxe-'+id+'" type="'+(tipo||'text')+'" value="'+_cxnEsc(val==null?'':val)+'" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)"></div>';
+  _provModalCC('📜 '+_cxnEsc(f.concepto),
+    campo('valor','Valor ('+_cxnEsc(f.unidad||'')+')',f.valor,'number')
+    +campo('norma','Norma que lo establece',f.norma)+campo('hasta','Vigente hasta',f.vigente_hasta||'','date')
+    +campo('url','Enlace a la norma (opcional)',f.fuente_url||'')+campo('notas','Notas',f.notas||'')
+    +'<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:4px 0 14px;cursor:pointer"><input type="checkbox" id="cxe-ok" '+(f.estado!=='a_verificar'?'checked':'')+' style="accent-color:var(--or)"> Verificado contra la norma</label>'
+    +'<button onclick="_guardarNormativaComex(\''+clave+'\')" style="padding:10px 18px;border-radius:8px;border:none;background:var(--or);color:#fff;font-weight:700;cursor:pointer;font-family:var(--ff)">Guardar y aplicar al tablero</button>');
+}
+async function _guardarNormativaComex(clave){
+  const v=id=>(document.getElementById('cxe-'+id)||{}).value;
+  const val=parseFloat(String(v('valor')).replace(',','.'));
+  if(isNaN(val)||val<0||val>100){ showToast('Valor inválido','error'); return; }
+  const f=(_cxr.filas||[]).find(x=>x.clave===clave);
+  const body={clave, pais:f.pais, concepto:f.concepto, unidad:f.unidad, valor:val, norma:v('norma')||null, vigente_hasta:v('hasta')||null,
+    fuente_url:v('url')||null, notas:v('notas')||null, estado:(document.getElementById('cxe-ok')||{}).checked?'verificado':'a_verificar',
+    revisado_en:new Date().toISOString(), revisado_por:(typeof _usuarioActual!=='undefined'&&_usuarioActual)||'Administrador'};
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/comex_normativa?on_conflict=clave',{method:'POST',
+      headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(body)});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+  }catch(e){ showToast('No se pudo guardar: '+e.message,'error'); return; }
+  const ov=document.getElementById('cc-modal-ov'); if(ov) ov.style.display='none';
+  const fr=document.getElementById('comex-frame'); try{ if(fr&&fr.contentWindow) fr.contentWindow.postMessage({tipo:'normativa-actualizada'},'*'); }catch(e){}
+  showToast('✅ '+f.concepto+' actualizado a '+val+' — el tablero ya lo usa','ok');
+  renderNormativaComex();
+}
+
 function _srmPoblarPeriodo(){
   const sel=document.getElementById('srm-periodo'); if(!sel||sel.options.length) return;
   const set={}; (detalleData||[]).forEach(d=>{ const a=String(d.fecha||'').slice(0,4); if(/^\d{4}$/.test(a)) set[a]=1; });
@@ -12731,6 +12971,10 @@ function renderHistorialPedidos() {
     </tr>`;
   }).join('');
 }
+
+// Congela el refresco automático mientras se guarda una SC (antes se usaba sin declarar
+// y el refresco fallaba en silencio hasta el primer guardado)
+var _pauseReload = false;
 
 function exportarPedidosOP() {
   if (typeof XLSX === 'undefined') { showToast('Librería no disponible', 'error'); return; }
