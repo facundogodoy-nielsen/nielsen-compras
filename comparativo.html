@@ -1284,6 +1284,12 @@ async function guardarEnSupabase(showMsg) {
   } else {
     savings = calcularAhorro();
   }
+  // La adjudicación por ítem (automática o elegida a mano) define el monto y los proveedores
+  var _adj = (analysisResult && Array.isArray(analysisResult.adjudicacion)) ? analysisResult.adjudicacion.filter(function(a){ return a && a.prov; }) : [];
+  if (_adj.length){
+    savings.precioMin = _adjTotalConIVA(_adj);
+    savings.elegido   = _adjEtiqueta(_adj);
+  }
   var data = {
     num_comp:         _currentCompNum,
     num_sc:           numSC||null,
@@ -1568,8 +1574,8 @@ function _scAplicarAsociadas(){
   var manuales = items.filter(function(it){ return !it._scOrigen; });
   var nuevos = [];
   scAsociadas.forEach(function(x){
-    x.items.forEach(function(a){
-      nuevos.push({ id: ++itemCounter, desc:a.desc, qty:a.qty, unit:a.unit, spec:'', sel:false, _scOrigen:x.num });
+    x.items.forEach(function(a, k){
+      nuevos.push({ id: ++itemCounter, desc:a.desc, qty:a.qty, unit:a.unit, spec:'', sel:false, _scOrigen:x.num, _scIdx:k });
     });
   });
   items = nuevos.concat(manuales);
@@ -1577,6 +1583,65 @@ function _scAplicarAsociadas(){
 }
 
 // Convierte el texto libre de ítems de una SC en {desc, qty, unit}
+
+// ══════════════════════════════════════════════════════════════
+// ADJUDICACIÓN POR ÍTEM
+// Cada artículo se adjudica a un proveedor. Por defecto: al ganador si todos
+// cotizaron todo, o al más económico de cada ítem si cotizaron partes.
+// Se puede cambiar a mano. El Centro de Control emite una orden por proveedor.
+// ══════════════════════════════════════════════════════════════
+function _adjEntrada(i, pidx){
+  var it=items[i]||{}, p=providers[pidx]; if(!p) return { i:i, desc:it.desc||'', qty:parseFloat(it.qty)||0, unit:it.unit||'u', sc:it._scOrigen||null, scIdx:(it._scIdx!=null?it._scIdx:null), prov:null };
+  return { i:i, desc:it.desc||'', qty:parseFloat(it.qty)||0, unit:it.unit||'u', spec:it.spec||'',
+    sc:it._scOrigen||null, scIdx:(it._scIdx!=null?it._scIdx:null),
+    pidx:pidx, prov:p.name||('Proveedor '+(pidx+1)), cuit:p.cuit||'', contacto:p.contact||'', email:p.email||'', tel:p.phone||'',
+    price:parseFloat((p.prices||[])[i])||0, marca:(p.marcas||[])[i]||'', modelo:(p.modelos||[])[i]||'',
+    pago:p.paymentTerms||'', entrega:p.deliveryDays||'', flete:parseFloat(p.shippingCost)||0, iva:Math.round(IVA_RATE*1000)/10 };
+}
+function _ccpAdjDefault(allFull, ganador, itemWinners){
+  return items.map(function(it,i){
+    if (allFull && ganador) return _adjEntrada(i, ganador.idx);
+    var w=(itemWinners||[]).find(function(x){ return x.i===i; });
+    return _adjEntrada(i, (w&&w.best)? w.best.idx : -1);
+  });
+}
+function _adjTotalConIVA(adj){ return adj.reduce(function(s,a){ return s + (a.qty||0)*(a.price||0); },0) * (1+IVA_RATE); }
+function _adjEtiqueta(adj){
+  var g={}; adj.forEach(function(a){ if(a.prov){ g[a.prov]=(g[a.prov]||0)+1; } });
+  var k=Object.keys(g); if(k.length===1) return k[0];
+  return 'Parcial: '+k.map(function(n){ return n+' ('+g[n]+' ít.)'; }).join(', ');
+}
+function _renderAdjudicacion(){
+  if(!analysisResult || !Array.isArray(analysisResult.adjudicacion)) return;
+  var adj=analysisResult.adjudicacion, host=document.getElementById('aaRendered')||document.getElementById('tab-analisis'); if(!host) return;
+  var box=document.getElementById('aaAdjud');
+  if(!box){ box=document.createElement('div'); box.id='aaAdjud'; box.className='card'; box.style.marginTop='16px'; host.appendChild(box); }
+  var fm=function(n){ return '$'+Math.round(n||0).toLocaleString('es-AR'); };
+  var provsUsados={}; adj.forEach(function(a){ if(a.prov) provsUsados[a.prov]=1; });
+  var filas=adj.map(function(a,i){
+    if(!a || (!String(a.desc||'').trim() && !(a.qty>0))) return '';   // renglones vacíos del formulario
+    var ops=providers.map(function(p,k){ var pr=parseFloat((p.prices||[])[i])||0; if(pr<=0) return '';
+      return '<option value="'+k+'"'+(a.pidx===k?' selected':'')+'>'+escHtml(p.name||('Proveedor '+(k+1)))+' — '+fm(pr*(1+IVA_RATE))+' c/IVA</option>'; }).join('');
+    return '<tr><td style="padding:7px 9px">'+(i+1)+'</td><td style="padding:7px 9px">'+escHtml(a.desc)+(a.marca||a.modelo?'<div style="font-size:11px;opacity:.7">'+escHtml([a.marca,a.modelo].filter(Boolean).join(' · '))+'</div>':'')+'</td>'
+      +'<td style="padding:7px 9px;text-align:right">'+(a.qty||0)+'</td>'
+      +'<td style="padding:7px 9px">'+(ops?'<select onchange="_adjCambiar('+i+',this.value)" style="width:100%;padding:6px 8px;border-radius:6px">'+ops+'</select>':'<span style="opacity:.6">Sin cotización</span>')+'</td>'
+      +'<td style="padding:7px 9px;text-align:right;font-weight:700">'+fm((a.qty||0)*(a.price||0)*(1+IVA_RATE))+'</td></tr>';
+  }).join('');
+  var n=Object.keys(provsUsados).length;
+  box.innerHTML='<div class="card-hdr"><span class="card-title">Adjudicación por ítem</span></div><div style="padding:14px">'
+    +'<div style="font-size:12.5px;opacity:.8;margin-bottom:10px">Elegí a qué proveedor se adjudica cada artículo. El Centro de Control emitirá <b>'+(n>1?n+' órdenes de compra, una por proveedor':'una orden de compra')+'</b>.</div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:7px 9px">#</th><th style="text-align:left;padding:7px 9px">Artículo</th><th style="text-align:right;padding:7px 9px">Cant.</th><th style="text-align:left;padding:7px 9px">Proveedor adjudicado</th><th style="text-align:right;padding:7px 9px">Subtotal c/IVA</th></tr></thead><tbody>'+filas+'</tbody>'
+    +'<tfoot><tr><td colspan="4" style="padding:9px;text-align:right;font-weight:800">TOTAL ADJUDICADO c/IVA</td><td style="padding:9px;text-align:right;font-weight:800">'+fm(_adjTotalConIVA(adj))+'</td></tr></tfoot></table></div></div>';
+}
+function _adjCambiar(i, pidx){
+  if(!analysisResult || !analysisResult.adjudicacion) return;
+  analysisResult.adjudicacion[i]=_adjEntrada(i, parseInt(pidx,10));
+  analysisResult.adjManual=true;
+  _renderAdjudicacion();
+  showToast('Adjudicación actualizada: '+_adjEtiqueta(analysisResult.adjudicacion.filter(function(a){return a.prov;})),'ok');
+  try{ if(typeof guardarAnalisisEnCC==='function') guardarAnalisisEnCC(true); }catch(e){}
+}
+
 function _scItemsParse(txt){
   if (!txt) return [];
   return String(txt).split('\n').map(function(l){ return l.trim(); }).filter(Boolean).map(function(linea){
@@ -3175,9 +3240,11 @@ function generarAnalisisAuto(){
   _renderAATotals(totals, ganador, recoStatus, allFull, gruposReco);
   _renderAACalidad(totals, itemWinners, hayCalidad);
   _renderAACond(totals);
+  try{ analysisResult.adjudicacion = _ccpAdjDefault(allFull, ganador, itemWinners); }catch(e){ console.warn('adjudicación', e); }
   _renderAAConclusion(totals, ganador, segundo, ahorro, ahorroPct, allFull, gruposReco, optimoConIVA);
   _renderAAMemo(totals, ganador, segundo, ahorro, ahorroPct, allFull, gruposReco, optimoConIVA);
   _appendCalidadNota();
+  try{ _renderAdjudicacion(); }catch(e){ console.warn('adjudicación', e); }
   showToast('✓ Análisis generado','ok');
   // Guardado SISTEMÁTICO en Supabase → aparece en Centro de Control (Historial de CCP + Ahorro Generado)
   // ...salvo cuando se está CONSULTANDO un CCP (no se vuelve a guardar para no pisar nada).
