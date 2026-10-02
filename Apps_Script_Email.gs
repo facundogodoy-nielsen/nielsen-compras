@@ -798,7 +798,7 @@ function _tplCCPSolicitud(p, token, esRecordatorio) {
   var link = function(a){ return url + '?t=' + encodeURIComponent(token) + '&a=' + a; };
   var btn = function(href, bg, txt){ return '<a href="' + href + '" style="display:inline-block;background:' + bg + ';color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:11px 20px;border-radius:8px;margin:0 7px 7px 0">' + txt + '</a>'; };
   var reqTxt = (p.requeridas >= 2)
-    ? 'Por el monto involucrado, la compra requiere la autorización de la Alta Dirección: alcanza con <b>2 de 3</b> aprobaciones. Cada destinatario recibe su propio enlace, de modo que el sistema registra quién autorizó y cuándo.'
+    ? 'Por el monto involucrado, la compra requiere la autorización de la Alta Dirección: alcanza con <b>2 de 3</b> aprobaciones (Facundo Castaño, Pablo Nielsen y Mercedes Soria). Cada destinatario recibe su propio enlace, de modo que el sistema registra quién autorizó y cuándo.'
     : 'Al elegir <b>Rechazar</b> se te pedirá el motivo. El Departamento de Compras recibe aviso de la decisión en el momento.';
   var b = (esRecordatorio ? '<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400e"><b>Recordatorio:</b> esta comparativa quedó en stand by y corresponde una nueva evaluación.</div>' : '')
     + '<p style="margin:0 0 14px;font-size:14px;color:#374151;line-height:1.65">Estimados,</p>'

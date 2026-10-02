@@ -3844,7 +3844,7 @@ async function cargarComparativaPorId(id){
 var AUTH_DEST_C = {
   castano:  { email:'facundo.castano@nielsenexpediciones.com.ar',  nombre:'Facundo Castaño' },
   pablo:    { email:'pablo.nielsen@nielsenexpediciones.com.ar',    nombre:'Pablo Nielsen' },
-  mercedes: { email:'mercedes@nielsenexpediciones.com.ar',         nombre:'Mercedes' }
+  mercedes: { email:'mercedes.soria@nielsenexpediciones.com.ar',   nombre:'Mercedes Soria' }
 };
 // Nivel segun monto en USD (mismos umbrales que el Centro de Control)
 function _authNivelC(montoUsd){
@@ -3853,7 +3853,7 @@ function _authNivelC(montoUsd){
     nivelLbl:'Alta Direccion (mas de USD 500)' };
   if (montoUsd >= 200) return { nivel:'GERENCIA', tipo:'SOLICITUD', requeridas:1,
     aprobadores:[AUTH_DEST_C.castano], copia:[AUTH_DEST_C.pablo, AUTH_DEST_C.mercedes],
-    nivelLbl:'Gerencia General (USD 200 a 500)' };
+    nivelLbl:'Gerencia (USD 200 a 500)' };
   return { nivel:'COMPRAS', tipo:'NOTIFICACION', requeridas:0,
     aprobadores:[AUTH_DEST_C.castano, AUTH_DEST_C.pablo, AUTH_DEST_C.mercedes],
     nivelLbl:'Compras autoriza (menos de USD 500) - se notifica' };
