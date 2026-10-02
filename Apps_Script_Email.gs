@@ -182,7 +182,7 @@ function _accionAprobar(reg){
     : { aprob_contadas:aprobadas, estado_autorizacion:'PENDIENTE' });
   _avisarCompras(reg, listos ? 'APROBADA (queda autorizada la compra)' : 'APROBADA (faltan ' + (req-aprobadas) + ' aprobación/es)', '');
   return _pagina('✓ Aprobación registrada',
-    'Gracias, <b>' + _esc(reg.nombre||'') + '</b>. Registramos tu <b>aprobación</b> de la CCP <b>' + _esc(reg.num_comp) + '</b>.<br><br>'
+    'Gracias, <b>' + _esc(reg.nombre||'') + '</b>. Registramos tu <b>aprobación</b> de ' + _docTipo(reg) + ' <b>' + _esc(reg.num_comp) + '</b>.<br><br>'
     + (listos ? 'La compra queda <b>autorizada</b> y Compras ya fue notificado.'
               : 'Se requieren <b>' + req + '</b> aprobaciones; llevamos <b>' + aprobadas + '</b>.'), '#16a34a');
 }
@@ -190,7 +190,7 @@ function _accionRechazar(reg, motivo){
   if (!motivo) {
     var url = _urlWebApp();
     return _pagina('Rechazar la compra',
-      'Indicá brevemente el motivo del rechazo de la CCP <b>' + _esc(reg.num_comp) + '</b>:'
+      'Indicá brevemente el motivo del rechazo de ' + _docTipo(reg) + ' <b>' + _esc(reg.num_comp) + '</b>:'
       + '<form method="get" action="' + url + '" style="margin-top:18px">'
       + '<input type="hidden" name="t" value="' + _esc(reg.token) + '"><input type="hidden" name="a" value="rechazar">'
       + '<textarea name="m" required rows="4" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px" placeholder="Motivo del rechazo"></textarea>'
@@ -201,7 +201,7 @@ function _accionRechazar(reg, motivo){
   _sbPatchComp(reg.comp_id, { estado_autorizacion:'RECHAZADA', rechazado_por:(reg.nombre||reg.email), rechazo_motivo:String(motivo) });
   _avisarCompras(reg, 'RECHAZADA', String(motivo));
   return _pagina('Rechazo registrado',
-    'Registramos el <b>rechazo</b> de la CCP <b>' + _esc(reg.num_comp) + '</b>. Compras fue notificado con el motivo indicado.', '#dc2626');
+    'Registramos el <b>rechazo</b> de ' + _docTipo(reg) + ' <b>' + _esc(reg.num_comp) + '</b>. Compras fue notificado con el motivo indicado.', '#dc2626');
 }
 function _accionStandby(reg, dias){
   var url = _urlWebApp();
@@ -265,13 +265,26 @@ function _sbPatchToken(token, body){
   }catch(e){}
 }
 function _sbPatchComp(compId, body){
+  var H={ apikey:SB_KEY, Authorization:'Bearer '+SB_KEY, Prefer:'return=representation' };
   try{
-    UrlFetchApp.fetch(SB_URL + '/rest/v1/comparativas?id=eq.' + encodeURIComponent(compId), { method:'patch', contentType:'application/json',
-      headers:{ apikey:SB_KEY, Authorization:'Bearer '+SB_KEY, Prefer:'return=minimal' }, payload:JSON.stringify(body), muteHttpExceptions:true });
+    var r=UrlFetchApp.fetch(SB_URL + '/rest/v1/comparativas?id=eq.' + encodeURIComponent(compId), { method:'patch', contentType:'application/json',
+      headers:H, payload:JSON.stringify(body), muteHttpExceptions:true });
+    var hecho=false; try{ hecho = JSON.parse(r.getContentText()||'[]').length>0; }catch(e){}
+    if(hecho) return;
+    // No era una comparativa: es una orden de compra. Se registra la decisión en la orden.
+    var b=JSON.parse(JSON.stringify(body));
+    if(b.estado_autorizacion){ b.estado_aut=b.estado_autorizacion; if(b.estado_autorizacion==='STANDBY') b.estado='STANDBY'; if(b.estado_autorizacion==='RECHAZADA') b.estado='RECHAZADA'; }
+    UrlFetchApp.fetch(SB_URL + '/rest/v1/ordenes_compra?id=eq.' + encodeURIComponent(compId), { method:'patch', contentType:'application/json',
+      headers:H, payload:JSON.stringify(b), muteHttpExceptions:true });
   }catch(e){}
 }
 function _sbGetToken(token){ var j=_sbGet('ccp_autorizaciones?token=eq.'+encodeURIComponent(token)+'&select=*'); return (j&&j[0])?j[0]:null; }
-function _sbGetComp(compId){ var j=_sbGet('comparativas?id=eq.'+encodeURIComponent(compId)+'&select=*'); return (j&&j[0])?j[0]:null; }
+// La autorización puede ser de una comparativa (CCP) o de una orden de compra que requiere nueva firma
+function _sbGetComp(compId){
+  var j=_sbGet('comparativas?id=eq.'+encodeURIComponent(compId)+'&select=*'); if(j&&j[0]) return j[0];
+  var o=_sbGet('ordenes_compra?id=eq.'+encodeURIComponent(compId)+'&select=*'); return (o&&o[0])?o[0]:null;
+}
+function _docTipo(reg){ return /^OC-/i.test(String((reg&&reg.num_comp)||'')) ? 'la orden de compra' : 'la CCP'; }
 function _sbContarAprobaciones(compId){
   var j=_sbGet('ccp_autorizaciones?comp_id=eq.'+encodeURIComponent(compId)+'&decision=eq.APROBADO&select=token');
   return j ? j.length : 0;

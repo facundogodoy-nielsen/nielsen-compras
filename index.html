@@ -6144,7 +6144,7 @@ async function solicitarAutOC(numOC){
   const niv=ocNivelAut(usd);
   if(!confirm('Solicitar autorización de '+numOC+'\n\nNivel: '+niv.lbl+(niv.firmas?(' ('+niv.firmas+' firma/s)'):'')
     +'\nMotivo: '+(o.motivo_reaut||'—')+'\n\n¿Enviar?')) return;
-  o.estado_aut='PENDIENTE'; o.nivel_aut=niv.nivel;
+  o.estado_aut='PENDIENTE'; o.nivel_aut=niv.nivel; o.estado_autorizacion='PENDIENTE'; o.aprob_requeridas=niv.firmas||1; o.aprob_contadas=0; o.solicitado_en=new Date().toISOString();
   await _ocGuardar(o);
   try{
     await fetch(MAIL_WEBAPP_URL, { method:'POST', mode:'no-cors',
@@ -6215,6 +6215,219 @@ function exportarOC(){
   }catch(e){}
 })();
 
+// ══════════════════════════════════════════════════════════════
+// EMISIÓN DE LA ORDEN DE COMPRA — ORIGINAL · DUPLICADO · TRIPLICADO
+// · Sólo se emite una orden AUTORIZADA (heredada de la comparativa, aprobada
+//   por correo por Gerencia / Alta Dirección, o autorizada por Compras dentro
+//   de su nivel: menos de USD 200).
+// · La copia se RESERVA en la base antes de abrir la impresión: cerrar la
+//   ventana sin imprimir no permite volver a sacar otro "original".
+// · Máximo tres emisiones (también lo impone la base con una restricción).
+// · Duplicado y triplicado exigen un motivo, que queda registrado.
+// ══════════════════════════════════════════════════════════════
+const OC_EMPRESA = {
+  razon: 'Nielsen Logística y Expediciones S.A.',
+  cuit: '30-70983318-5',
+  iva: 'IVA Responsable Inscripto',
+  domicilio: '',                       // completar: domicilio fiscal que debe figurar en la orden
+  localidad: 'San Juan, Argentina',
+  area: 'Compras y Abastecimiento',
+  email: 'facundo.godoy@nielsenexpediciones.com.ar'
+};
+const OC_COPIAS = ['ORIGINAL','DUPLICADO','TRIPLICADO'];
+function _ocEmisor(){ return esRolAdmin && esRolAdmin() ? 'Administrador · Compras y Abastecimiento' : 'Compras y Abastecimiento'; }
+function _ocAutorizada(o){ return o.estado_aut==='APROBADA' || String(o.estado_autorizacion||'').toUpperCase()==='APROBADA'; }
+function _ocFmt(n,mon){ const v=Number(n)||0; return (mon==='USD'?'USD ':'$ ')+v.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function _ocFecha(iso,conHora){ if(!iso) return '—'; const d=new Date(iso); if(isNaN(d)) return String(iso);
+  return d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})+(conHora?' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):''); }
+
+// Lee la orden directamente de la base (para no trabajar sobre una copia vieja)
+async function _ocFresca(numOC){
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/ordenes_compra?num_oc=eq.'+encodeURIComponent(numOC)+'&select=*',{headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
+    if(!r.ok) return null; const a=await r.json(); return a&&a[0]?a[0]:null;
+  }catch(e){ return null; }
+}
+
+// ── Autorización por Compras (dentro de su nivel: menos de USD 200) ──
+async function ocAutorizarCompras(numOC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede autorizar','error'); return; }
+  const o=(ocData||[]).find(x=>x.num_oc===numOC); if(!o) return;
+  let usd=Number(o.total_usd)||0;
+  if(!usd){
+    if(o.moneda==='USD') usd=Number(o.total)||0;
+    else{
+      let tc=0; try{ const r=await fetch('/api/tc-bna?fecha='+new Date().toISOString().slice(0,10),{cache:'no-store'}); const j=await r.json(); tc=Number(j.venta||j.vendedor||j.tc||0); }catch(e){}
+      if(!tc){ const t=prompt('No se pudo obtener el tipo de cambio. Ingresá el dólar vendedor BNA de hoy:'); if(t===null) return; tc=parseFloat(String(t).replace(',','.'))||0; }
+      if(!tc){ showToast('Tipo de cambio inválido','error'); return; }
+      usd=(Number(o.total)||0)/tc; o.tc_usado=tc;
+    }
+    o.total_usd=Math.round(usd*100)/100;
+  }
+  const niv=ocNivelAut(usd);
+  if(niv.nivel!=='COMPRAS'){
+    showToast('Esta orden equivale a USD '+Math.round(usd)+': requiere autorización de '+niv.lbl+'. Usá "Solicitar autorización".','error'); return;
+  }
+  if(!confirm('Autorizar la orden '+numOC+' como Compras\n\nMonto: '+_ocFmt(o.total,o.moneda)+' (≈ USD '+Math.round(usd)+')\nNivel: Compras, menos de USD '+OC_REGLAS.umbralSinComparativa+'.\n\n¿Confirmás la autorización?')) return;
+  Object.assign(o,{autorizacion:'PROPIA',estado_aut:'APROBADA',estado_autorizacion:'APROBADA',nivel_aut:'COMPRAS',
+    autorizado_por:_ocEmisor(),autorizado_en:new Date().toISOString()});
+  if(await _ocGuardar(o)){ showToast('✓ '+numOC+' autorizada por Compras: ya se puede emitir','ok'); renderOC(); verOC(numOC); }
+}
+
+// ── Emitir: reserva la copia en la base y abre la impresión ──
+async function ocEmitir(numOC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede emitir órdenes de compra','error'); return; }
+  const local=(ocData||[]).find(x=>x.num_oc===numOC); if(!local) return;
+  const o=(await _ocFresca(numOC)) || local;           // siempre la versión de la base
+  if(!_ocAutorizada(o)){ showToast('La orden '+numOC+' todavía no está autorizada','error'); return; }
+  if(['ANULADA','RECHAZADA','STANDBY'].includes(o.estado)){ showToast('No se puede emitir una orden '+(OC_ESTADOS[o.estado]||{lbl:o.estado}).lbl.toLowerCase(),'error'); return; }
+  const n=Number(o.copias_emitidas)||0;
+  if(n>=3){ showToast('Límite alcanzado: esta orden ya se emitió como original, duplicado y triplicado','error'); return; }
+  const copia=OC_COPIAS[n];
+  let motivo='';
+  if(n>0){
+    motivo=prompt('Emisión del '+copia+' de la orden '+numOC+'\n\nYa se emitió '+(n===1?'el ORIGINAL':'el ORIGINAL y el DUPLICADO')
+      +'. Indicá el motivo de esta nueva emisión (queda registrado en la orden):'+(n===2?'\n\n⚠ Es la última copia posible.':''));
+    if(motivo==null) return;                                 // cancelado
+    motivo=String(motivo).trim();
+    if(/^(undefined|null)$/i.test(motivo)) motivo='';
+    if(motivo.length<8){ showToast('Indicá un motivo concreto (al menos 8 caracteres)','error'); return; }
+  } else if(!confirm('Emitir el ORIGINAL de la orden '+numOC+'\n\nProveedor: '+(o.proveedor||'—')+'\nTotal: '+_ocFmt(o.total,o.moneda)
+      +'\n\nEl original se emite una sola vez. Las próximas emisiones saldrán como DUPLICADO y TRIPLICADO, con motivo.\n\n¿Continuar?')) return;
+
+  const ahora=new Date().toISOString();
+  const emision={copia, fecha:ahora, por:_ocEmisor(), motivo:motivo||null};
+  const emisiones=(Array.isArray(o.emisiones)?o.emisiones:[]).concat([emision]);
+  const cambios={copias_emitidas:n+1, emisiones, actualizado_en:ahora};
+  if(n===0){ cambios.fecha_emision=ahora; if(o.estado==='BORRADOR') cambios.estado='EMITIDA'; }
+  // Reserva con control de concurrencia: sólo se aplica si nadie emitió en el medio
+  const filtro = n===0 ? '&or=(copias_emitidas.is.null,copias_emitidas.eq.0)' : '&copias_emitidas=eq.'+n;
+  let res=null, err='';
+  try{
+    const r=await fetch(_SB_URL+'/rest/v1/ordenes_compra?num_oc=eq.'+encodeURIComponent(numOC)+filtro,{method:'PATCH',
+      headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=representation'},body:JSON.stringify(cambios)});
+    if(!r.ok){ err=await r.text(); throw new Error('HTTP '+r.status); }
+    res=await r.json();
+  }catch(e){
+    const falta=/column|copias_emitidas|emisiones/i.test(err);
+    showToast(falta?'Falta preparar la base: ejecutá SUPABASE_ordenes_compra_emision.sql':'No se pudo registrar la emisión: '+e.message,'error');
+    return;                                               // sin registro no se imprime: se preserva el control
+  }
+  if(!res||!res.length){
+    showToast('Otra persona acaba de emitir esta orden. Se actualizó la información: revisá antes de volver a emitir.','error');
+    await cargarOC(); renderOC(); verOC(numOC); return;
+  }
+  Object.assign(local,res[0]);
+  showToast('🖨 '+copia+' de '+numOC+' registrado — abriendo la impresión','ok');
+  _ocImprimirDoc(_ocDocumento(local,copia,emision), numOC+'_'+copia);
+  renderOC(); verOC(numOC);
+}
+
+// Vista previa: se puede imprimir, pero sale marcada como "sin validez" y no consume copias
+function ocVistaPrevia(numOC){
+  const o=(ocData||[]).find(x=>x.num_oc===numOC); if(!o) return;
+  _ocImprimirDoc(_ocDocumento(o,'VISTA PREVIA',null), numOC+'_vista_previa');
+}
+
+// ── El documento ──
+function _ocDocumento(o, copia, emision){
+  const E=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const logo=(document.querySelector('img.login-logo')||{}).src||'';
+  const prov=(provData||[]).find(p=>_parNormProv(p.nombre)===_parNormProv(o.proveedor))||{};
+  const items=Array.isArray(o.items)?o.items:_jparse(o.items,[]);
+  const conPrecio=items.some(it=>Number(it.precio)>0);
+  let neto=0; const ivas={};
+  const filas=items.map((it,i)=>{
+    const q=Number(it.cant)||0, p=Number(it.precio)||0, t=(it.iva!=null?Number(it.iva):21), sub=q*p;
+    neto+=sub; ivas[t]=(ivas[t]||0)+sub*t/100;
+    return '<tr><td class="c">'+(i+1)+'</td><td>'+E(it.desc)+(it.espec?'<div class="esp">'+E(it.espec)+'</div>':'')+'</td>'
+      +'<td class="r">'+E(q.toLocaleString('es-AR'))+'</td><td class="c">'+E(it.unidad||'u')+'</td>'
+      +(conPrecio?'<td class="r">'+_ocFmt(p,o.moneda)+'</td><td class="c">'+t+' %</td><td class="r">'+_ocFmt(sub,o.moneda)+'</td>':'')+'</tr>';
+  }).join('');
+  const flete=Number(o.flete)||0; if(conPrecio&&flete){ neto+=flete; ivas[21]=(ivas[21]||0)+flete*0.21; }
+  const ivaTot=Object.values(ivas).reduce((a,b)=>a+b,0);
+  const total=conPrecio? neto+ivaTot : Number(o.total)||0;
+  const scs=(Array.isArray(o.scs)?o.scs:[]).join(' · ');
+  const aut = o.autorizacion==='HEREDADA' ? 'Heredada de la comparativa '+(o.num_comp||'')
+            : o.autorizacion==='PROPIA' ? 'Compras y Abastecimiento (nivel Compras)' : 'Por correo · '+({GERENCIA:'Gerencia General',DIRECCION:'Alta Dirección',COMPRAS:'Compras'}[o.nivel_aut]||o.nivel_aut||'');
+  const esCopia = copia==='DUPLICADO'||copia==='TRIPLICADO', esPrev=copia==='VISTA PREVIA';
+  const marca = esPrev ? 'VISTA PREVIA · SIN VALIDEZ' : (esCopia ? copia : '');
+  const pie = esPrev ? 'Vista previa sin validez · no reemplaza a la orden emitida'
+    : copia+' · emitido el '+_ocFecha(emision&&emision.fecha,true)+' por '+E(emision&&emision.por||'')+(emision&&emision.motivo?' · Motivo: '+E(emision.motivo):'');
+  return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>'+E(o.num_oc)+' · '+E(copia)+'</title><style>'
+   +'@page{size:A4;margin:14mm 13mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1f2228;font-size:11px;margin:0}'
+   +'.hoja{position:relative;max-width:184mm;margin:0 auto}'
+   +'.marca{position:fixed;top:42%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);font-size:'+(esPrev?'54':'92')+'px;font-weight:900;color:rgba(232,93,37,.10);letter-spacing:6px;white-space:nowrap;pointer-events:none;z-index:0}'
+   +'.cab{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding-bottom:10px;border-bottom:2px solid #e85d25}'
+   +'.emp{display:flex;gap:12px;align-items:center}.emp img{height:58px}.emp b{font-size:14px;display:block}.emp div{line-height:1.45;color:#4a4f5a}'
+   +'.doc{text-align:right}.doc h1{margin:0;font-size:22px;letter-spacing:1px;color:#13161e}.doc .nro{font-size:16px;font-weight:700;color:#e85d25;margin-top:2px}'
+   +'.copia{display:inline-block;margin-top:6px;padding:4px 14px;border-radius:4px;font-weight:800;letter-spacing:2px;font-size:12px;'
+     +(esCopia?'border:2px solid #e85d25;color:#e85d25':esPrev?'border:2px dashed #888;color:#666':'background:#e85d25;color:#fff')+'}'
+   +'.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}.box{border:1px solid #d9dce1;border-radius:6px;padding:9px 11px;position:relative;z-index:1}'
+   +'.box h3{margin:0 0 6px;font-size:9.5px;letter-spacing:1.5px;color:#e85d25;text-transform:uppercase}.box p{margin:2px 0;line-height:1.45}.lbl{color:#6b7180}'
+   +'.ref{display:flex;gap:18px;flex-wrap:wrap;padding:7px 11px;background:#f4f5f7;border-radius:6px;margin-bottom:10px;position:relative;z-index:1}'
+   +'table{width:100%;border-collapse:collapse;position:relative;z-index:1}th{background:#13161e;color:#fff;font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;padding:6px 7px;text-align:left}'
+   +'td{padding:6px 7px;border-bottom:1px solid #e3e5e9;vertical-align:top}.c{text-align:center}.r{text-align:right;white-space:nowrap}.esp{color:#6b7180;font-size:10px;margin-top:2px}'
+   +'.tot{display:flex;justify-content:flex-end;margin-top:8px;position:relative;z-index:1}.tot table{width:62mm}.tot td{border:none;padding:3px 7px}.tot .g td{font-size:14px;font-weight:800;border-top:2px solid #13161e;padding-top:6px}'
+   +'.cond{margin-top:12px;font-size:9.8px;color:#3a3f4a;position:relative;z-index:1}.cond ol{margin:4px 0 0 16px;padding:0}.cond li{margin:2px 0}'
+   +'.firmas{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:34px;position:relative;z-index:1}.firma{border-top:1px solid #1f2228;padding-top:5px;text-align:center;font-size:10px}'
+   +'.pie{margin-top:16px;padding-top:7px;border-top:1px solid #d9dce1;font-size:9.5px;color:#4a4f5a;display:flex;justify-content:space-between;gap:10px;position:relative;z-index:1}'
+   +'.pie b{color:#e85d25}@media print{.no-print{display:none!important}}'
+   +'.barra{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;padding:10px 14px;background:#13161e;border-bottom:3px solid #e85d25;font-family:Arial,sans-serif}'
+   +'.barra button{padding:8px 16px;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px}'
+   +'</style></head><body>'
+   +'<div class="barra no-print"><span style="color:#fff;font-weight:700;font-size:13px">'+E(o.num_oc)+' · '+E(copia)+'</span>'
+     +'<button onclick="window.print()" style="margin-left:auto;background:#e85d25;color:#fff">🖨 Imprimir / Guardar PDF</button>'
+     +'<button onclick="window.close()" style="background:#2a2f3a;color:#e6e8ec">Cerrar</button></div>'
+   +(marca?'<div class="marca">'+marca+'</div>':'')
+   +'<div class="hoja">'
+   +'<div class="cab"><div class="emp">'+(logo?'<img src="'+logo+'" alt="Nielsen">':'')+'<div><b>'+E(OC_EMPRESA.razon)+'</b>'
+     +'CUIT '+E(OC_EMPRESA.cuit)+' · '+E(OC_EMPRESA.iva)+'<br>'+(OC_EMPRESA.domicilio?E(OC_EMPRESA.domicilio)+' · ':'')+E(OC_EMPRESA.localidad)
+     +'<br>'+E(OC_EMPRESA.area)+' · '+E(OC_EMPRESA.email)+'</div></div>'
+   +'<div class="doc"><h1>ORDEN DE COMPRA</h1><div class="nro">N° '+E(o.num_oc)+'</div><div>Fecha: '+_ocFecha(o.fecha_emision||o.fecha)+'</div><div class="copia">'+E(copia)+'</div></div></div>'
+   +'<div class="grid"><div class="box"><h3>Proveedor</h3><p><b>'+E(o.proveedor||'—')+'</b></p>'
+     +'<p><span class="lbl">CUIT:</span> '+E(o.proveedor_cuit||prov.cuit||'—')+'</p>'
+     +((prov.dir)?'<p><span class="lbl">Domicilio:</span> '+E(prov.dir)+'</p>':'')
+     +'<p><span class="lbl">Contacto:</span> '+E(o.proveedor_contacto||prov.contacto||'—')+'</p>'
+     +'<p><span class="lbl">Correo / tel.:</span> '+E([o.proveedor_email||prov.email,o.proveedor_tel||prov.tel].filter(Boolean).join(' · ')||'—')+'</p></div>'
+   +'<div class="box"><h3>Condiciones de la compra</h3>'
+     +'<p><span class="lbl">Condición de pago:</span> '+E(o.condicion_pago||'—')+'</p>'
+     +'<p><span class="lbl">Plazo de entrega:</span> '+E(o.plazo_entrega||'—')+'</p>'
+     +'<p><span class="lbl">Lugar de entrega:</span> '+E(o.lugar_entrega||'Base San Juan · Depósito Nielsen')+'</p>'
+     +'<p><span class="lbl">Moneda:</span> '+E(o.moneda==='USD'?'Dólares estadounidenses':'Pesos argentinos')+'</p></div></div>'
+   +'<div class="ref"><span><span class="lbl">Solicitud(es):</span> <b>'+E(scs||'—')+'</b></span><span><span class="lbl">Comparativa:</span> <b>'+E(o.num_comp||'—')+'</b></span>'
+     +'<span><span class="lbl">Vía:</span> <b>'+E({COMPARATIVA:'Cuadro comparativo',DIRECTA:'Compra directa',URGENCIA:'Urgencia'}[o.via]||o.via||'—')+'</b></span></div>'
+   +'<table><thead><tr><th class="c" style="width:6%">#</th><th>Descripción</th><th class="r" style="width:9%">Cant.</th><th class="c" style="width:8%">Unidad</th>'
+     +(conPrecio?'<th class="r" style="width:15%">P. unit. s/IVA</th><th class="c" style="width:7%">IVA</th><th class="r" style="width:16%">Subtotal s/IVA</th>':'')+'</tr></thead><tbody>'
+     +(filas||'<tr><td colspan="'+(conPrecio?7:4)+'" class="c" style="color:#888">Según cotización adjudicada</td></tr>')
+     +(conPrecio&&flete?'<tr><td class="c">—</td><td>Flete</td><td class="r">1</td><td class="c">servicio</td><td class="r">'+_ocFmt(flete,o.moneda)+'</td><td class="c">21 %</td><td class="r">'+_ocFmt(flete,o.moneda)+'</td></tr>':'')
+   +'</tbody></table>'
+   +'<div class="tot"><table>'+(conPrecio?'<tr><td class="lbl">Neto</td><td class="r">'+_ocFmt(neto,o.moneda)+'</td></tr>'
+     +Object.keys(ivas).sort().map(t=>'<tr><td class="lbl">IVA '+t+' %</td><td class="r">'+_ocFmt(ivas[t],o.moneda)+'</td></tr>').join(''):'')
+     +'<tr class="g"><td>TOTAL</td><td class="r">'+_ocFmt(total,o.moneda)+'</td></tr></table></div>'
+   +'<div class="cond"><b>Condiciones generales</b><ol>'
+     +'<li>La factura y el remito deben indicar el número de esta orden de compra.</li>'
+     +'<li>Sólo se reconocen los bienes y servicios detallados en esta orden, en las cantidades y precios indicados.</li>'
+     +'<li>Ninguna compra se realiza sin orden de compra autorizada. Nielsen no se hace responsable por gastos no autorizados.</li>'
+     +'<li>Las entregas se reciben con remito y se controlan contra esta orden; los faltantes o diferencias se reclaman al proveedor.</li>'
+     +'<li>Cualquier cambio de precio, cantidad o plazo debe ser aceptado por escrito por Compras y Abastecimiento.</li></ol></div>'
+   +'<div class="firmas"><div class="firma">Compras y Abastecimiento<br><span class="lbl">Emisión</span></div>'
+     +'<div class="firma">'+E(o.autorizado_por||'—')+'<br><span class="lbl">Autorización · '+E(aut)+(o.autorizado_en?' · '+_ocFecha(o.autorizado_en):'')+'</span></div></div>'
+   +'<div class="pie"><span><b>'+E(copia)+'</b> · '+pie.replace(/^[A-ZÁÉÍÓÚ ·]+ · /,'')+'</span><span>Original, duplicado y triplicado como máximo</span></div>'
+   +'</div><scr'+'ipt>window.addEventListener("load",function(){setTimeout(function(){try{window.print()}catch(e){}},600)})</scr'+'ipt></body></html>';
+}
+
+// Abre la impresión; si el navegador bloquea las ventanas emergentes, imprime desde un marco oculto
+function _ocImprimirDoc(html, nombre){
+  const w=window.open('','_blank');
+  if(w && w.document){ w.document.open(); w.document.write(html); w.document.close(); return; }
+  try{
+    const f=document.createElement('iframe'); f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0';
+    document.body.appendChild(f); const d=f.contentWindow.document; d.open(); d.write(html.replace(new RegExp('<scr'+'ipt>[\\s\\S]*?</scr'+'ipt>'),'')); d.close();
+    setTimeout(()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){} setTimeout(()=>{ try{document.body.removeChild(f);}catch(e){} },60000); },900);
+  }catch(e){ showToast('Permití las ventanas emergentes para imprimir la orden','error'); }
+}
+
 async function renderOC(){
   const cont=document.getElementById('oc-lista'); if(!cont) return;
   if(!ocData.length){ cont.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">⏳ Cargando órdenes...</div>'; await cargarOC(); }
@@ -6280,7 +6493,8 @@ async function renderOC(){
       +'<td style="padding:8px 11px;text-align:right;font-weight:700">'+(o.moneda==='USD'?'USD ':'$')+_ocN(o.total)+'</td>'
       +'<td style="padding:8px 11px">'+aut+'</td>'
       +'<td style="padding:8px 11px"><span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:999px;background:'+E.col+'22;color:'+E.col+'">'+E.lbl+'</span>'
-        +(o.estado==='RECIBIDA'&&o.recepcion_completa===false?'<div style="font-size:9.5px;color:var(--yellow)">parcial</div>':'')+'</td>'
+        +(o.estado==='RECIBIDA'&&o.recepcion_completa===false?'<div style="font-size:9.5px;color:var(--yellow)">parcial</div>':'')
+        +((Number(o.copias_emitidas)||0)?'<div style="font-size:9.5px;color:var(--muted)">🖨 '+['','original','original + duplicado','original + dup. + trip.'][Math.min(3,Number(o.copias_emitidas))]+'</div>':'')+'</td>'
       +'<td style="padding:8px 11px;text-align:right;white-space:nowrap">'
         +'<button onclick="verOC(\''+_ocE(o.num_oc)+'\')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:10.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">👁 Ver</button>'
       +'</td></tr>';
@@ -6308,8 +6522,14 @@ function verOC(numOC){
   const btn=(txt,fn,bg)=>'<button onclick="'+fn+'" style="padding:8px 14px;border-radius:8px;border:none;background:'+bg+';color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--ff);margin-right:6px;margin-top:6px">'+txt+'</button>';
   let acciones='';
   if(esModoEditor()){
-    if(o.estado==='BORRADOR' && o.estado_aut==='APROBADA') acciones+=btn('📤 Emitir','_ocCambiarEstado(\''+numOC+'\',\'EMITIDA\')','#60a5fa');
-    if(o.estado==='BORRADOR' && o.estado_aut==='PENDIENTE') acciones+=btn('📧 Solicitar autorización','solicitarAutOC(\''+numOC+'\')','#2f9e6b');
+    const nEm=Number(o.copias_emitidas)||0, autOk=_ocAutorizada(o), viva=!['ANULADA','RECHAZADA','STANDBY'].includes(o.estado);
+    if(!autOk && o.estado==='BORRADOR'){
+      if(o.nivel_aut==='COMPRAS' || !o.nivel_aut) acciones+=btn('✓ Autorizar (Compras)','ocAutorizarCompras(\''+numOC+'\')','#16a34a');
+      if(o.nivel_aut!=='COMPRAS') acciones+=btn('📧 Solicitar autorización','solicitarAutOC(\''+numOC+'\')','#2f9e6b');
+    }
+    acciones+=btn('👁 Vista previa','ocVistaPrevia(\''+numOC+'\')','#4b5563');
+    if(autOk && viva && nEm<3) acciones+=btn('🖨 Emitir '+OC_COPIAS[nEm],'ocEmitir(\''+numOC+'\')', nEm===0?'#e85d25':'#9a3412');
+    if(nEm>=3) acciones+='<span style="display:inline-block;margin:6px 6px 0 0;padding:8px 12px;border-radius:8px;border:1px dashed var(--border);color:var(--muted);font-size:12px">Límite alcanzado: original, duplicado y triplicado emitidos</span>';
     if(o.estado==='EMITIDA')    acciones+=btn('✉️ Marcar enviada','_ocCambiarEstado(\''+numOC+'\',\'ENVIADA\')','#8b5cf6');
     if(o.estado==='ENVIADA')    acciones+=btn('✓ Confirmada por el proveedor','_ocCambiarEstado(\''+numOC+'\',\'CONFIRMADA\')','#06b6d4');
     if(['EMITIDA','ENVIADA','CONFIRMADA'].includes(o.estado)) acciones+=btn('📦 Registrar recepción','ocRegistrarRecepcion(\''+numOC+'\')','#22c55e');
@@ -6335,6 +6555,10 @@ function verOC(numOC){
     + dato('Autorizada por', o.autorizado_por)
     + dato('Recibida el', o.recibida_en ? (o.recibida_en + (o.recepcion_completa===false?' (parcial)':' (completa)')) : '')
     + dato('Observaciones', o.recepcion_obs)
+    + ((Array.isArray(o.emisiones)&&o.emisiones.length)?('<div style="margin-top:12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:5px">Emisiones del documento</div>'
+        +o.emisiones.map(x=>'<div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">'
+          +'<span style="flex:none;font-size:10px;font-weight:800;padding:2px 9px;border-radius:999px;'+(x.copia==='ORIGINAL'?'background:var(--or);color:#fff':'border:1px solid var(--or);color:var(--or)')+'">'+_ocE(x.copia)+'</span>'
+          +'<span style="color:var(--muted)">'+_ocFecha(x.fecha,true)+'</span><span style="flex:1">'+(x.motivo?('Motivo: '+_ocE(x.motivo)):'—')+'</span></div>').join('')):'')
     + (filas?('<div style="margin-top:12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:5px">Ítems</div>'
         +'<table style="width:100%;border-collapse:collapse;font-size:12px">'+filas+'</table>'):'')
     + (acciones?('<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'+acciones+'</div>'):''),
@@ -6371,9 +6595,11 @@ async function generarOCdesdeCCP(numComp){
   const ya=(ocData||[]).find(o=>o.num_comp===numComp && !['ANULADA','RECHAZADA'].includes(o.estado));
   if(ya && !confirm('La comparativa '+numComp+' ya tiene la orden '+ya.num_oc+'.\n\n¿Emitir otra igual?')) return;
 
-  const items=_jparse(comp.items,[]).map(it=>({
+  const _provsCCP=_jparse(comp.proveedores,[]);
+  const _ganCCP=_provsCCP.find(p=>_parNormProv(p.name)===_parNormProv(comp.proveedor_elegido))||{};
+  const items=_jparse(comp.items,[]).map((it,_i)=>({
     desc: it.desc||'', cant: it.qty||1, unidad: it.unit||'u',
-    precio: 0, iva: 21, subtotal: 0
+    precio: Number(((_ganCCP.prices)||[])[_i])||0, iva: 21, subtotal: 0, espec: it.spec||''
   }));
   const total=Number(comp.precio_elegido)||0;
   const tc=Number(comp.tc_usado)||0;
@@ -6386,7 +6612,9 @@ async function generarOCdesdeCCP(numComp){
     scs: comp.num_sc ? String(comp.num_sc).split('+').map(x=>x.trim()).filter(Boolean) : [],
     via: 'COMPARATIVA',
     proveedor: comp.proveedor_elegido||'',
-    condicion_pago: comp.condicion_pago||'',
+    condicion_pago: comp.condicion_pago||_ganCCP.paymentTerms||'',
+    proveedor_cuit: _ganCCP.cuit||'', proveedor_contacto: _ganCCP.contact||'', proveedor_email: _ganCCP.email||'', proveedor_tel: _ganCCP.phone||'',
+    plazo_entrega: _ganCCP.deliveryDays||'', flete: Number(_ganCCP.shippingCost)||null,
     moneda: comp.divisa||'ARS',
     items: items,
     total: total,
@@ -6488,6 +6716,7 @@ async function cargarOC(){
       {headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
     if(!r.ok) throw new Error('HTTP '+r.status);
     ocData=await r.json();
+    ocData.forEach(o=>{ const ea=String(o.estado_autorizacion||'').toUpperCase(); if(ea && o.autorizacion==='REQUERIDA' && ea!==o.estado_aut) o.estado_aut=ea; });
     return true;
   }catch(e){ console.warn('cargar OC:', e.message); ocData=ocData||[]; return false; }
 }
