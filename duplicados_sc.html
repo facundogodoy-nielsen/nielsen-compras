@@ -50,6 +50,22 @@
 </style>
 </head>
 <body>
+<!-- Herramienta de mantenimiento: acceso sólo con la clave de Administrador (v260) -->
+<div id="mnt-gate" style="position:fixed;inset:0;z-index:99999;background:#0e0c0a;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif">
+  <div style="background:#161310;border:1px solid #3d3629;border-radius:14px;padding:26px 28px;max-width:420px;width:92%;color:#ede8df;text-align:center">
+    <div style="font-size:28px;margin-bottom:6px">🔒</div>
+    <div style="font-weight:800;color:#e85d25;letter-spacing:.5px;margin-bottom:6px">HERRAMIENTA DE MANTENIMIENTO</div>
+    <div style="font-size:13px;color:#a89880;margin-bottom:14px">Detecta solicitudes duplicadas.</div>
+    <input id="mnt-pin" type="password" inputmode="numeric" placeholder="Clave de Administrador" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #3d3629;background:#1f1b16;color:#ede8df;font-size:15px;text-align:center">
+    <button id="mnt-ok" style="margin-top:10px;width:100%;padding:10px;border-radius:8px;border:none;background:#e85d25;color:#fff;font-weight:800;cursor:pointer">Ingresar</button>
+    <a href="/" style="display:block;margin-top:12px;color:#a89880;font-size:12px">← Volver al Centro de Control</a>
+  </div>
+</div>
+<script>(function(){ try{ if(sessionStorage.getItem('nielsen_mnt_ok')==='1'){ document.getElementById('mnt-gate').remove(); return; } }catch(e){}
+  function ok(){ var v=document.getElementById('mnt-pin').value; if(v==='1102'){ try{ sessionStorage.setItem('nielsen_mnt_ok','1'); }catch(e){} document.getElementById('mnt-gate').remove(); } else { alert('Clave incorrecta'); } }
+  document.getElementById('mnt-ok').onclick=ok; document.getElementById('mnt-pin').onkeydown=function(e){ if(e.key==='Enter') ok(); };
+})();</script>
+
 <header>
   <h1>🔎 Solicitudes de Compra duplicadas</h1>
   <div class="sub">Detecta solicitudes distintas que piden exactamente los mismos artículos.</div>

@@ -1662,7 +1662,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="cta-arrow">↗</span>
     </button>
     <button class="sidebar-btn" onclick="showView('panel', this)">
-      <span class="sb-icon">📊</span> Panel de Control
+      <span class="sb-icon">📊</span> Panel de Compras
     </button>
     <button class="sidebar-btn" onclick="showView('historial', this)">
       <span class="sb-icon">📋</span> Historial de SC
@@ -1677,7 +1677,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="sb-icon">📋</span> Historial Pedidos
     </button>
     <button class="sidebar-btn" onclick="showView('kanban', this)">
-      <span class="sb-icon">🗂</span> Vista Kanban
+      <span class="sb-icon">🗂</span> Kanban de SC
     </button>
   </div></div><!-- /inner /body -->
   </div><!-- /section -->
@@ -1700,13 +1700,13 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <span class="cta-arrow">↗</span>
     </button>
     <button class="sidebar-btn" onclick="showView('panel-pa', this)">
-      <span class="sb-icon">📊</span> Panel de Control
+      <span class="sb-icon">📊</span> Panel de Abastecimiento
     </button>
     <button class="sidebar-btn" onclick="showView('historial-pa', this)">
       <span class="sb-icon">📋</span> Historial de PA
     </button>
     <button class="sidebar-btn" onclick="showView('kanban-pa', this)">
-      <span class="sb-icon">🗂</span> Vista Kanban
+      <span class="sb-icon">🗂</span> Kanban de PA
     </button>
     <button class="sidebar-btn" onclick="showView('aprov', this)">
       <span class="sb-icon">🚚</span> Aprovisionamientos
@@ -2360,7 +2360,8 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 
 
 
-<div class="pg-header"><div class="pg-title">GESTIÓN DE <span>PROYECTOS</span></div><div class="pg-sub">Proyectos de obra: presupuesto por rubros, planos, etapas y cronograma — sincronizado en la nube</div></div><div class="proy-container">
+<div class="pg-header"><div class="pg-title">GESTIÓN DE <span>PROYECTOS</span></div><div class="pg-sub">Proyectos de obra: presupuesto por rubros, planos, etapas y cronograma — sincronizado en la nube</div>
+      <button onclick="window.open('gestion_proyectos','_blank')" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--or);background:rgba(232,93,37,.1);color:var(--or);font-weight:700;cursor:pointer;font-family:var(--ff)">🏗 Abrir Gestión de Proyectos: áreas, avance y cronograma ↗</button></div><div class="proy-container">
 
   <!-- ============ VISTA LISTADO ============ -->
   <div id="viewList">
@@ -4970,7 +4971,7 @@ async function _circCargar(force){
     if(r.ok) _circCache.comps=await r.json();
   }catch(e){}
   try{
-    const r2=await fetch(_SB_URL+'/rest/v1/ordenes_compra?select=num_oc,num_comp,scs,estado,estado_aut,recibida_en&limit=1000',
+    const r2=await fetch(_SB_URL+'/rest/v1/ordenes_compra?select=num_oc,num_comp,scs,estado,estado_aut,recibida_en,estado_factura,via,regularizar,items&limit=1000',
       {headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
     if(r2.ok) _circCache.ocs=await r2.json();
   }catch(e){}
@@ -5001,6 +5002,7 @@ function circuitoDeSC(numSC){
   if(vivas.length && vivas.every(o=>o.estado==='CERRADA')) return {paso:'Cerrada', comps, ocs, comp:aprobada, oc:vivas[0]};
   if(vivas.length && vivas.every(recib))                   return {paso:'Recibida', comps, ocs, comp:aprobada, oc:vivas[0]};
   if(vivas.some(o=>o.estado==='PARCIAL'||recib(o)))       return {paso:'Recepción parcial', comps, ocs, comp:aprobada, oc:conSaldo||vivas[0]};
+  if(ocViva && vivas.every(o=>o.estado==='BORRADOR'))     return {paso:'OC en borrador', comps, ocs, comp:aprobada, oc:ocViva};
   if(ocViva)                                               return {paso:'OC emitida', comps, ocs, comp:aprobada, oc:conSaldo||ocViva};
   if(aprobada)                             return {paso:'Autorizada', comps, ocs, comp:aprobada, oc:null};
   if(comps.length)                         return {paso:'En comparación', comps, ocs, comp:comps[0], oc:null};
@@ -5008,7 +5010,7 @@ function circuitoDeSC(numSC){
 }
 
 const CIRC_COLOR = {'Solicitada':'#6b7280','En comparación':'#60a5fa','Autorizada':'#8b5cf6',
-  'OC emitida':'#06b6d4','Recepción parcial':'#f59e0b','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308','Rechazada':'#ef4444'};
+  'OC en borrador':'#3e7cb1','OC emitida':'#06b6d4','Recepción parcial':'#f59e0b','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308','Rechazada':'#ef4444'};
 
 function circuitoBadge(numSC){
   const c=circuitoDeSC(numSC);
@@ -5026,7 +5028,10 @@ function circuitoAccion(numSC){
   if(!esModoEditor()) return '';
   switch(c.paso){
     case 'Solicitada':
-      return b('📊 Crear CCP','crearCCPdesdeSC(\''+_ocE(numSC)+'\')','#3e7cb1','Armar la comparativa de presupuestos');
+      return b('📊 Crear CCP','crearCCPdesdeSC(\''+_ocE(numSC)+'\')','#3e7cb1','Armar la comparativa de presupuestos')
+        + ' ' + b('⚡ OC directa','ocDirectaDesdeSC(\''+_ocE(numSC)+'\')','#e85d25','Generar la orden de compra sin comparativa (compra menor, proveedor único, urgencia...)');
+    case 'OC en borrador':
+      return b('📄 Ver OC','showView(\'ordenes\',null);setTimeout(()=>verOC(\''+_ocE(c.oc?c.oc.num_oc:'')+'\'),300)','#3e7cb1','Autorizar y emitir la orden');
     case 'En comparación':
       return b('📧 Autorizar','irAComparativa(\''+_ocE(c.comp?c.comp.num_comp:'')+'\')','#2f9e6b','Solicitar la autorización de la comparativa');
     case 'Autorizada':
@@ -5034,8 +5039,10 @@ function circuitoAccion(numSC){
     case 'OC emitida':
     case 'Recepción parcial':
       return b('📦 Recepción','ocRegistrarRecepcion(\''+_ocE(c.oc?c.oc.num_oc:'')+'\')','#22c55e','Registrar el remito en la solicitud');
-    case 'Recibida':
-      return b('🔒 Cerrar','_ocCambiarEstado(\''+_ocE(c.oc?c.oc.num_oc:'')+'\',\'CERRADA\')','#16a34a','Cerrar el expediente');
+    case 'Recibida': {
+      const _o=(c.oc||{}); const _fOk=['CONFORME','LIBERADA'].includes(_o.estado_factura||'');
+      return _fOk ? b('🔒 Cerrar','ocCerrar(\''+_ocE(_o.num_oc||'')+'\')','#16a34a','Cerrar el expediente')
+                  : b('🧾 Factura','ocRegistrarFactura(\''+_ocE(_o.num_oc||'')+'\')','#7c3aed','Verificar la factura contra la orden y los remitos'); }
     case 'Stand by':
       return b('▶️ Retomar','ocReactivar(\''+_ocE(c.oc?c.oc.num_oc:'')+'\')','#eab308','Reactivar lo postergado');
     default: return '';
@@ -6145,11 +6152,12 @@ async function renderExpediente(){
       +'</div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
         + eslabon('📝 Solicitud', true, _ocE(sc.fecha||''))
-        + eslabon('📊 Comparativa', !!comp, comp?_ocE(comp.num_comp):'—')
-        + eslabon('✓ Autorización', comp&&String(comp.estado_autorizacion||'').toUpperCase()==='APROBADA',
-            comp? (String(comp.estado_autorizacion||'').toUpperCase()==='APROBADA'?_ocE(String(comp.autorizado_en||'').slice(0,10)):_ocE(comp.estado_autorizacion||'pendiente')) : '—')
+        + eslabon('📊 Comparativa', !!comp || _vivas.some(o=>o.via!=='COMPARATIVA'), comp?_ocE(comp.num_comp):(_vivas.some(o=>o.via!=='COMPARATIVA')?('Directa · '+_ocE(String(OCD_MOTIVOS[(_vivas.find(o=>o.via!=='COMPARATIVA')||{}).excepcion_tipo]||'excepción').split(':')[0].split(' (')[0])):'—'))
+        + eslabon('✓ Autorización', (comp&&String(comp.estado_autorizacion||'').toUpperCase()==='APROBADA') || (_vivas.length>0 && _vivas.every(o=>_ocAutorizada(o))), (comp? (comp? (String(comp.estado_autorizacion||'').toUpperCase()==='APROBADA'?_ocE(String(comp.autorizado_en||'').slice(0,10)):_ocE(comp.estado_autorizacion||'pendiente')) : '—') : ((_vivas.length>0 && _vivas.every(o=>_ocAutorizada(o)))? _ocE((_vivas[0].autorizacion==='PROPIA'?'Compras · ':'')+(_vivas[0].autorizado_por||'Autorizada')) : '—')))
         + eslabon(_vivas.length>1?'📄 Órdenes de compra':'📄 Orden de compra', _vivas.length>0, _ocTxt)
         + eslabon('📦 Recepción', _recOk, _recTxt)
+        + eslabon('🧾 Factura', _vivas.length>0 && _vivas.every(o=>['CONFORME','LIBERADA'].includes(o.estado_factura||'')),
+            !_vivas.length?'—':(_vivas.some(o=>o.estado_factura==='BLOQUEADA')?'Bloqueada para pago':(_vivas.every(o=>['CONFORME','LIBERADA'].includes(o.estado_factura||''))?'Conforme':(_vivas.some(o=>o.estado_factura)?'Parcial':'Pendiente'))))
       +'</div></div>';
   }).join('');
 }
@@ -6177,34 +6185,7 @@ async function solicitarAutOC(numOC){
 }
 
 // Nueva OC directa (sin comparativa) — exige justificar la excepción
-async function nuevaOCDirecta(){
-  if(!esModoEditor()){ showToast('Solo el Administrador puede emitir OC','error'); return; }
-  const prov=prompt('Proveedor:');
-  if(prov===null||!String(prov).trim()) return;
-  const montoTxt=prompt('Monto total (con IVA):');
-  if(montoTxt===null) return;
-  const total=parseFloat(String(montoTxt).replace(/[^0-9.,]/g,'').replace(',','.'))||0;
-  const tipo=prompt('Motivo de no hacer comparativa:\n\n1 = Proveedor único\n2 = Urgencia operativa\n3 = Acuerdo vigente','2');
-  if(tipo===null) return;
-  const tipos={'1':'PROVEEDOR_UNICO','2':'URGENCIA','3':'ACUERDO_VIGENTE'};
-  const just=prompt('Justificación (obligatoria):');
-  if(just===null||!String(just).trim()){ showToast('La justificación es obligatoria','error'); return; }
-  await cargarOC();
-  const esUrg = tipos[String(tipo).trim()]==='URGENCIA';
-  const oc={
-    num_oc: await _ocNuevoNumero(), fecha:_ocHoy(), via: esUrg?'URGENCIA':'DIRECTA',
-    proveedor:String(prov).trim(), total:total, moneda:'ARS', scs:[], items:[],
-    excepcion_tipo: tipos[String(tipo).trim()]||'DIRECTA', excepcion_just:String(just).trim(),
-    autorizacion:'REQUERIDA', estado_aut:'PENDIENTE', estado: esUrg?'EMITIDA':'BORRADOR',
-    regularizar: esUrg,
-    emitida_por:(typeof _usuarioActual!=='undefined'?_usuarioActual:'Compras')
-  };
-  if(await _ocGuardar(oc)){
-    ocData.unshift(oc);
-    renderOC();
-    showToast(esUrg? ('⚠️ '+oc.num_oc+' emitida por urgencia — queda pendiente de regularizar') : ('📄 '+oc.num_oc+' creada'),'ok');
-  }
-}
+/* (orden directa anterior reemplazada por la orden directa con ítems — v260) */
 
 function exportarOC(){
   if(!(ocData||[]).length){ showToast('No hay órdenes para exportar','error'); return; }
@@ -6341,7 +6322,7 @@ async function ocEmitir(numOC){
   if(!esModoEditor()){ showToast('Solo el Administrador puede emitir órdenes de compra','error'); return; }
   const local=(ocData||[]).find(x=>x.num_oc===numOC); if(!local) return;
   const o=(await _ocFresca(numOC)) || local;           // siempre la versión de la base
-  if(!_ocAutorizada(o)){ showToast('La orden '+numOC+' todavía no está autorizada','error'); return; }
+  if(!_ocAutorizada(o) && !(o.via==='URGENCIA' && o.regularizar)){ showToast('La orden '+numOC+' todavía no está autorizada','error'); return; }
   if(['ANULADA','RECHAZADA','STANDBY'].includes(o.estado)){ showToast('No se puede emitir una orden '+(OC_ESTADOS[o.estado]||{lbl:o.estado}).lbl.toLowerCase(),'error'); return; }
   const n=Number(o.copias_emitidas)||0;
   if(n>=3){ showToast('Límite alcanzado: esta orden ya se emitió como original, duplicado y triplicado','error'); return; }
@@ -6541,11 +6522,14 @@ async function _recepCargar(numSC){
 function _recepEstado(sc, ocsSC, recs){
   const numSC=sc.numSC||sc.num||'';
   const lineas=_ccScItems(sc.items);
+  recs=(recs||[]).filter(r=>!r.anulado);
   const filas=lineas.map((l,i)=>({i, desc:l.desc, unidad:l.unit, pedido:l.qty, recibido:0, oc:null, ocItem:null}));
   ocsSC.forEach(o=>{ (Array.isArray(o.items)?o.items:_jparse(o.items,[])).forEach(it=>{
     const k=_ocItemScIdx(it,numSC,lineas); if(k>=0 && filas[k] && !filas[k].oc){ filas[k].oc=o; filas[k].ocItem=it; } }); });
   recs.forEach(r=>(Array.isArray(r.items)?r.items:_jparse(r.items,[])).forEach(x=>{ const f=filas[Number(x.sc_i)]; if(f) f.recibido+=Number(x.cant)||0; }));
-  filas.forEach(f=>{ f.recibido=Math.round(f.recibido*1000)/1000; f.pendiente=Math.max(0,Math.round((f.pedido-f.recibido)*1000)/1000); });
+  filas.forEach(f=>{ f.recibido=Math.round(f.recibido*1000)/1000; f.pendiente=Math.max(0,Math.round((f.pedido-f.recibido)*1000)/1000);
+    const ef=(f.oc&&f.oc.entrega_final&&f.oc.entrega_final.items)||[];
+    if(f.pendiente>0 && ef.some(x=>x.sc===numSC && Number(x.sc_i)===f.i)){ f.faltante=f.pendiente; f.pendiente=0; f.cerrado=true; } });
   return filas;
 }
 
@@ -6606,13 +6590,19 @@ async function _scRecepMontar(sc){
     +filas.map(f=>{ const ok=f.pendiente===0&&f.pedido>0, exc=f.recibido>f.pedido;
       return '<tr>'+td(f.i+1,'color:var(--muted)')+td(_ocE(f.desc))+td(f.pedido+' '+_ocE(f.unidad),'white-space:nowrap')
         +td('<b style="color:'+(ok?'#22c55e':(f.recibido>0?'#f59e0b':'var(--text)'))+'">'+f.recibido+'</b>'+(exc?' <span style="color:var(--red)" title="Se recibió más de lo pedido">⚠</span>':''),'white-space:nowrap')
-        +td(ok?'<span style="color:#22c55e">✓</span>':'<b>'+f.pendiente+'</b>','white-space:nowrap')
+        +td(f.cerrado?'<span style="color:var(--yellow)" title="Cerrado por entrega final">cerrado · faltan '+f.faltante+'</span>':(ok?'<span style="color:#22c55e">✓</span>':'<b>'+f.pendiente+'</b>'),'white-space:nowrap')
         +td(f.oc?('<span style="font-family:var(--fm);font-size:11.5px">'+_ocE(f.oc.num_oc)+'</span><div style="font-size:10.5px;color:var(--muted)">'+_ocE(f.oc.proveedor||'')+'</div>'):'<span style="color:var(--muted);font-size:11px">sin orden</span>')+'</tr>'; }).join('')
     +'</tbody></table></div>';
   if(recs.length){
     h+='<div style="padding:12px 14px 4px;font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)">Remitos registrados</div>'
       +'<div style="overflow-x:auto;padding:0 14px 8px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>'+th('Remito')+th('Fecha')+th('Proveedor')+th('Orden')+th('Detalle')+'</tr></thead><tbody>'
-      +recs.map(r=>'<tr>'+td('<b>'+_ocE(r.remito)+'</b>')+td(_ocE(String(r.fecha||'').split('-').reverse().join('/')),'white-space:nowrap')+td(_ocE(r.proveedor))+td(_ocE(r.num_oc),'font-family:var(--fm);font-size:11px')
+      +recs.map(r=>'<tr style="'+(r.anulado?'opacity:.5;text-decoration:line-through':'')+'">'+td('<b>'+_ocE(r.remito)+'</b>'
+          +(r.tipo==='DEVOLUCION'?' <span style="font-size:9.5px;font-weight:800;padding:1px 7px;border-radius:999px;background:#b4530933;color:#f59e0b;text-decoration:none">DEVOLUCIÓN</span>':'')
+          +(r.anulado?' <span style="font-size:9.5px;font-weight:800;padding:1px 7px;border-radius:999px;background:#ef444422;color:#f87171">ANULADO</span>':'')
+          +(r.recibido_por?'<div style="font-size:10.5px;color:var(--muted)">recibió '+_ocE(r.recibido_por)+'</div>':'')
+          +(r.anulado&&r.anulado_motivo?'<div style="font-size:10.5px;color:#f87171">'+_ocE(r.anulado_motivo)+'</div>':'')
+          +(!r.anulado&&esModoEditor()?'<div style="margin-top:4px">'+(r.tipo!=='DEVOLUCION'?'<button onclick="rcDevolucion(\''+_ocE(r.id)+'\',\''+_ocE(numSC)+'\')" style="padding:2px 8px;border-radius:6px;border:1px solid #b45309;background:none;color:#f59e0b;cursor:pointer;font-size:10.5px;margin-right:4px">↩ Devolución</button>':'')
+            +'<button onclick="rcAnular(\''+_ocE(r.id)+'\',\''+_ocE(numSC)+'\')" style="padding:2px 8px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:10.5px">✖ Anular</button></div>':''))+td(_ocE(String(r.fecha||'').split('-').reverse().join('/')),'white-space:nowrap')+td(_ocE(r.proveedor))+td(_ocE(r.num_oc),'font-family:var(--fm);font-size:11px')
         +td((Array.isArray(r.items)?r.items:_jparse(r.items,[])).map(x=>'<div>'+_ocE(x.cant)+' × '+_ocE(x.desc)+'</div>').join('')+(r.obs?'<div style="color:var(--muted);font-size:11px">'+_ocE(r.obs)+'</div>':''),'font-size:11.5px')+'</tr>').join('')
       +'</tbody></table></div>';
   }
@@ -6628,6 +6618,7 @@ async function _scRecepMontar(sc){
         +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">N° DE REMITO *</div><input id="rc-num" placeholder="Ej: 0003-00012345" style="width:100%;'+inp+'"></div>'
         +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">FECHA *</div><input id="rc-fecha" type="date" value="'+new Date().toISOString().slice(0,10)+'" style="width:100%;'+inp+'"></div>'
         +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">PROVEEDOR</div><input value="'+_ocE(o.proveedor||'')+'" disabled style="width:100%;'+inp+';opacity:.75"></div>'
+        +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">RECIBIDO POR *</div><input id="rc-quien" value="'+_ocE(_rcQuien())+'" style="width:100%;'+inp+'"></div>'
       +'</div>'
       +'<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'+th('Artículo')+th('Pendiente')+th('Cantidad recibida en este remito')+'</tr></thead><tbody>'
       +pend.map(f=>'<tr>'+td(_ocE(f.desc))+td(f.pendiente+' '+_ocE(f.unidad),'white-space:nowrap')
@@ -6643,6 +6634,7 @@ async function _scRecepMontar(sc){
   h+='</div>';
   box.innerHTML=h;
   _recepDif();
+  if(_scTieneOC(sc)) document.querySelectorAll('#modal-sc-body [onchange*="setRemitoDato"],#modal-sc-body [oninput*="setRemitoDato"]').forEach(el=>{ el.disabled=true; el.title='Con orden de compra, el remito se registra en Recepción'; el.style.opacity='.5'; });
   if(foco){ setTimeout(()=>{ box.scrollIntoView({behavior:'smooth',block:'start'}); box.style.boxShadow='0 0 0 2px var(--or)'; setTimeout(()=>box.style.boxShadow='',1800); },150); window._recepFoco=null; }
 }
 // Muestra al instante si la cantidad cargada coincide con lo pendiente
@@ -6673,6 +6665,10 @@ async function _recepGuardar(numSC){
   // Releer desde la base para validar contra lo pendiente real (por si otro usuario cargó un remito)
   const rc=await _recepCargar(numSC);
   if(!rc.ok){ showToast(/recepciones/.test(rc.err||'')?'Falta crear la tabla: ejecutá SUPABASE_recepciones.sql':'No se pudo leer la recepción: '+(rc.err||''),'error'); return; }
+  const quien=String((document.getElementById('rc-quien')||{}).value||'').trim();
+  if(!quien){ showToast('Indicá quién recibió la mercadería','error'); return; }
+  try{ localStorage.setItem('nielsen_recibido_por',quien); }catch(e){}
+  rc.rows=(rc.rows||[]).filter(r=>!r.anulado);
   if(rc.rows.some(r=>_normTxt(r.remito)===_normTxt(remito) && _parNormProv(r.proveedor)===_parNormProv(o.proveedor))){
     showToast('El remito '+remito+' de '+o.proveedor+' ya está registrado','error'); return; }
   const ocsSC=(ocData||[]).filter(x=>RECEP_VIVAS.includes(x.estado) && ((Array.isArray(x.scs)&&x.scs.includes(numSC)) || (Array.isArray(x.items)?x.items:_jparse(x.items,[])).some(i=>i.sc===numSC)));
@@ -6686,7 +6682,7 @@ async function _recepGuardar(numSC){
   });
   if(error){ showToast(error,'error'); return; }
   if(!items.length){ showToast('Cargá al menos una cantidad recibida','error'); return; }
-  const reg={num_sc:numSC, num_oc:numOC, remito, fecha, proveedor:o.proveedor||'', items, obs:obs||null, creado_en:new Date().toISOString(), creado_por:_ocEmisor()};
+  const reg={num_sc:numSC, num_oc:numOC, remito, fecha, proveedor:o.proveedor||'', items, obs:obs||null, tipo:'RECEPCION', recibido_por:quien, creado_en:new Date().toISOString(), creado_por:_ocEmisor()};
   try{
     const r=await fetch(_SB_URL+'/rest/v1/recepciones',{method:'POST',headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=representation'},body:JSON.stringify(reg)});
     if(!r.ok) throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,120));
@@ -6705,14 +6701,22 @@ async function _recepPropagar(sc, recs, ocsSC){
   sc.itemsDetalle=sc.itemsDetalle||{};
   filas.forEach(f=>{
     const mios=[]; recs.forEach(r=>(Array.isArray(r.items)?r.items:_jparse(r.items,[])).forEach(x=>{ if(Number(x.sc_i)===f.i) mios.push({num:r.remito, fecha:r.fecha, cant:Number(x.cant)||0, oc:r.num_oc, proveedor:r.proveedor}); }));
-    if(!mios.length) return;
+    if(!mios.length){
+      const v=sc.itemsDetalle[f.i];
+      if(v && Array.isArray(v.remitos) && v.remitos.length && !v.entregaFinal){
+        const d0=sc.itemsDetalle[f.i]=Object.assign({},v);
+        ['remitos','remitoNum','remitoFecha','remitoProveedor','cantRecibida'].forEach(k=>delete d0[k]);
+        d0.cantidad=0; d0.estado='PRESUPUESTADO';
+      }
+      return;
+    }
     const d=sc.itemsDetalle[f.i]=Object.assign({}, sc.itemsDetalle[f.i]||{});
     const ult=mios[mios.length-1], it=f.ocItem||{};
     const pu=Number(it.precio_iva)||((Number(it.precio)||0)*(1+(it.iva!=null?Number(it.iva):21)/100));
     Object.assign(d,{ cantPedida:f.pedido, cantRecibida:f.recibido, cantidad:f.recibido, remitos:mios,
       remitoNum:mios.map(m=>m.num).join(' · '), remitoFecha:ult.fecha, remitoProveedor:ult.proveedor,
       proveedor:ult.proveedor, oc:ult.oc, precio:pu||d.precio||0, monto:pu? Math.round(pu*f.recibido*100)/100 : (d.monto||0),
-      estado: f.pendiente===0 ? 'COMPRADO' : 'RECIBIDO_PARCIAL' });
+      estado: (f.pendiente===0 || f.cerrado) ? 'COMPRADO' : 'RECIBIDO_PARCIAL' });
   });
   try{ await _saveItemDetalle(sc); }catch(e){ console.warn('detalle SC', e); }
   // 2) Estado de cada orden de compra
@@ -6732,6 +6736,464 @@ async function _recepPropagar(sc, recs, ocsSC){
   try{ renderHistorial(); }catch(e){}
   try{ const v=document.getElementById('view-expediente'); if(v&&v.classList.contains('active')) renderExpediente(); }catch(e){}
   try{ const v=document.getElementById('view-ordenes'); if(v&&v.classList.contains('active')) renderOC(); }catch(e){}
+}
+
+// ══════════════════════════════════════════════════════════════
+// ORDEN DE COMPRA DIRECTA — camino corto: Solicitud → Orden → Recepción → Cierre
+// Para compras que no necesitan cuadro comparativo. La orden queda vinculada a la
+// solicitud renglón por renglón, así la recepción, el expediente y los indicadores
+// funcionan igual que en el circuito completo. La excepción queda registrada.
+// ══════════════════════════════════════════════════════════════
+const OCD_MOTIVOS = {
+  MONTO_MENOR:      'Compra menor (menos de USD 200): no requiere comparativa',
+  PROVEEDOR_UNICO:  'Proveedor único / representante exclusivo',
+  REPUESTO_ORIGINAL:'Repuesto o marca original exigida por el equipo',
+  ACUERDO_VIGENTE:  'Precio acordado o acuerdo vigente con el proveedor',
+  URGENCIA:         'Urgencia operativa: se emite y se regulariza después',
+  OTRO:             'Otro motivo (detallar)'
+};
+let _tcCache=null;
+async function _ocTC(){
+  if(_tcCache && Date.now()-_tcCache.t<3600e3) return _tcCache.v;
+  let tc=0;
+  try{ const r=await fetch('/api/tc-bna?fecha='+new Date().toISOString().slice(0,10),{cache:'no-store'}); const j=await r.json(); tc=Number(j.venta||j.vendedor||j.tc||0); }catch(e){}
+  if(tc) _tcCache={t:Date.now(),v:tc};
+  return tc;
+}
+// Registro de precios: lo que se pagó antes por un artículo (de las órdenes de compra)
+function _precioHist(desc){
+  const d=_normTxt(desc); if(!d || d.length<4) return [];
+  const out=[];
+  (ocData||[]).filter(o=>!['ANULADA','RECHAZADA'].includes(o.estado)).forEach(o=>{
+    (Array.isArray(o.items)?o.items:_jparse(o.items,[])).forEach(it=>{
+      const x=_normTxt(it.desc_sc||it.desc); const p=Number(it.precio)||0; if(!x||!p) return;
+      if(x===d || (Math.min(x.length,d.length)>8 && (x.includes(d)||d.includes(x))))
+        out.push({precio:p, iva:(it.iva!=null?Number(it.iva):21), prov:o.proveedor||'', fecha:o.fecha||'', num_oc:o.num_oc, moneda:o.moneda||'ARS'});
+    });
+  });
+  return out.sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)));
+}
+function _precioHistTxt(desc, moneda){
+  const h=_precioHist(desc).filter(x=>x.moneda===(moneda||'ARS')); if(!h.length) return '';
+  const u=h[0], prom=h.reduce((a,x)=>a+x.precio,0)/h.length;
+  return 'Última compra: '+_ocFmt(u.precio,u.moneda)+' s/IVA · '+_ocE(u.prov)+' · '+_ocE(String(u.fecha).split('-').reverse().join('/'))+' ('+_ocE(u.num_oc)+')'
+    +(h.length>1?' · promedio de '+h.length+' compras: '+_ocFmt(prom,u.moneda):'');
+}
+
+// ── Abrir la orden directa ──
+async function ocDirectaDesdeSC(numSC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede generar órdenes de compra','error'); return; }
+  const sc=(scs||[]).find(s=>(s.numSC||s.num)===numSC); if(!sc){ showToast('No se encontró la solicitud '+numSC,'error'); return; }
+  await cargarOC();
+  _ocdAbrir(sc);
+}
+async function nuevaOCDirecta(){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede emitir OC','error'); return; }
+  await cargarOC();
+  _ocdAbrir(null);
+}
+let _ocd=null;
+function _ocdAbrir(sc){
+  const numSC=sc?(sc.numSC||sc.num):null;
+  const lineas=sc? _ccScItems(sc.items) : [{qty:1,unit:'u',desc:''},{qty:1,unit:'u',desc:''},{qty:1,unit:'u',desc:''}];
+  // Renglones de la SC que ya tienen orden de compra: no se vuelven a ordenar
+  const cubiertos=new Set();
+  if(numSC) (ocData||[]).filter(o=>!['ANULADA','RECHAZADA'].includes(o.estado)).forEach(o=>(Array.isArray(o.items)?o.items:_jparse(o.items,[])).forEach(it=>{ const k=_ocItemScIdx(it,numSC,lineas); if(k>=0) cubiertos.add(k); }));
+  _ocd={ numSC, sc, lineas, cubiertos, tc:0 };
+  let ov=document.getElementById('ocd-ov');
+  if(!ov){ ov=document.createElement('div'); ov.id='ocd-ov'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px 14px;overflow:auto'; document.body.appendChild(ov); }
+  const inp='padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)';
+  const lbl=t=>'<div style="font-size:10px;color:var(--muted);margin-bottom:3px;letter-spacing:.5px">'+t+'</div>';
+  const provs=[...new Set((provData||[]).map(p=>p.nombre).filter(Boolean))].sort();
+  const filas=lineas.map((l,i)=>{
+    const tiene=cubiertos.has(i);
+    return '<tr data-i="'+i+'" style="'+(tiene?'opacity:.45':'')+'">'
+      +'<td style="padding:6px"><input type="checkbox" class="ocd-inc" '+(tiene?'disabled':'checked')+' onchange="_ocdCalc()" style="accent-color:var(--or);width:16px;height:16px"></td>'
+      +'<td style="padding:6px;min-width:220px"><input class="ocd-desc" value="'+_ocE(l.desc)+'" '+(numSC?'readonly':'')+' oninput="_ocdCalc()" style="width:100%;'+inp+(numSC?';opacity:.85':'')+'">'
+        +'<div class="ocd-hist" style="font-size:10.5px;color:var(--muted);margin-top:3px"></div>'+(tiene?'<div style="font-size:10.5px;color:var(--yellow)">Ya tiene orden de compra</div>':'')+'</td>'
+      +'<td style="padding:6px"><input class="ocd-cant" type="number" min="0" step="any" value="'+(l.qty||1)+'" oninput="_ocdCalc()" style="width:76px;'+inp+'"></td>'
+      +'<td style="padding:6px"><input class="ocd-uni" value="'+_ocE(l.unit||'u')+'" style="width:58px;'+inp+'"></td>'
+      +'<td style="padding:6px"><input class="ocd-precio" type="number" min="0" step="any" placeholder="0,00" oninput="_ocdCalc()" style="width:120px;'+inp+'"></td>'
+      +'<td style="padding:6px"><select class="ocd-iva" onchange="_ocdCalc()" style="'+inp+'"><option value="21">21%</option><option value="10.5">10,5%</option><option value="0">Exento</option></select></td>'
+      +'<td style="padding:6px;text-align:right;font-family:var(--fm);font-size:12px;white-space:nowrap" class="ocd-sub">—</td></tr>';
+  }).join('');
+  ov.innerHTML='<div style="background:var(--s1);border:1px solid var(--border);border-radius:14px;max-width:1000px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.5)">'
+    +'<div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border)">'
+      +'<b style="font-size:15px;color:var(--or)">⚡ Orden de compra directa</b>'
+      +'<span style="font-size:12px;color:var(--muted)">'+(numSC?'desde la solicitud <b style="color:var(--text)">'+_ocE(numSC)+'</b>':'sin solicitud previa')+' · sin cuadro comparativo</span>'
+      +'<button onclick="document.getElementById(\'ocd-ov\').style.display=\'none\'" style="margin-left:auto;background:none;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:5px 10px;cursor:pointer">✕</button></div>'
+    +'<div style="padding:16px 18px">'
+      +'<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:12px">'
+        +'<div>'+lbl('PROVEEDOR *')+'<input id="ocd-prov" list="ocd-provs" oninput="_ocdProv()" placeholder="Elegí o escribí el proveedor" style="width:100%;'+inp+'"><datalist id="ocd-provs">'+provs.map(p=>'<option value="'+_ocE(p)+'">').join('')+'</datalist><div id="ocd-provinfo" style="font-size:10.5px;color:var(--muted);margin-top:3px"></div></div>'
+        +'<div>'+lbl('MONEDA')+'<select id="ocd-mon" onchange="_ocdCalc()" style="width:100%;'+inp+'"><option value="ARS">Pesos</option><option value="USD">Dólares</option></select></div>'
+        +'<div>'+lbl('DÓLAR BNA VENDEDOR')+'<input id="ocd-tc" type="number" step="any" placeholder="cargando..." oninput="_ocdCalc()" style="width:100%;'+inp+'"></div>'
+      +'</div>'
+      +'<div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:var(--s2)">'
+        +['','Artículo','Cant.','Unidad','P. unit. s/IVA','IVA','Subtotal c/IVA'].map(t=>'<th style="padding:7px 6px;text-align:left;font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted)">'+t+'</th>').join('')
+        +'</tr></thead><tbody id="ocd-items">'+filas+'</tbody></table></div>'
+      +(numSC?'':'<button onclick="_ocdFila()" style="margin-top:8px;padding:6px 12px;border-radius:7px;border:1px dashed var(--border);background:none;color:var(--muted);cursor:pointer;font-size:12px">＋ Agregar artículo</button>')
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px">'
+        +'<div>'+lbl('CONDICIÓN DE PAGO')+'<input id="ocd-pago" placeholder="Ej: 30 días fecha factura" style="width:100%;'+inp+'"></div>'
+        +'<div>'+lbl('PLAZO DE ENTREGA')+'<input id="ocd-plazo" placeholder="Ej: Inmediata / 5 días" style="width:100%;'+inp+'"></div>'
+        +'<div>'+lbl('LUGAR DE ENTREGA')+'<input id="ocd-lugar" value="Base San Juan · Depósito Nielsen" style="width:100%;'+inp+'"></div>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">'
+        +'<div>'+lbl('MOTIVO PARA NO HACER COMPARATIVA *')+'<select id="ocd-mot" onchange="_ocdCalc()" style="width:100%;'+inp+'">'+Object.keys(OCD_MOTIVOS).map(k=>'<option value="'+k+'">'+OCD_MOTIVOS[k]+'</option>').join('')+'</select></div>'
+        +'<div>'+lbl('JUSTIFICACIÓN')+'<input id="ocd-just" oninput="_ocdCalc()" placeholder="Obligatoria salvo compra menor" style="width:100%;'+inp+'"></div>'
+      +'</div>'
+      +'<div id="ocd-res" style="margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--s2);font-size:12.5px"></div>'
+      +'<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap">'
+        +'<button onclick="document.getElementById(\'ocd-ov\').style.display=\'none\'" style="padding:10px 16px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);cursor:pointer">Cancelar</button>'
+        +'<button id="ocd-b1" onclick="_ocdCrear(false)" style="padding:10px 16px;border-radius:8px;border:none;background:#3e7cb1;color:#fff;font-weight:700;cursor:pointer">Crear orden</button>'
+        +'<button id="ocd-b2" onclick="_ocdCrear(true)" style="padding:10px 16px;border-radius:8px;border:none;background:var(--or);color:#fff;font-weight:800;cursor:pointer">⚡ Crear, autorizar y emitir</button>'
+      +'</div></div></div>';
+  ov.style.display='flex';
+  _ocdCalc();
+  _ocTC().then(tc=>{ const e=document.getElementById('ocd-tc'); if(e&&!e.value){ if(tc){ e.value=tc; } e.placeholder=tc?'':'ingresar'; } _ocdCalc(); });
+}
+function _ocdFila(){
+  const tb=document.getElementById('ocd-items'); if(!tb) return;
+  const ref=tb.querySelector('tr'); if(!ref) return;
+  const n=ref.cloneNode(true); const i=tb.querySelectorAll('tr').length; n.dataset.i=i;
+  n.querySelectorAll('input').forEach(x=>{ if(x.type==='checkbox') x.checked=true; else if(x.classList.contains('ocd-cant')) x.value=1; else if(x.classList.contains('ocd-uni')) x.value='u'; else x.value=''; });
+  n.querySelector('.ocd-hist').textContent=''; tb.appendChild(n); _ocdLineas().push({qty:1,unit:'u',desc:''}); _ocdCalc();
+}
+function _ocdLineas(){ return _ocd? _ocd.lineas : []; }
+function _ocdProv(){
+  const v=(document.getElementById('ocd-prov')||{}).value||'';
+  const p=(provData||[]).find(x=>_parNormProv(x.nombre)===_parNormProv(v));
+  const i=document.getElementById('ocd-provinfo');
+  if(i) i.innerHTML=p? ('CUIT '+_ocE(p.cuit||'—')+(p.email?' · '+_ocE(p.email):'')+(p.tel?' · '+_ocE(p.tel):'')) : (v?'<span style="color:var(--yellow)">No está en la base de proveedores: se cargará igual en la orden.</span>':'');
+}
+function _ocdLeer(){
+  const mon=(document.getElementById('ocd-mon')||{}).value||'ARS';
+  const tc=parseFloat((document.getElementById('ocd-tc')||{}).value)||0;
+  const filas=[...document.querySelectorAll('#ocd-items tr')].map(tr=>{
+    const i=Number(tr.dataset.i), q=parseFloat(tr.querySelector('.ocd-cant').value)||0, p=parseFloat(tr.querySelector('.ocd-precio').value)||0, iva=parseFloat(tr.querySelector('.ocd-iva').value);
+    return { i, inc:tr.querySelector('.ocd-inc').checked && !tr.querySelector('.ocd-inc').disabled, desc:tr.querySelector('.ocd-desc').value.trim(), cant:q, unidad:tr.querySelector('.ocd-uni').value.trim()||'u', precio:p, iva:isNaN(iva)?21:iva, tr };
+  });
+  const sel=filas.filter(f=>f.inc && f.cant>0 && f.desc);
+  const neto=sel.reduce((a,f)=>a+f.cant*f.precio,0), ivaT=sel.reduce((a,f)=>a+f.cant*f.precio*f.iva/100,0), total=neto+ivaT;
+  const usd= mon==='USD'? total : (tc>0? total/tc : 0);
+  return { mon, tc, filas, sel, neto, ivaT, total, usd,
+    prov:((document.getElementById('ocd-prov')||{}).value||'').trim(), mot:(document.getElementById('ocd-mot')||{}).value||'MONTO_MENOR',
+    just:((document.getElementById('ocd-just')||{}).value||'').trim() };
+}
+function _ocdCalc(){
+  if(!_ocd) return;
+  const d=_ocdLeer();
+  d.filas.forEach(f=>{ f.tr.querySelector('.ocd-sub').textContent= (f.inc&&f.precio>0)? _ocFmt(f.cant*f.precio*(1+f.iva/100),d.mon) : '—';
+    const h=f.tr.querySelector('.ocd-hist'); if(h) h.innerHTML=_precioHistTxt(f.desc,d.mon); });
+  const niv=ocNivelAut(d.usd||0);
+  const pres=ocPresupuestosExigidos(d.usd||0);
+  const errs=_ocdErrores(d);
+  const r=document.getElementById('ocd-res'); if(!r) return;
+  r.innerHTML='<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline">'
+      +'<span>Neto <b>'+_ocFmt(d.neto,d.mon)+'</b></span><span>IVA <b>'+_ocFmt(d.ivaT,d.mon)+'</b></span>'
+      +'<span style="font-size:15px">Total <b style="color:var(--or)">'+_ocFmt(d.total,d.mon)+'</b></span>'
+      +(d.mon==='ARS'?'<span style="color:var(--muted)">≈ USD '+(d.usd?Math.round(d.usd).toLocaleString('es-AR'):'—')+'</span>':'')
+      +'<span>Autoriza: <b>'+_ocE(niv.lbl)+'</b></span></div>'
+    +'<div style="margin-top:6px;color:'+(pres?'var(--yellow)':'#4ade80')+'">'
+      +(pres? '⚠ Por el monto correspondería una comparativa con '+pres+' presupuestos: la excepción queda registrada en la orden, el expediente y la auditoría.'
+            : '✓ Por el monto no requiere comparativa.')+'</div>'
+    +(errs.length?'<div style="margin-top:6px;color:var(--red)">'+errs.map(e=>'• '+_ocE(e)).join('<br>')+'</div>':'');
+  const b2=document.getElementById('ocd-b2');
+  if(b2){ const urg=d.mot==='URGENCIA', propia=niv.nivel==='COMPRAS';
+    b2.textContent= urg? '⚡ Crear y emitir (urgencia)' : (propia? '⚡ Crear, autorizar y emitir' : '⚡ Crear y pedir autorización');
+    b2.title= urg? 'Se emite ya y queda pendiente de regularizar la autorización' : (propia? 'Dentro de tu nivel: se autoriza como Compras y se emite el original' : 'Se crea y se envía el pedido de autorización por correo'); }
+}
+function _ocdErrores(d){
+  const e=[];
+  if(!d.prov) e.push('Falta el proveedor');
+  if(!d.sel.length) e.push('Elegí al menos un artículo con cantidad');
+  if(d.sel.some(f=>!(f.precio>0))) e.push('Hay artículos sin precio unitario');
+  if(d.mon==='ARS' && !(d.tc>0)) e.push('Falta el tipo de cambio para calcular el nivel de autorización');
+  if(d.mot==='MONTO_MENOR' && d.usd>=OC_REGLAS.umbralSinComparativa) e.push('Supera USD '+OC_REGLAS.umbralSinComparativa+': elegí otro motivo');
+  if(d.mot!=='MONTO_MENOR' && d.just.length<10) e.push('Escribí una justificación (al menos 10 caracteres)');
+  return e;
+}
+async function _ocdCrear(rapido){
+  const d=_ocdLeer(), errs=_ocdErrores(d);
+  if(errs.length){ showToast(errs[0],'error'); return; }
+  const p=(provData||[]).find(x=>_parNormProv(x.nombre)===_parNormProv(d.prov))||{};
+  const niv=ocNivelAut(d.usd||0), urg=d.mot==='URGENCIA', numSC=_ocd.numSC;
+  const items=d.sel.map(f=>({ desc:f.desc, espec:'', cant:f.cant, unidad:f.unidad, precio:f.precio, iva:f.iva,
+    precio_iva:Math.round(f.precio*(1+f.iva/100)*100)/100, subtotal:Math.round(f.precio*f.cant*100)/100,
+    sc:numSC||null, sc_i:numSC? f.i : null, desc_sc:f.desc }));
+  const oc={ num_oc: await _ocNuevoNumero(), fecha:_ocHoy(), num_comp:null, scs:numSC?[numSC]:[], via:urg?'URGENCIA':'DIRECTA',
+    proveedor:d.prov, proveedor_cuit:p.cuit||'', proveedor_contacto:p.contacto||'', proveedor_email:p.email||'', proveedor_tel:p.tel||'',
+    condicion_pago:((document.getElementById('ocd-pago')||{}).value||'').trim(), plazo_entrega:((document.getElementById('ocd-plazo')||{}).value||'').trim(),
+    lugar_entrega:((document.getElementById('ocd-lugar')||{}).value||'').trim(), moneda:d.mon, items,
+    total:Math.round(d.total*100)/100, total_usd:Math.round((d.usd||0)*100)/100||null, tc_usado:d.mon==='ARS'?d.tc:null,
+    excepcion_tipo:d.mot, excepcion_just:d.just||OCD_MOTIVOS[d.mot],
+    autorizacion:'REQUERIDA', estado_aut:'PENDIENTE', nivel_aut:niv.nivel, estado:'BORRADOR', regularizar:urg, emitida_por:'Compras' };
+  if(!(await _ocGuardar(oc))) return;
+  ocData.unshift(oc);
+  document.getElementById('ocd-ov').style.display='none';
+  try{ await _circCargar(true); renderHistorial(); }catch(e){}
+  showToast('📄 '+oc.num_oc+' creada · '+oc.proveedor,'ok');
+  if(rapido){
+    if(urg){ await ocEmitir(oc.num_oc); return; }
+    if(niv.nivel==='COMPRAS'){
+      Object.assign(oc,{autorizacion:'PROPIA',estado_aut:'APROBADA',estado_autorizacion:'APROBADA',autorizado_por:_ocEmisor(),autorizado_en:new Date().toISOString()});
+      if(await _ocGuardar(oc)){ await ocEmitir(oc.num_oc); }
+      return;
+    }
+    await solicitarAutOC(oc.num_oc); return;
+  }
+  showView('ordenes', null); setTimeout(()=>verOC(oc.num_oc),300);
+}
+
+// ══════════════════════════════════════════════════════════════
+// DESPUÉS DE LA RECEPCIÓN — devolución (SAP 122), anulación (102), entrega final,
+// y verificación de facturas en tres vías (MIRO): factura · orden · remitos.
+// ══════════════════════════════════════════════════════════════
+OC_REGLAS.toleranciaPrecioFactura = OC_REGLAS.toleranciaPrecioFactura || 2;   // % de diferencia de precio aceptada
+OC_REGLAS.toleranciaTotalFactura  = OC_REGLAS.toleranciaTotalFactura  || 1;   // % entre el total de la factura y el calculado
+const RC_MOTIVOS_DEV = ['Material defectuoso','No corresponde a lo pedido','Exceso de cantidad','Dañado en el transporte','Vencido o fuera de especificación','Otro'];
+function _scTieneOC(sc){
+  const n=sc&&(sc.numSC||sc.num); if(!n) return false;
+  return (ocData||[]).some(o=>!['ANULADA','RECHAZADA'].includes(o.estado) && ((Array.isArray(o.scs)&&o.scs.includes(n)) || (Array.isArray(o.items)?o.items:_jparse(o.items,[])).some(i=>i.sc===n)));
+}
+function _rcInp(){ return 'padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)'; }
+function _rcModal(titulo, html){
+  let ov=document.getElementById('rc-ov');
+  if(!ov){ ov=document.createElement('div'); ov.id='rc-ov'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:28px 14px;overflow:auto'; document.body.appendChild(ov); }
+  ov.innerHTML='<div style="background:var(--s1);border:1px solid var(--border);border-radius:14px;max-width:820px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.5)">'
+    +'<div style="display:flex;align-items:center;padding:13px 18px;border-bottom:1px solid var(--border)"><b style="font-size:14.5px;color:var(--or)">'+titulo+'</b>'
+    +'<button onclick="document.getElementById(\'rc-ov\').style.display=\'none\'" style="margin-left:auto;background:none;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:5px 10px;cursor:pointer">✕</button></div>'
+    +'<div style="padding:16px 18px">'+html+'</div></div>';
+  ov.style.display='flex';
+}
+function _rcCerrarModal(){ const ov=document.getElementById('rc-ov'); if(ov) ov.style.display='none'; }
+function _rcOcsDeSC(numSC){
+  return (ocData||[]).filter(x=>RECEP_VIVAS.includes(x.estado) && ((Array.isArray(x.scs)&&x.scs.includes(numSC)) || (Array.isArray(x.items)?x.items:_jparse(x.items,[])).some(i=>i.sc===numSC)));
+}
+async function _rcRecalcular(numSC){
+  const sc=(scs||[]).find(s=>(s.numSC||s.num)===numSC); if(!sc) return;
+  const rc=await _recepCargar(numSC);
+  await _recepPropagar(sc, (rc.rows||[]).filter(r=>!r.anulado), _rcOcsDeSC(numSC));
+  window._recepFoco={numSC, numOC:null}; _scRecepMontar(sc);
+}
+// ── Anular un remito cargado por error (SAP 102) ──
+async function rcAnular(id, numSC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede anular remitos','error'); return; }
+  const m=prompt('Anular este remito\n\nSe usa cuando el remito se cargó por error. Si la mercadería vuelve al proveedor, usá "Devolución".\n\nMotivo de la anulación:');
+  if(m==null) return; if(String(m).trim().length<8){ showToast('Indicá un motivo concreto (al menos 8 caracteres)','error'); return; }
+  try{ const r=await fetch(_SB_URL+'/rest/v1/recepciones?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=minimal'},
+      body:JSON.stringify({anulado:true, anulado_motivo:String(m).trim(), anulado_en:new Date().toISOString()})}); if(!r.ok) throw new Error('HTTP '+r.status); }
+  catch(e){ showToast(/column|anulado/i.test(e.message)?'Falta ejecutar SUPABASE_v260.sql':'No se pudo anular: '+e.message,'error'); return; }
+  showToast('Remito anulado — se recalculó la recepción','ok');
+  await _rcRecalcular(numSC);
+}
+// ── Devolución al proveedor (SAP 122): motivo obligatorio ──
+async function rcDevolucion(id, numSC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede registrar devoluciones','error'); return; }
+  const rc=await _recepCargar(numSC); const rows=(rc.rows||[]).filter(r=>!r.anulado);
+  const r=rows.find(x=>x.id===id); if(!r) return;
+  const its=Array.isArray(r.items)?r.items:_jparse(r.items,[]);
+  const devPrevias=rows.filter(x=>x.tipo==='DEVOLUCION' && x.ref_remito===r.remito && x.num_oc===r.num_oc);
+  const filas=its.map(it=>{
+    const ya=devPrevias.reduce((a,x)=>a+(Array.isArray(x.items)?x.items:_jparse(x.items,[])).filter(y=>Number(y.sc_i)===Number(it.sc_i)).reduce((b,y)=>b+Math.abs(Number(y.cant)||0),0),0);
+    const max=Math.max(0,(Number(it.cant)||0)-ya);
+    return '<tr><td style="padding:6px">'+_ocE(it.desc)+'</td><td style="padding:6px;white-space:nowrap">'+(Number(it.cant)||0)+(ya?' <span style="color:var(--muted);font-size:11px">(ya devueltas '+ya+')</span>':'')+'</td>'
+      +'<td style="padding:6px"><input class="dv-cant" data-i="'+it.sc_i+'" data-desc="'+_ocE(it.desc)+'" data-uni="'+_ocE(it.unidad||'u')+'" data-max="'+max+'" type="number" min="0" max="'+max+'" step="any" value="0" style="width:110px;'+_rcInp()+'"'+(max?'':' disabled')+'></td></tr>';
+  }).join('');
+  _rcModal('↩ Devolución al proveedor · remito '+_ocE(r.remito),
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">Lo devuelto vuelve a quedar pendiente en la solicitud y en la orden '+_ocE(r.num_oc)+'. Si el proveedor repone, se carga como un remito nuevo.</div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr><th style="text-align:left;padding:6px;color:var(--muted);font-size:10px">ARTÍCULO</th><th style="text-align:left;padding:6px;color:var(--muted);font-size:10px">RECIBIDO EN ESTE REMITO</th><th style="text-align:left;padding:6px;color:var(--muted);font-size:10px">CANTIDAD A DEVOLVER</th></tr></thead><tbody>'+filas+'</tbody></table>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">'
+      +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">MOTIVO *</div><select id="dv-mot" style="width:100%;'+_rcInp()+'">'+RC_MOTIVOS_DEV.map(x=>'<option>'+x+'</option>').join('')+'</select></div>'
+      +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">N° DE REMITO DE DEVOLUCIÓN</div><input id="dv-num" placeholder="Opcional" style="width:100%;'+_rcInp()+'"></div></div>'
+    +'<input id="dv-det" placeholder="Detalle del motivo * (qué pasó)" style="width:100%;margin-top:10px;'+_rcInp()+'">'
+    +'<button onclick="_rcGuardarDev(\''+_ocE(id)+'\',\''+_ocE(numSC)+'\')" style="margin-top:12px;padding:10px 18px;border-radius:8px;border:none;background:#b45309;color:#fff;font-weight:800;cursor:pointer">↩ Registrar devolución</button>');
+}
+async function _rcGuardarDev(id, numSC){
+  const rc=await _recepCargar(numSC); const rows=(rc.rows||[]).filter(r=>!r.anulado); const r=rows.find(x=>x.id===id); if(!r) return;
+  const det=String((document.getElementById('dv-det')||{}).value||'').trim(), mot=(document.getElementById('dv-mot')||{}).value;
+  if(det.length<8){ showToast('Detallá el motivo de la devolución','error'); return; }
+  const items=[]; let err='';
+  document.querySelectorAll('.dv-cant').forEach(x=>{ const v=parseFloat(x.value)||0, max=Number(x.dataset.max)||0;
+    if(v<0||v>max+1e-9){ err='No se puede devolver más de lo recibido en este remito'; return; }
+    if(v>0) items.push({sc_i:Number(x.dataset.i), desc:x.dataset.desc, cant:-v, unidad:x.dataset.uni}); });
+  if(err){ showToast(err,'error'); return; } if(!items.length){ showToast('Indicá qué cantidad se devuelve','error'); return; }
+  let num=String((document.getElementById('dv-num')||{}).value||'').trim()||('DEV-'+r.remito);
+  let k=2; while(rows.some(x=>_normTxt(x.remito)===_normTxt(num))) num=('DEV-'+r.remito+'-'+(k++));
+  const reg={num_sc:numSC, num_oc:r.num_oc, remito:num, fecha:new Date().toISOString().slice(0,10), proveedor:r.proveedor, items,
+    obs:mot+': '+det, tipo:'DEVOLUCION', ref_remito:r.remito, recibido_por:_rcQuien(), creado_en:new Date().toISOString(), creado_por:_ocEmisor()};
+  try{ const x=await fetch(_SB_URL+'/rest/v1/recepciones',{method:'POST',headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=minimal'},body:JSON.stringify(reg)});
+       if(!x.ok) throw new Error('HTTP '+x.status+' '+(await x.text()).slice(0,100)); }
+  catch(e){ showToast(/column|tipo|ref_remito/i.test(e.message)?'Falta ejecutar SUPABASE_v260.sql':'No se pudo registrar: '+e.message,'error'); return; }
+  _rcCerrarModal(); showToast('↩ Devolución '+num+' registrada — lo devuelto vuelve a quedar pendiente','ok');
+  await _rcRecalcular(numSC);
+}
+function _rcQuien(){ try{ return localStorage.getItem('nielsen_recibido_por')||'Pañol'; }catch(e){ return 'Pañol'; } }
+
+// ── Entrega final: cerrar una orden aunque falte mercadería (SAP "entrega completa") ──
+async function ocCerrar(numOC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede cerrar órdenes','error'); return; }
+  const o=(ocData||[]).find(x=>x.num_oc===numOC); if(!o) return;
+  const its=Array.isArray(o.items)?o.items:_jparse(o.items,[]);
+  const scsOC=[...new Set([].concat(Array.isArray(o.scs)?o.scs:[], its.map(i=>i.sc).filter(Boolean)))];
+  const pend=[];
+  for(const n of scsOC){
+    const sc=(scs||[]).find(s=>(s.numSC||s.num)===n); if(!sc) continue;
+    const rc=await _recepCargar(n);
+    _recepEstado(sc,[o],(rc.rows||[]).filter(r=>!r.anulado)).filter(f=>f.oc&&f.oc.num_oc===numOC&&f.pendiente>0)
+      .forEach(f=>pend.push({sc:n, sc_i:f.i, desc:f.desc, pendiente:f.pendiente, unidad:f.unidad}));
+  }
+  const sinFactura = !['CONFORME','LIBERADA'].includes(o.estado_factura||'');
+  if(!pend.length){
+    if(sinFactura && !confirm('La orden '+numOC+' no tiene una factura conforme registrada.\n\n¿Cerrarla igual?')) return;
+    return _ocCambiarEstado(numOC,'CERRADA',{_forzado:true, cerrada_en:new Date().toISOString()});
+  }
+  const m=prompt('ENTREGA FINAL de '+numOC+'\n\nQuedan pendientes:\n'+pend.map(p=>'• '+p.pendiente+' '+p.unidad+' de '+p.desc).join('\n')
+    +'\n\nAl cerrar, esos saldos dejan de esperarse y la solicitud queda cerrada con faltante.\nMotivo (por ejemplo: el proveedor no tiene stock):');
+  if(m==null) return; if(String(m).trim().length<8){ showToast('Indicá un motivo concreto (al menos 8 caracteres)','error'); return; }
+  o.entrega_final={fecha:new Date().toISOString(), motivo:String(m).trim(), items:pend};
+  for(const n of [...new Set(pend.map(p=>p.sc))]){
+    const sc=(scs||[]).find(s=>(s.numSC||s.num)===n); if(!sc) continue;
+    sc.itemsDetalle=sc.itemsDetalle||{};
+    pend.filter(p=>p.sc===n).forEach(p=>{ const d=sc.itemsDetalle[p.sc_i]=Object.assign({},sc.itemsDetalle[p.sc_i]||{});
+      Object.assign(d,{estado:'COMPRADO', entregaFinal:true, faltante:p.pendiente, motivoCierre:o.entrega_final.motivo, oc:numOC}); });
+    try{ await _saveItemDetalle(sc); }catch(e){}
+  }
+  await _ocCambiarEstado(numOC,'CERRADA',{_forzado:true, entrega_final:o.entrega_final, recepcion_completa:false, cerrada_en:new Date().toISOString()});
+  try{ await _circCargar(true); renderHistorial(); }catch(e){}
+}
+
+// ── Verificación de facturas en tres vías ──
+async function _factCargar(numOC){
+  try{ const r=await fetch(_SB_URL+'/rest/v1/facturas_oc?num_oc=eq.'+encodeURIComponent(numOC)+'&select=*&order=fecha.asc',{headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
+       if(!r.ok) return {ok:false, rows:[], err:await r.text()}; return {ok:true, rows:await r.json()}; }
+  catch(e){ return {ok:false, rows:[], err:e.message}; }
+}
+// Para cada ítem de la orden: cuánto se recibió (neto de devoluciones) y cuánto se facturó
+async function _factBase(o){
+  const its=Array.isArray(o.items)?o.items:_jparse(o.items,[]);
+  const scsOC=[...new Set([].concat(Array.isArray(o.scs)?o.scs:[], its.map(i=>i.sc).filter(Boolean)))];
+  const recib={};
+  for(const n of scsOC){
+    const sc=(scs||[]).find(s=>(s.numSC||s.num)===n); if(!sc) continue;
+    const lineas=_ccScItems(sc.items); const rc=await _recepCargar(n);
+    (rc.rows||[]).filter(r=>!r.anulado && r.num_oc===o.num_oc).forEach(r=>(Array.isArray(r.items)?r.items:_jparse(r.items,[])).forEach(x=>{
+      its.forEach((it,k)=>{ if(_ocItemScIdx(it,n,lineas)===Number(x.sc_i)) recib[k]=(recib[k]||0)+(Number(x.cant)||0); }); }));
+  }
+  const fc=await _factCargar(o.num_oc); const facts=(fc.rows||[]).filter(f=>f.estado!=='ANULADA');
+  const factur={}; facts.forEach(f=>(Array.isArray(f.items)?f.items:_jparse(f.items,[])).forEach(x=>{ factur[x.oc_i]=(factur[x.oc_i]||0)+(Number(x.cant)||0); }));
+  return { its, recib, factur, facts, ok:fc.ok, err:fc.err };
+}
+async function ocRegistrarFactura(numOC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede registrar facturas','error'); return; }
+  const o=(ocData||[]).find(x=>x.num_oc===numOC); if(!o) return;
+  const b=await _factBase(o);
+  if(!b.ok){ showToast(/facturas_oc/.test(b.err||'')?'Falta ejecutar SUPABASE_v260.sql':'No se pudieron leer las facturas','error'); return; }
+  if(!Object.values(b.recib).some(v=>v>0)){ showToast('La orden '+numOC+' todavía no tiene mercadería recibida: primero se registra el remito','error'); return; }
+  window._fact={o, b};
+  const filas=b.its.map((it,k)=>{ const rec=Math.max(0,b.recib[k]||0), ya=b.factur[k]||0, sug=Math.max(0,rec-ya);
+    return '<tr data-k="'+k+'"><td style="padding:6px">'+_ocE(it.desc)+'</td><td style="padding:6px;text-align:right">'+rec+'</td><td style="padding:6px;text-align:right">'+ya+'</td>'
+      +'<td style="padding:6px"><input class="ft-cant" type="number" step="any" min="0" value="'+sug+'" oninput="_factCalc()" style="width:90px;'+_rcInp()+'"></td>'
+      +'<td style="padding:6px"><input class="ft-precio" type="number" step="any" min="0" value="'+(Number(it.precio)||0)+'" oninput="_factCalc()" style="width:115px;'+_rcInp()+'"><div style="font-size:10px;color:var(--muted)">orden: '+_ocFmt(it.precio,o.moneda)+'</div></td>'
+      +'<td style="padding:6px"><select class="ft-iva" onchange="_factCalc()" style="'+_rcInp()+'">'+[21,10.5,0].map(v=>'<option value="'+v+'"'+(Number(it.iva!=null?it.iva:21)===v?' selected':'')+'>'+(v?String(v).replace('.',',')+'%':'Exento')+'</option>').join('')+'</select></td>'
+      +'<td class="ft-chk" style="padding:6px;font-size:11px"></td></tr>'; }).join('');
+  const quien=(()=>{ try{ return localStorage.getItem('nielsen_verificado_por')||''; }catch(e){ return ''; } })();
+  _rcModal('🧾 Verificación de factura · '+_ocE(numOC)+' · '+_ocE(o.proveedor||''),
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">Se controla la factura contra la orden (precio) y contra los remitos (cantidad). Si hay diferencias fuera de tolerancia, la factura queda <b>bloqueada para pago</b> hasta que se libere con un motivo.</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">'
+      +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">N° DE FACTURA *</div><input id="ft-num" placeholder="A-0003-00012345" style="width:100%;'+_rcInp()+'"></div>'
+      +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">FECHA *</div><input id="ft-fecha" type="date" value="'+new Date().toISOString().slice(0,10)+'" style="width:100%;'+_rcInp()+'"></div>'
+      +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">TOTAL SEGÚN FACTURA</div><input id="ft-total" type="number" step="any" oninput="_factCalc()" placeholder="opcional" style="width:100%;'+_rcInp()+'"></div>'
+      +'<div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">VERIFICADO POR *</div><input id="ft-quien" value="'+_ocE(quien)+'" style="width:100%;'+_rcInp()+'"></div></div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'+['Artículo','Recibido','Ya facturado','Cant. facturada','P. unit. s/IVA facturado','IVA','Control'].map(t=>'<th style="text-align:left;padding:6px;color:var(--muted);font-size:9.5px;letter-spacing:.6px;text-transform:uppercase">'+t+'</th>').join('')+'</tr></thead><tbody id="ft-items">'+filas+'</tbody></table></div>'
+    +'<div id="ft-res" style="margin-top:12px;padding:11px 13px;border-radius:9px;background:var(--s2);font-size:12.5px"></div>'
+    +'<button onclick="_factGuardar()" style="margin-top:12px;padding:10px 18px;border-radius:8px;border:none;background:var(--or);color:#fff;font-weight:800;cursor:pointer">🧾 Registrar factura</button>');
+  _factCalc();
+}
+function _factEvaluar(){
+  const f=window._fact; if(!f) return null; const o=f.o, b=f.b, tolP=OC_REGLAS.toleranciaPrecioFactura, tolT=OC_REGLAS.toleranciaTotalFactura;
+  const lineas=[], dif=[]; let calc=0;
+  document.querySelectorAll('#ft-items tr').forEach(tr=>{
+    const k=Number(tr.dataset.k), it=b.its[k], q=parseFloat(tr.querySelector('.ft-cant').value)||0, p=parseFloat(tr.querySelector('.ft-precio').value)||0, iva=parseFloat(tr.querySelector('.ft-iva').value)||0;
+    const disp=Math.max(0,(b.recib[k]||0)-(b.factur[k]||0)), po=Number(it.precio)||0, dp=po?((p-po)/po*100):0;
+    const ch=[]; if(q>disp+1e-9) ch.push('cantidad mayor a lo recibido ('+disp+')'); if(q>0 && Math.abs(dp)>tolP) ch.push('precio '+(dp>0?'+':'')+dp.toFixed(1)+'% vs orden');
+    if(q>0){ calc+=q*p*(1+iva/100); lineas.push({oc_i:k, desc:it.desc, cant:q, precio:p, iva:iva, precio_oc:po}); }
+    ch.forEach(c=>dif.push(it.desc+': '+c));
+    const c=tr.querySelector('.ft-chk'); if(c) c.innerHTML=q<=0?'<span style="color:var(--muted)">—</span>':(ch.length?'<span style="color:var(--red)">'+ch.map(_ocE).join('<br>')+'</span>':'<span style="color:#4ade80">✓ conforme</span>');
+  });
+  const tot=parseFloat((document.getElementById('ft-total')||{}).value)||0;
+  if(tot>0 && calc>0 && Math.abs(tot-calc)/calc*100>tolT) dif.push('El total de la factura ('+_ocFmt(tot,o.moneda)+') no coincide con el calculado ('+_ocFmt(calc,o.moneda)+')');
+  return {lineas, dif, calc, tot, estado:dif.length?'BLOQUEADA':'CONFORME'};
+}
+function _factCalc(){
+  const e=_factEvaluar(); const r=document.getElementById('ft-res'); if(!e||!r) return;
+  r.innerHTML='Total calculado <b>'+_ocFmt(e.calc,window._fact.o.moneda)+'</b> · '
+    +(e.dif.length? '<b style="color:var(--red)">⛔ Quedará BLOQUEADA PARA PAGO</b><div style="margin-top:5px;color:var(--red)">'+e.dif.map(d=>'• '+_ocE(d)).join('<br>')+'</div>'
+                  : '<b style="color:#4ade80">✓ CONFORME: precio y cantidades dentro de tolerancia</b>');
+}
+async function _factGuardar(){
+  const f=window._fact; if(!f) return; const o=f.o, e=_factEvaluar();
+  const num=String((document.getElementById('ft-num')||{}).value||'').trim(), fecha=(document.getElementById('ft-fecha')||{}).value, quien=String((document.getElementById('ft-quien')||{}).value||'').trim();
+  if(!num){ showToast('Ingresá el número de factura','error'); return; } if(!fecha){ showToast('Ingresá la fecha','error'); return; }
+  if(!quien){ showToast('Indicá quién verificó la factura','error'); return; }
+  if(!e.lineas.length){ showToast('Cargá al menos una cantidad facturada','error'); return; }
+  if(f.b.facts.some(x=>_normTxt(x.num_factura)===_normTxt(num))){ showToast('La factura '+num+' ya está registrada en esta orden','error'); return; }
+  try{ localStorage.setItem('nielsen_verificado_por',quien); }catch(x){}
+  const reg={num_oc:o.num_oc, num_factura:num, fecha, proveedor:o.proveedor||'', items:e.lineas, total:Math.round((e.tot||e.calc)*100)/100, total_calculado:Math.round(e.calc*100)/100,
+    estado:e.estado, diferencias:e.dif, verificado_por:quien, creado_en:new Date().toISOString()};
+  try{ const r=await fetch(_SB_URL+'/rest/v1/facturas_oc',{method:'POST',headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=minimal'},body:JSON.stringify(reg)});
+       if(!r.ok) throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,100)); }
+  catch(x){ showToast(/facturas_oc/.test(x.message)?'Falta ejecutar SUPABASE_v260.sql':'No se pudo registrar: '+x.message,'error'); return; }
+  _rcCerrarModal();
+  await _factPropagar(o);
+  showToast(e.estado==='CONFORME'?'🧾 Factura '+num+' conforme':'⛔ Factura '+num+' bloqueada para pago: '+e.dif.length+' diferencia(s)', e.estado==='CONFORME'?'ok':'error');
+  try{ verOC(o.num_oc); }catch(x){}
+}
+async function ocLiberarFactura(id, numOC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede liberar facturas','error'); return; }
+  const m=prompt('Liberar la factura para pago\n\nQueda registrado quién la liberó y por qué.\nMotivo (por ejemplo: diferencia aceptada por nota de crédito):');
+  if(m==null) return; if(String(m).trim().length<8){ showToast('Indicá un motivo concreto','error'); return; }
+  try{ const r=await fetch(_SB_URL+'/rest/v1/facturas_oc?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=minimal'},
+       body:JSON.stringify({estado:'LIBERADA', liberado_por:_ocEmisor(), liberado_motivo:String(m).trim(), liberado_en:new Date().toISOString()})}); if(!r.ok) throw new Error('HTTP '+r.status); }
+  catch(e){ showToast('No se pudo liberar: '+e.message,'error'); return; }
+  const o=(ocData||[]).find(x=>x.num_oc===numOC); if(o) await _factPropagar(o);
+  showToast('✓ Factura liberada para pago','ok'); try{ verOC(numOC); }catch(e){}
+}
+// La factura actualiza la orden y el detalle por ítem de la solicitud ("falta la factura")
+async function _factPropagar(o){
+  const b=await _factBase(o);
+  const tot=b.facts.reduce((a,f)=>a+(Number(f.total)||0),0);
+  const todoRec=b.its.every((it,k)=>(b.recib[k]||0)>0 && (b.factur[k]||0)>=(b.recib[k]||0)-1e-9);
+  const bloq=b.facts.some(f=>f.estado==='BLOQUEADA');
+  o.facturado_total=Math.round(tot*100)/100;
+  o.estado_factura= !b.facts.length? null : (bloq?'BLOQUEADA':(todoRec?'CONFORME':'PARCIAL'));
+  await _ocGuardar(o);
+  const scsOC=[...new Set([].concat(Array.isArray(o.scs)?o.scs:[], b.its.map(i=>i.sc).filter(Boolean)))];
+  for(const n of scsOC){
+    const sc=(scs||[]).find(s=>(s.numSC||s.num)===n); if(!sc) continue; const lineas=_ccScItems(sc.items); sc.itemsDetalle=sc.itemsDetalle||{};
+    b.its.forEach((it,k)=>{ const i=_ocItemScIdx(it,n,lineas); if(i<0) return;
+      const fs=b.facts.filter(f=>(Array.isArray(f.items)?f.items:_jparse(f.items,[])).some(x=>Number(x.oc_i)===k)); if(!fs.length) return;
+      const d=sc.itemsDetalle[i]=Object.assign({},sc.itemsDetalle[i]||{});
+      Object.assign(d,{facturaNum:fs.map(f=>f.num_factura).join(' · '), facturaFecha:fs[fs.length-1].fecha, facturaProveedor:o.proveedor||'', facturaEstado:o.estado_factura}); });
+    try{ await _saveItemDetalle(sc); }catch(e){}
+  }
+  try{ await _circCargar(true); }catch(e){}
+}
+// Sección de facturas dentro de la ficha de la orden
+async function _ocFactsMontar(numOC){
+  const o=(ocData||[]).find(x=>x.num_oc===numOC); if(!o) return;
+  const box=document.getElementById('oc-facts'); if(!box) return;
+  const fc=await _factCargar(numOC); if(!fc.ok){ box.innerHTML=''; return; }
+  const rows=fc.rows||[];
+  const col={CONFORME:'#22c55e',BLOQUEADA:'#ef4444',LIBERADA:'#60a5fa'};
+  box.innerHTML='<div style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">🧾 Facturas'+(o.estado_factura?' · '+_ocE(o.estado_factura):'')+'</div>'
+    +(rows.length? rows.map(f=>'<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap">'
+        +'<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;background:'+(col[f.estado]||'#888')+'22;color:'+(col[f.estado]||'#888')+'">'+_ocE(f.estado)+'</span>'
+        +'<b>'+_ocE(f.num_factura)+'</b><span style="color:var(--muted)">'+_ocE(String(f.fecha).split('-').reverse().join('/'))+'</span><span>'+_ocFmt(f.total,o.moneda)+'</span>'
+        +'<span style="color:var(--muted)">verificó '+_ocE(f.verificado_por||'—')+'</span>'
+        +((f.diferencias&&f.diferencias.length)?'<div style="flex-basis:100%;color:var(--red);font-size:11.5px">'+f.diferencias.map(_ocE).join(' · ')+'</div>':'')
+        +(f.estado==='LIBERADA'?'<div style="flex-basis:100%;color:#60a5fa;font-size:11.5px">Liberada por '+_ocE(f.liberado_por||'')+': '+_ocE(f.liberado_motivo||'')+'</div>':'')
+        +(f.estado==='BLOQUEADA'&&esModoEditor()?'<button onclick="ocLiberarFactura(\''+_ocE(f.id)+'\',\''+_ocE(numOC)+'\')" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:1px solid #60a5fa;background:none;color:#60a5fa;cursor:pointer;font-size:11px">Liberar para pago</button>':'')
+      +'</div>').join('') : '<div style="font-size:12px;color:var(--muted)">Sin facturas registradas.</div>');
 }
 
 async function renderOC(){
@@ -6834,12 +7296,14 @@ function verOC(numOC){
       if(o.nivel_aut!=='COMPRAS') acciones+=btn('📧 Solicitar autorización','solicitarAutOC(\''+numOC+'\')','#2f9e6b');
     }
     acciones+=btn('👁 Vista previa','ocVistaPrevia(\''+numOC+'\')','#4b5563');
+    if(['PARCIAL','RECIBIDA','CERRADA'].includes(o.estado)) acciones+=btn('🧾 Registrar factura','ocRegistrarFactura(\''+numOC+'\')','#7c3aed');
+    if(o.via==='URGENCIA' && o.regularizar && !_ocAutorizada(o) && o.estado!=='BORRADOR') acciones+=btn('📧 Regularizar autorización','solicitarAutOC(\''+numOC+'\')','#2f9e6b');
     if(autOk && viva && nEm<3) acciones+=btn('🖨 Emitir '+OC_COPIAS[nEm],'ocEmitir(\''+numOC+'\')', nEm===0?'#e85d25':'#9a3412');
     if(nEm>=3) acciones+='<span style="display:inline-block;margin:6px 6px 0 0;padding:8px 12px;border-radius:8px;border:1px dashed var(--border);color:var(--muted);font-size:12px">Límite alcanzado: original, duplicado y triplicado emitidos</span>';
     if(o.estado==='EMITIDA')    acciones+=btn('✉️ Marcar enviada','_ocCambiarEstado(\''+numOC+'\',\'ENVIADA\')','#8b5cf6');
     if(o.estado==='ENVIADA')    acciones+=btn('✓ Confirmada por el proveedor','_ocCambiarEstado(\''+numOC+'\',\'CONFIRMADA\')','#06b6d4');
     if(['EMITIDA','ENVIADA','CONFIRMADA','PARCIAL'].includes(o.estado)) acciones+=btn('📦 Registrar recepción','ocRegistrarRecepcion(\''+numOC+'\')','#22c55e');
-    if(o.estado==='RECIBIDA')   acciones+=btn('🔒 Cerrar','_ocCambiarEstado(\''+numOC+'\',\'CERRADA\')','#16a34a');
+    if(o.estado==='RECIBIDA')   acciones+=btn('🔒 Cerrar / entrega final','ocCerrar(\''+numOC+'\')','#16a34a');
     if(o.estado==='STANDBY')    acciones+=btn('▶️ Reactivar','ocReactivar(\''+numOC+'\')','#60a5fa');
     else if(!['CERRADA','ANULADA'].includes(o.estado)) acciones+=btn('⏸ Stand by','ocStandBy(\''+numOC+'\')','#eab308');
     if(!['ANULADA','CERRADA'].includes(o.estado)) acciones+=btn('✕ Anular','ocAnular(\''+numOC+'\')','#ef4444');
@@ -6867,8 +7331,10 @@ function verOC(numOC){
           +'<span style="color:var(--muted)">'+_ocFecha(x.fecha,true)+'</span><span style="flex:1">'+(x.motivo?('Motivo: '+_ocE(x.motivo)):'—')+'</span></div>').join('')):'')
     + (filas?('<div style="margin-top:12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:5px">Ítems</div>'
         +'<table style="width:100%;border-collapse:collapse;font-size:12px">'+filas+'</table>'):'')
+    + '<div id="oc-facts"></div>'
     + (acciones?('<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'+acciones+'</div>'):''),
     null);
+  try{ _ocFactsMontar(numOC); }catch(e){}
 }
 
 // Modal simple reutilizable del Centro de Control
@@ -6949,7 +7415,9 @@ async function generarOCdesdeCCP(numComp){
 async function _ocCambiarEstado(numOC, nuevo, extra){
   if(!esModoEditor()){ showToast('Solo el Administrador puede cambiar el estado','error'); return; }
   const oc=(ocData||[]).find(o=>o.num_oc===numOC); if(!oc) return;
-  Object.assign(oc, extra||{});
+  const _ex=Object.assign({}, extra||{}); const _forz=!!_ex._forzado; delete _ex._forzado;
+  if(nuevo==='CERRADA' && !_forz) return ocCerrar(numOC);
+  Object.assign(oc, _ex);
   oc.estado=nuevo;
   if(nuevo==='ENVIADA')    oc.enviada_en=new Date().toISOString();
   if(nuevo==='CONFIRMADA') oc.confirmada_en=new Date().toISOString();
@@ -10960,6 +11428,7 @@ function setFacturaDato(idx, campo, val) {
 }
 function setRemitoDato(idx, campo, val) {
   const sc=scs[window._scIdx]; if(!sc) return;
+  if(_scTieneOC(sc)){ showToast('Esta solicitud tiene orden de compra: el remito se registra en la sección Recepción','error'); try{ verSC(window._scIdx); }catch(e){} return; }
   if(!sc.itemsDetalle) sc.itemsDetalle={};
   if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'COMPRADO',cantidad:'',justificacion:''};
   if(campo==='fecha')      sc.itemsDetalle[idx].remitoFecha     = val;
