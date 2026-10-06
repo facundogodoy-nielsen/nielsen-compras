@@ -1619,6 +1619,9 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 #view-proyectos .gantt-label{width:120px}
 }
 
+
+/* Importadores anteriores de las vistas de gasto: reemplazados por la barra única de "Análisis del gasto" */
+[data-gasto-old]{display:none!important}
 </style>
 </head>
 <body>
@@ -1765,14 +1768,8 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <button class="sidebar-btn" onclick="showView('prov-db', this)">
       <span class="sb-icon">🗂</span> Base de Datos
     </button>
-    <button class="sidebar-btn" onclick="showView('prov-compras', this)">
-      <span class="sb-icon">📊</span> Compras por Proveedor
-    </button>
-    <button class="sidebar-btn" onclick="showView('prov-area', this)">
-      <span class="sb-icon">🏭</span> Compras por Área
-    </button>
-    <button class="sidebar-btn" onclick="showView('prov-campamento', this)">
-      <span class="sb-icon">⛺</span> Compras por Campamento
+    <button class="sidebar-btn" data-gasto-menu onclick="showView('prov-compras', this)">
+      <span class="sb-icon">📈</span> Análisis del gasto
     </button>
     <button class="sidebar-btn" onclick="showView('prov-eval', this)">
       <span class="sb-icon">⭐</span> Evaluación de Proveedores
@@ -3122,7 +3119,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
 <div id="view-ahorro" class="view">
   <div class="pg-header">
     <div class="pg-title">AHORRO <span>GENERADO</span></div>
-    <div class="pg-sub">Ahorro total logrado eligiendo el mejor presupuesto en cada comparativa</div>
+    <div class="pg-sub">Ahorro total logrado eligiendo el mejor presupuesto en cada comparativa · <span title="Adjudicación a un proveedor: contra la siguiente oferta completa. Adjudicación repartida: ítem por ítem, contra la mejor alternativa. Mismo cálculo en el Comparativo, el SRM y el Historial de CCP." style="border-bottom:1px dotted var(--muted);cursor:help">criterio único: contra la siguiente oferta</span></div>
   </div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
     <select id="aho-filtro-tipo" onchange="onAhoFiltroChange()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
@@ -3185,8 +3182,10 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="pg-title">COMPRAS POR <span>PROVEEDOR</span></div>
     <div class="pg-sub">Análisis de cantidad de compras y montos por período</div>
   </div>
+  <div class="gasto-barra" data-vista="prov-compras"></div>
+
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
-    <label class="sidebar-btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:var(--green);font-size:12px;font-weight:700;width:auto;margin:0">
+    <label class="sidebar-btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:var(--green);font-size:12px;font-weight:700;width:auto;margin:0" data-gasto-old>
       ⬆️ Importar Excel de Compras
       <input type="file" accept=".xlsx,.xls,.csv" onchange="importarComprasXLS(event)" style="display:none">
     </label>
@@ -3247,12 +3246,14 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="pg-title">COMPRAS POR <span>ÁREA</span></div>
     <div class="pg-sub">Monto de compras agrupado por área — facturas menos notas de crédito</div>
   </div>
+  <div class="gasto-barra" data-vista="prov-area"></div>
+
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
-    <label class="sidebar-btn" data-editor-only style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:var(--green);font-size:12px;font-weight:700;width:auto;margin:0">
+    <label class="sidebar-btn" data-editor-only style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:var(--green);font-size:12px;font-weight:700;width:auto;margin:0" data-gasto-old>
       ⬆️ Importar Planilla COMPRAS
       <input type="file" accept=".xlsx,.xls,.csv" onchange="importarDetalleXLS(event)" style="display:none">
     </label>
-    <button onclick="traerDetalleDesdeSheet(false)" title="Leer directo de la planilla COMPRAS (Google Sheet)" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(59,130,246,.4);background:rgba(59,130,246,.1);color:#60a5fa;font-size:12px;font-weight:700">🔄 Traer de la planilla</button>
+    <button onclick="traerDetalleDesdeSheet(false)" title="Leer directo de la planilla COMPRAS (Google Sheet)" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(59,130,246,.4);background:rgba(59,130,246,.1);color:#60a5fa;font-size:12px;font-weight:700" data-gasto-old>🔄 Traer de la planilla</button>
     <select id="det-a-anio" onchange="onFiltroDetArea('anio')" style="padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
       <option value="">Todos los años</option>
     </select>
@@ -3314,12 +3315,14 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
     <div class="pg-title">COMPRAS POR <span>CAMPAMENTO</span></div>
     <div class="pg-sub">Monto de compras agrupado por campamento — facturas menos notas de crédito</div>
   </div>
+  <div class="gasto-barra" data-vista="prov-campamento"></div>
+
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
-    <label class="sidebar-btn" data-editor-only style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:var(--green);font-size:12px;font-weight:700;width:auto;margin:0">
+    <label class="sidebar-btn" data-editor-only style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(34,197,94,.4);background:rgba(34,197,94,.1);color:var(--green);font-size:12px;font-weight:700;width:auto;margin:0" data-gasto-old>
       ⬆️ Importar Planilla COMPRAS
       <input type="file" accept=".xlsx,.xls,.csv" onchange="importarDetalleXLS(event)" style="display:none">
     </label>
-    <button onclick="traerDetalleDesdeSheet(false)" title="Leer directo de la planilla COMPRAS (Google Sheet)" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(59,130,246,.4);background:rgba(59,130,246,.1);color:#60a5fa;font-size:12px;font-weight:700">🔄 Traer de la planilla</button>
+    <button onclick="traerDetalleDesdeSheet(false)" title="Leer directo de la planilla COMPRAS (Google Sheet)" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;border:1.5px solid rgba(59,130,246,.4);background:rgba(59,130,246,.1);color:#60a5fa;font-size:12px;font-weight:700" data-gasto-old>🔄 Traer de la planilla</button>
     <select id="det-c-anio" onchange="onFiltroDetCamp('anio')" style="padding:9px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--ff);font-size:13px">
       <option value="">Todos los años</option>
     </select>
@@ -3929,8 +3932,11 @@ async function showView(id, btn) {
     if(typeof _asegurarDatosCompras==='function'){ try{ await _asegurarDatosCompras(); }catch(e){} }
     renderProvDB();
   }
+  if (id === 'prov-compras') _gastoPintarBarra('prov-compras');
   if (id === 'prov-compras') { await _asegurarDatosCompras(); renderComprasProv(); }
+  if (id === 'prov-area') _gastoPintarBarra('prov-area');
   if (id === 'prov-area')      { await _asegurarDatosCompras(); renderComprasArea(); }
+  if (id === 'prov-campamento') _gastoPintarBarra('prov-campamento');
   if (id === 'prov-campamento'){ await _asegurarDatosCompras(); renderComprasCampamento(); }
   if (id === 'prov-eval')    { renderEvalProv(); }
   if (id === 'aprov')        { await cargarAprov(); renderAprov(); }
@@ -5480,7 +5486,7 @@ function _memoHTML(c){
     +'<p>Luego del análisis de las ofertas recibidas, desde el Departamento de Compras y Abastecimiento se recomienda avanzar con la propuesta de <b>'
     +_escPA(c.proveedor_elegido||gan.name||'—')+'</b>, por resultar la opción más conveniente en términos económicos.</p>'
     +'<div class="hi"><div class="k">Monto total recomendado (IVA incluido)</div><div class="v">'+_fmtMoneyCC(c.precio_elegido, divisa)+'</div></div>'
-    +(Number(c.ahorro)>0?('<p>Dicha alternativa representa un <b>ahorro estimado de '+_fmtMoneyCC(c.ahorro,divisa)+'</b> respecto de la siguiente oferta considerada.</p>'):'')
+    +(ahorroDe(c)>0?('<p>Dicha alternativa representa un <b>ahorro estimado de '+_fmtMoneyCC(ahorroDe(c),divisa)+'</b> respecto de la siguiente oferta considerada.</p>'):'')
     +(c.observaciones?('<h2>5. Observaciones</h2><p>'+_escPA(c.observaciones)+'</p>'):'')
     +'<h2>'+(c.observaciones?'6':'5')+'. Solicitud</h2>'
     +'<p>En virtud de lo expuesto, se solicita autorización para proceder con la emisión de la orden de compra correspondiente'
@@ -5518,7 +5524,7 @@ async function autorizarCCP(compId, numComp, asunto, montoStr, nivel) {
     monto_num: Number(c.precio_elegido)||0,
     divisa: c.divisa || 'ARS',
     proveedor: c.proveedor_elegido || '',
-    ahorro: Number(c.ahorro)||0,
+    ahorro: ahorroDe(c),
     condicion_pago: _condPagoElegida(c),
     n_presupuestos: _ccp_provCount(c),
     items: _jparse(c.items, []).map(it => (it.qty||1)+' '+(it.unit||'')+' '+(it.desc||'')).slice(0,30),
@@ -5597,7 +5603,7 @@ function _ccpEditPick(){
   set('ce-num_comp',c.num_comp); set('ce-num_sc',c.num_sc); set('ce-asunto',c.asunto);
   set('ce-solicitante',c.solicitante); set('ce-area',c.area); set('ce-divisa',(c.divisa||'ARS'));
   set('ce-fecha',String(c.fecha||'').slice(0,10)); set('ce-proveedor_elegido',c.proveedor_elegido);
-  set('ce-precio_elegido',c.precio_elegido); set('ce-precio_max',c.precio_max); set('ce-ahorro',c.ahorro);
+  set('ce-precio_elegido',c.precio_elegido); set('ce-precio_max',c.precio_max); set('ce-ahorro',ahorroDe(c)); { const _e=document.getElementById('ce-ahorro'); if(_e){ const _calc=_jparse(c.proveedores,[]).length>1; _e.readOnly=_calc; _e.style.opacity=_calc?'.7':''; _e.title=_calc?'Se calcula con el criterio único desde las ofertas de la comparativa':''; } }
   set('ce-estado',c.estado); set('ce-observaciones',c.observaciones);
 }
 async function _ccpEditGuardar(){
@@ -5786,7 +5792,7 @@ async function renderComparativas(){
       const fmt = v => divisa+' '+Number(v).toLocaleString('es-AR',{minimumFractionDigits:2});
       const promStr= prom>0 ? fmt(prom) : '—';
       const pMin   = c.precio_elegido ? fmt(c.precio_elegido) : '—';
-      const aho    = c.ahorro>0 ? '<span style="color:var(--green);font-weight:700">'+fmt(c.ahorro)+'</span>' : '—';
+      const aho    = ahorroDe(c)>0 ? '<span style="color:var(--green);font-weight:700">'+fmt(ahorroDe(c))+'</span>' : (ahorroDe(c)<0 ? '<span style="color:var(--red);font-weight:700" title="Se adjudicó por encima de la mejor alternativa">'+fmt(ahorroDe(c))+'</span>' : '—');
       const link   = localStorage.getItem('nielsen_comparacion_url')||'https://nielsen-compras.vercel.app/comparativo';
       const scLink = c.num_sc ? `<span class="mono" style="color:var(--or)">${c.num_sc}</span>` : '—';
       const ok2    = nProv>=2;
@@ -5982,11 +5988,11 @@ function _ahoDrawCharts(data, divisa){
   var fmtAxis=function(v){ return divisa+' '+Number(v).toLocaleString('es-AR'); };
   var baseOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return fmtAxis(ctx.parsed.y);}}}},
     scales:{x:{ticks:{color:tick,font:{size:10}},grid:{display:false}},y:{ticks:{color:tick,font:{size:10},callback:function(v){return Number(v).toLocaleString('es-AR');}},grid:{color:grid}}}};
-  var porArea={}; data.forEach(function(c){ var a=(c.area||'Sin área').toUpperCase(); porArea[a]=(porArea[a]||0)+(Number(c.ahorro)||0); });
+  var porArea={}; data.forEach(function(c){ var a=(c.area||'Sin área').toUpperCase(); porArea[a]=(porArea[a]||0)+ahorroDe(c); });
   var aKeys=Object.keys(porArea).sort(function(x,y){ return porArea[y]-porArea[x]; });
   var cA=document.getElementById('aho-chart-area');
   if(cA) _ahoCharts.area=new Chart(cA,{type:'bar',data:{labels:aKeys,datasets:[{data:aKeys.map(function(k){return Math.round(porArea[k]);}),backgroundColor:or,borderRadius:6}]},options:baseOpts});
-  var porMes={}; data.forEach(function(c){ var m=_ahoFechaStr(c).slice(0,7); if(m) porMes[m]=(porMes[m]||0)+(Number(c.ahorro)||0); });
+  var porMes={}; data.forEach(function(c){ var m=_ahoFechaStr(c).slice(0,7); if(m) porMes[m]=(porMes[m]||0)+ahorroDe(c); });
   var mKeys=Object.keys(porMes).sort().slice(-12);
   var cM=document.getElementById('aho-chart-mes');
   if(cM) _ahoCharts.mes=new Chart(cM,{type:'bar',data:{labels:mKeys,datasets:[{data:mKeys.map(function(k){return Math.round(porMes[k]);}),backgroundColor:'#22c55e',borderRadius:6}]},options:baseOpts});
@@ -7196,6 +7202,107 @@ async function _ocFactsMontar(numOC){
       +'</div>').join('') : '<div style="font-size:12px;color:var(--muted)">Sin facturas registradas.</div>');
 }
 
+// ══════════════════════════════════════════════════════════════
+// AHORRO — CRITERIO ÚNICO DEL SISTEMA
+// La misma función está en el Comparativo (al guardar) y en el Centro de Control
+// (al mostrar), para que el ahorro dé lo mismo en todas las vistas.
+// · Adjudicación a un solo proveedor: contra la siguiente oferta que cotizó todos
+//   esos mismos ítems (es lo que dice el memorándum: "respecto de la siguiente oferta").
+// · Adjudicación repartida entre proveedores, o sin otra oferta completa: ítem por ítem,
+//   contra la mejor alternativa de otro proveedor para ese ítem.
+// · Puede dar negativo si se adjudicó por encima de la mejor alternativa (sobrecosto).
+// Todo con IVA.
+// ══════════════════════════════════════════════════════════════
+function ahorroUnicoCalc(items, provs, adj, iva){
+  iva = (iva==null ? 0.21 : iva); items = items||[]; provs = provs||[];
+  var q  = function(i){ return parseFloat((items[i]||{}).qty)||0; };
+  var pr = function(p,i){ return parseFloat(((p||{}).prices||[])[i])||0; };
+  var norm = function(t){ return String(t||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]/g,''); };
+  var idxProv = function(a){ if(a.pidx!=null && provs[a.pidx] && norm(provs[a.pidx].name)===norm(a.prov)) return a.pidx;
+    var n=norm(a.prov); for(var k=0;k<provs.length;k++){ if(norm(provs[k].name)===n) return k; } return -1; };
+  var cant = function(a){ return parseFloat(a.qty)||q(a.i); };
+  var usar = (adj||[]).filter(function(a){ return a && a.prov && cant(a)>0; });
+  if(!usar.length) return null;
+  var precioAdj = function(a){ return parseFloat(a.price)||pr(provs[idxProv(a)],a.i); };
+  var adjudicado = usar.reduce(function(s,a){ return s + cant(a)*precioAdj(a); },0);
+  var ganadores = usar.map(idxProv).filter(function(v,i,arr){ return arr.indexOf(v)===i; });
+  if(ganadores.length===1 && ganadores[0]>=0){
+    var g = ganadores[0], alternativas=[];
+    for(var k=0;k<provs.length;k++){
+      if(k===g) continue;
+      if(usar.every(function(a){ return pr(provs[k],a.i)>0; }))
+        alternativas.push(usar.reduce(function(s,a){ return s + cant(a)*pr(provs[k],a.i); },0));
+    }
+    if(alternativas.length){
+      var ref=Math.min.apply(null,alternativas);
+      return { ahorro:(ref-adjudicado)*(1+iva), referencia:ref*(1+iva), adjudicado:adjudicado*(1+iva), criterio:'siguiente oferta' };
+    }
+  }
+  var refT=0, adjT=0;
+  usar.forEach(function(a){
+    var g=idxProv(a), alts=[];
+    for(var k=0;k<provs.length;k++){ if(k!==g){ var v=pr(provs[k],a.i); if(v>0) alts.push(v); } }
+    if(alts.length){ refT += Math.min.apply(null,alts)*cant(a); adjT += precioAdj(a)*cant(a); }
+  });
+  if(!refT) return { ahorro:0, referencia:0, adjudicado:adjudicado*(1+iva), criterio:'sin alternativa' };
+  return { ahorro:(refT-adjT)*(1+iva), referencia:refT*(1+iva), adjudicado:adjudicado*(1+iva), criterio:'por ítem' };
+}
+
+// Ahorro de una comparativa con el criterio único: se calcula desde sus ofertas;
+// si no tiene ofertas cargadas (comparativas antiguas o importadas), se usa el valor guardado.
+const _ahoMemo=new WeakMap();
+function ahorroDe(c){
+  if(!c || typeof c!=='object') return 0;
+  if(_ahoMemo.has(c)) return _ahoMemo.get(c);
+  let v=Number(c['ahorro'])||0;   // valor guardado (respaldo)
+  try{
+    const items=_jparse(c.items,[]), provs=_jparse(c.proveedores,[]), an=_jparse(c.analisis,{});
+    let adj=Array.isArray(an.adjudicacion)? an.adjudicacion.filter(a=>a&&a.prov) : [];
+    if(!adj.length && provs.length && c.proveedor_elegido){
+      const k=provs.findIndex(p=>_parNormProv(p.name)===_parNormProv(c.proveedor_elegido));
+      if(k>=0) adj=items.map((it,i)=>({i, prov:provs[k].name, pidx:k, qty:parseFloat(it.qty)||0, price:parseFloat((provs[k].prices||[])[i])||0})).filter(a=>a.price>0&&a.qty>0);
+    }
+    if(adj.length && provs.length>1){ const r=ahorroUnicoCalc(items,provs,adj,0.21); if(r) v=Math.round(r.ahorro*100)/100; }
+  }catch(e){}
+  _ahoMemo.set(c,v); return v;
+}
+
+// ══ ANÁLISIS DEL GASTO — un acceso, tres cortes, el mismo período y una sola fuente ══
+const GASTO_VISTAS={'prov-compras':{lbl:'Por proveedor',pre:'compras'},'prov-area':{lbl:'Por área',pre:'det-a'},'prov-campamento':{lbl:'Por campamento',pre:'det-c'}};
+let _gastoActual='prov-compras';
+function _gastoPintarBarra(v){
+  _gastoActual=v;
+  document.querySelectorAll('.gasto-barra').forEach(b=>{
+    const ts=_detalleSheetTS? new Date(_detalleSheetTS).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '—';
+    b.innerHTML='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border);margin-bottom:12px">'
+      +Object.keys(GASTO_VISTAS).map(k=>'<button onclick="_gastoTab(\''+k+'\')" style="padding:10px 16px;border:none;background:none;cursor:pointer;font-family:var(--ff);font-size:13px;font-weight:700;'
+        +'color:'+(k===v?'var(--or)':'var(--muted)')+';border-bottom:2px solid '+(k===v?'var(--or)':'transparent')+'">'+GASTO_VISTAS[k].lbl+'</button>').join('')
+      +'<span style="margin-left:auto;font-size:11.5px;color:var(--muted)">Fuente: <b style="color:var(--text)">planilla COMPRAS</b> · '+(detalleData||[]).length.toLocaleString('es-AR')+' renglones · actualizada '+ts+'</span>'
+      +'<button onclick="traerDetalleDesdeSheet(false).then(()=>_gastoTab(_gastoActual))" style="padding:6px 12px;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:11.5px;font-weight:700;cursor:pointer">🔄 Traer de la planilla</button>'
+      +(esModoEditor()?'<label style="padding:6px 12px;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:11.5px;font-weight:700;cursor:pointer">⬆️ Importar planilla<input type="file" accept=".xlsx,.xls,.csv" onchange="importarDetalleXLS(event)" style="display:none"></label>':'')
+      +'</div>';
+  });
+}
+// Cambiar de corte manteniendo el período elegido
+function _gastoTab(dest){
+  const o=GASTO_VISTAS[_gastoActual], d=GASTO_VISTAS[dest]; if(!d) return;
+  if(o && o.pre!==d.pre) ['anio','mes','desde','hasta'].forEach(c=>{
+    const a=document.getElementById(o.pre+'-'+c), b=document.getElementById(d.pre+'-'+c);
+    if(!a || !b) return;
+    if(b.tagName==='SELECT'){
+      if([...b.options].some(x=>x.value===a.value)){ b.value=a.value; return; }
+      const txt=a.tagName==='SELECT' && a.selectedIndex>=0 ? a.options[a.selectedIndex].text.trim().toLowerCase() : String(a.value).toLowerCase();
+      const op=[...b.options].find(x=>x.text.trim().toLowerCase()===txt || (a.value!=='' && String(parseInt(x.value,10))===String(parseInt(a.value,10))));
+      if(op) b.value=op.value;
+    } else b.value=a.value;
+  });
+  showView(dest, document.querySelector('[data-gasto-menu]'));
+}
+// La vista por proveedor siempre sale de la misma planilla que el resto del sistema
+function _gastoUnificarFuente(){
+  if((detalleData||[]).length) comprasData = detalleData.map(d=>({ proveedor:d.proveedor||'SIN ESPECIFICAR', monto:d.monto, fecha:d.fecha||'' }));
+}
+
 async function renderOC(){
   const cont=document.getElementById('oc-lista'); if(!cont) return;
   if(!ocData.length){ cont.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">⏳ Cargando órdenes...</div>'; await cargarOC(); }
@@ -7735,7 +7842,7 @@ function _srmCalcular(){
     const k=_parNormProv(c.proveedor_elegido); if(!k) return;
     if(!cmp[k]) cmp[k]={ adjudicadas:0, ahorro:0, cond:'', ultima:'' };
     cmp[k].adjudicadas++;
-    cmp[k].ahorro += Number(c.ahorro)||0;
+    cmp[k].ahorro += ahorroDe(c);
     if(c.condicion_pago) cmp[k].cond=c.condicion_pago;
     const f=String(c.fecha||c.creado_at||'').slice(0,10);
     if(f>cmp[k].ultima) cmp[k].ultima=f;
@@ -7757,7 +7864,7 @@ function _srmCalcular(){
     p.nMeses = Object.keys(p.meses).length;
     p.ticket = p.n? p.gasto/p.n : 0;
     const c=cmp[p.k]||{};
-    p.adjudicadas=c.adjudicadas||0; p.ahorro=c.ahorro||0; p.cond=c.cond||''; 
+    p.adjudicadas=c.adjudicadas||0; p.ahorro=ahorroDe(c); p.cond=c.cond||''; 
     // Ficha en la Base de Datos
     const ficha=(provData||[]).find(x=>_provClaves(x.nombre).indexOf(p.k)>=0);
     p.ficha=ficha||null;
@@ -7796,7 +7903,7 @@ async function renderSRM(){
   // Traer comparativas una sola vez (ahorro y condiciones por proveedor)
   if(!window._srmComparativas){
     try{
-      const r=await fetch(_SB_URL+'/rest/v1/comparativas?select=proveedor_elegido,ahorro,condicion_pago,fecha,creado_at&limit=2000',
+      const r=await fetch(_SB_URL+'/rest/v1/comparativas?select=proveedor_elegido,ahorro,condicion_pago,fecha,creado_at,items,proveedores,analisis&limit=2000',
         {headers:{apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY},cache:'no-store'});
       window._srmComparativas = r.ok ? await r.json() : [];
     }catch(e){ window._srmComparativas=[]; }
@@ -8975,16 +9082,16 @@ async function renderAhorro(){
     let r=await fetch(_SB_URL+'/rest/v1/comparativas?select=*&limit=500',{headers:h});
     if(!r.ok) throw new Error('HTTP '+r.status);
     let all=await r.json();
-    all=all.filter(c=>Number(c.ahorro)>0);
+    all=all.filter(c=>ahorroDe(c)>0);
     _ahoFillYears(all);
     var _areas={}; all.forEach(function(c){ var a=(c.area||'').trim(); if(a) _areas[a]=1; });
     _mkAreaBtns('aho-area-btns', Object.keys(_areas).sort(), _ahoArea, 'pickAhoArea');
     let data=all.filter(_ahoEnPeriodo);
     if(_ahoArea && _ahoArea!=='__all') data=data.filter(c=>(c.area||'').trim()===_ahoArea);
-    data=data.sort((a,b)=>(Number(b.ahorro)||0)-(Number(a.ahorro)||0));
-    const total=data.reduce((s,c)=>s+(Number(c.ahorro)||0),0);
+    data=data.sort((a,b)=>ahorroDe(b)-ahorroDe(a));
+    const total=data.reduce((s,c)=>s+ahorroDe(c),0);
     const prom=data.length?Math.round(total/data.length):0;
-    const max=data.length?Math.max(...data.map(c=>Number(c.ahorro)||0)):0;
+    const max=data.length?Math.max(...data.map(c=>ahorroDe(c))):0;
     const divisa=data.length?(data[0].divisa||'$'):'$';
     setEl('aho-total', total?(divisa+' '+total.toLocaleString('es-AR',{minimumFractionDigits:2})):'—');
     setEl('aho-comp',  data.length);
@@ -9006,7 +9113,7 @@ async function renderAhorro(){
             +`<td style="font-weight:600">${c.proveedor_elegido||'—'}</td>`
             +`<td>${fmt(c.precio_elegido)}</td>`
             +`<td style="color:var(--muted)">${fmt(c.precio_max)}</td>`
-            +`<td style="font-weight:700;color:var(--green)">${fmt(c.ahorro)}</td>`
+            +`<td style="font-weight:700;color:var(--green)">${fmt(ahorroDe(c))}</td>`
             +'</tr>';
         }).join('')
         +'</tbody></table></div></div>';
@@ -15633,6 +15740,7 @@ async function _asegurarDatosCompras() {
   }
   poblarPeriodosDet();
   if (typeof poblarPeriodos === 'function') poblarPeriodos();
+  _gastoUnificarFuente();
 }
 
 // Compatibilidad: nombre anterior

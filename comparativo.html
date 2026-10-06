@@ -547,7 +547,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
   <button class="tab-btn active" data-tab="solicitud">📋 1. Solicitud</button>
   <button class="tab-btn" data-tab="proveedores">🏢 2. Proveedores &amp; PDFs</button>
   <button class="tab-btn" data-tab="analisis">📊 3. Análisis</button>
-  <button class="tab-btn tab-badge" data-tab="exportar">🏢 Historial de CCP</button>
+  <button class="tab-btn tab-badge" data-tab="exportar">📂 Comparativas guardadas</button>
 </div>
 
 <div class="main">
@@ -779,7 +779,7 @@ table.db-tbl tr:hover td{background:rgba(232,97,26,.05)}
 <div class="tab-panel" id="tab-exportar">
   <div class="card">
     <div class="card-header">
-      <h3>🏢 Historial de CCP</h3>
+      <h3>📂 Comparativas guardadas</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" onclick="renderHistCCP()">🔄 Actualizar</button>
         <button class="btn btn-outline btn-sm" id="btnVolverCC" style="display:none">🔙 Volver al Centro de Control</button>
@@ -1290,6 +1290,18 @@ async function guardarEnSupabase(showMsg) {
     savings.precioMin = _adjTotalConIVA(_adj);
     savings.elegido   = _adjEtiqueta(_adj);
   }
+  // Ahorro con el criterio único del sistema (mismo cálculo que el Centro de Control)
+  try{
+    var _adjAh = _adj.length ? _adj : (function(){
+      var k=-1, n=String(savings.elegido||'').toUpperCase().trim();
+      providers.forEach(function(p,ix){ if(String(p.name||'').toUpperCase().trim()===n) k=ix; });
+      if(k<0) return [];
+      return items.map(function(it,ix){ return {i:ix, prov:providers[k].name, pidx:k, qty:parseFloat(it.qty)||0, price:parseFloat((providers[k].prices||[])[ix])||0}; })
+                  .filter(function(a){ return a.price>0 && a.qty>0; });
+    })();
+    var _ah = ahorroUnicoCalc(items, providers, _adjAh, IVA_RATE);
+    if (_ah){ savings.ahorro = Math.round(_ah.ahorro*100)/100; savings.ahorroCriterio = _ah.criterio; }
+  }catch(e){ console.warn('ahorro', e); }
   var data = {
     num_comp:         _currentCompNum,
     num_sc:           numSC||null,
@@ -1640,6 +1652,52 @@ function _adjCambiar(i, pidx){
   _renderAdjudicacion();
   showToast('Adjudicación actualizada: '+_adjEtiqueta(analysisResult.adjudicacion.filter(function(a){return a.prov;})),'ok');
   try{ if(typeof guardarAnalisisEnCC==='function') guardarAnalisisEnCC(true); }catch(e){}
+}
+
+// ══════════════════════════════════════════════════════════════
+// AHORRO — CRITERIO ÚNICO DEL SISTEMA
+// La misma función está en el Comparativo (al guardar) y en el Centro de Control
+// (al mostrar), para que el ahorro dé lo mismo en todas las vistas.
+// · Adjudicación a un solo proveedor: contra la siguiente oferta que cotizó todos
+//   esos mismos ítems (es lo que dice el memorándum: "respecto de la siguiente oferta").
+// · Adjudicación repartida entre proveedores, o sin otra oferta completa: ítem por ítem,
+//   contra la mejor alternativa de otro proveedor para ese ítem.
+// · Puede dar negativo si se adjudicó por encima de la mejor alternativa (sobrecosto).
+// Todo con IVA.
+// ══════════════════════════════════════════════════════════════
+function ahorroUnicoCalc(items, provs, adj, iva){
+  iva = (iva==null ? 0.21 : iva); items = items||[]; provs = provs||[];
+  var q  = function(i){ return parseFloat((items[i]||{}).qty)||0; };
+  var pr = function(p,i){ return parseFloat(((p||{}).prices||[])[i])||0; };
+  var norm = function(t){ return String(t||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]/g,''); };
+  var idxProv = function(a){ if(a.pidx!=null && provs[a.pidx] && norm(provs[a.pidx].name)===norm(a.prov)) return a.pidx;
+    var n=norm(a.prov); for(var k=0;k<provs.length;k++){ if(norm(provs[k].name)===n) return k; } return -1; };
+  var cant = function(a){ return parseFloat(a.qty)||q(a.i); };
+  var usar = (adj||[]).filter(function(a){ return a && a.prov && cant(a)>0; });
+  if(!usar.length) return null;
+  var precioAdj = function(a){ return parseFloat(a.price)||pr(provs[idxProv(a)],a.i); };
+  var adjudicado = usar.reduce(function(s,a){ return s + cant(a)*precioAdj(a); },0);
+  var ganadores = usar.map(idxProv).filter(function(v,i,arr){ return arr.indexOf(v)===i; });
+  if(ganadores.length===1 && ganadores[0]>=0){
+    var g = ganadores[0], alternativas=[];
+    for(var k=0;k<provs.length;k++){
+      if(k===g) continue;
+      if(usar.every(function(a){ return pr(provs[k],a.i)>0; }))
+        alternativas.push(usar.reduce(function(s,a){ return s + cant(a)*pr(provs[k],a.i); },0));
+    }
+    if(alternativas.length){
+      var ref=Math.min.apply(null,alternativas);
+      return { ahorro:(ref-adjudicado)*(1+iva), referencia:ref*(1+iva), adjudicado:adjudicado*(1+iva), criterio:'siguiente oferta' };
+    }
+  }
+  var refT=0, adjT=0;
+  usar.forEach(function(a){
+    var g=idxProv(a), alts=[];
+    for(var k=0;k<provs.length;k++){ if(k!==g){ var v=pr(provs[k],a.i); if(v>0) alts.push(v); } }
+    if(alts.length){ refT += Math.min.apply(null,alts)*cant(a); adjT += precioAdj(a)*cant(a); }
+  });
+  if(!refT) return { ahorro:0, referencia:0, adjudicado:adjudicado*(1+iva), criterio:'sin alternativa' };
+  return { ahorro:(refT-adjT)*(1+iva), referencia:refT*(1+iva), adjudicado:adjudicado*(1+iva), criterio:'por ítem' };
 }
 
 function _scItemsParse(txt){
@@ -2017,6 +2075,15 @@ document.addEventListener('DOMContentLoaded', function() {
       const p = new URLSearchParams(window.location.search);
       var _compId = p.get('comp_id');
       if (_compId) { cargarComparativaPorId(_compId); return; }
+    var _ccpNum = p.get('ccp');
+    if (_ccpNum) {
+      fetch(_SB_URL + '/rest/v1/comparativas?num_comp=eq.' + encodeURIComponent(_ccpNum) + '&select=id&limit=1',
+        { headers:{ apikey:_SB_KEY, Authorization:'Bearer '+_SB_KEY }, cache:'no-store' })
+        .then(function(r){ return r.ok ? r.json() : []; })
+        .then(function(a){ if (a && a[0] && a[0].id) cargarComparativaPorId(a[0].id); else showToast('No se encontró la comparativa '+_ccpNum,'err'); })
+        .catch(function(){ showToast('No se pudo abrir la comparativa '+_ccpNum,'err'); });
+      return;
+    }
       if (p.get('sc_num') || p.get('sc_asunto')) {
         // Pre-fill solicitud fields
         if (p.get('sc_asunto'))     document.getElementById('asunto').value      = p.get('sc_asunto');
