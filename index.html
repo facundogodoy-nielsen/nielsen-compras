@@ -2764,6 +2764,7 @@ td.mono { font-family: var(--fm); font-size: 11px; color: var(--or); }
       <option value="Recibida">Recibida</option>
       <option value="Cerrada">Cerrada</option>
       <option value="Stand by">⏸ Stand by</option>
+      <option value="Cancelada">⛔ Cancelada</option>
     </select>
     <button onclick="renderExpediente()" style="padding:9px 15px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--ff)">🔄 Actualizar</button>
   </div>
@@ -4985,10 +4986,28 @@ async function _circCargar(force){
   return _circCache;
 }
 
+// ── SC CANCELADA: queda cerrada, sin acciones (v262) ──
+function _scPorNum(numSC){
+  const n=String(numSC||'').trim(); if(!n) return null;
+  return (typeof scs!=='undefined' && scs ? scs : []).find(s=>String(s.numSC||s.num||'').trim()===n) || null;
+}
+function _scEsCancelada(x){
+  const sc=(x && typeof x==='object') ? x : _scPorNum(x);
+  return !!sc && String(sc.estado||'').toUpperCase()==='CANCELADA';
+}
+// true = bloqueado (y avisa). Usar al inicio de cualquier acción sobre una SC.
+function _scBloqCancel(x, accion){
+  if(!_scEsCancelada(x)) return false;
+  const sc=(x && typeof x==='object') ? x : _scPorNum(x);
+  showToast('⛔ La solicitud '+((sc&&(sc.numSC||sc.num))||'')+' está CANCELADA: no se puede '+(accion||'modificar')+'. Si fue un error, reactivala desde la ficha.','error');
+  return true;
+}
+
 // Paso actual de una solicitud
 function circuitoDeSC(numSC){
   const n=String(numSC||'').trim();
   if(!n) return {paso:'Solicitada'};
+  if(_scEsCancelada(n)) return {paso:'Cancelada', comps:[], ocs:[], comp:null, oc:null};
   const comps=(_circCache.comps||[]).filter(c=>String(c.num_sc||'').indexOf(n)>=0);
   const ocs=(_circCache.ocs||[]).filter(o=>{
     const ss=Array.isArray(o.scs)?o.scs:[];
@@ -5016,7 +5035,7 @@ function circuitoDeSC(numSC){
 }
 
 const CIRC_COLOR = {'Solicitada':'#6b7280','En comparación':'#60a5fa','Autorizada':'#8b5cf6',
-  'OC en borrador':'#3e7cb1','OC emitida':'#06b6d4','Recepción parcial':'#f59e0b','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308','Rechazada':'#ef4444'};
+  'OC en borrador':'#3e7cb1','OC emitida':'#06b6d4','Recepción parcial':'#f59e0b','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308','Rechazada':'#ef4444','Cancelada':'#9ca3af'};
 
 function circuitoBadge(numSC){
   const c=circuitoDeSC(numSC);
@@ -5032,6 +5051,7 @@ function circuitoAccion(numSC){
   const c=circuitoDeSC(numSC);
   const b=(txt,fn,bg,tit)=>'<button class="btn btn-sm" title="'+(tit||'')+'" onclick="'+fn+'" style="background:'+bg+';color:#fff;border:none;font-size:10.5px;padding:4px 9px;white-space:nowrap">'+txt+'</button>';
   if(!esModoEditor()) return '';
+  if(c.paso==='Cancelada') return '';
   switch(c.paso){
     case 'Solicitada':
       return b('📊 Crear CCP','crearCCPdesdeSC(\''+_ocE(numSC)+'\')','#3e7cb1','Armar la comparativa de presupuestos')
@@ -5058,6 +5078,7 @@ function circuitoAccion(numSC){
 // Abre el Comparativo con la solicitud ya asociada
 function crearCCPdesdeSC(numSC){
   if(!numSC){ showToast('La SC no tiene número','error'); return; }
+  if(_scBloqCancel(numSC,'armar una comparativa')) return;
   const base=(typeof COMPARATIVO_URL!=='undefined' && COMPARATIVO_URL) ? COMPARATIVO_URL : 'comparativo';
   window.open(base + (base.indexOf('?')>=0?'&':'?') + 'sc=' + encodeURIComponent(numSC), '_blank');
 }
@@ -5285,6 +5306,7 @@ function scrollHistTo(dir, tbodyId) {
 
 function guardarCambiosSC(idx) {
   if(!esModoEditor()) return;
+  if(_scBloqCancel(scs[idx],'editar')) return;
   window._pendingScChanges = {
     idx,
     nuevaEstado:     document.getElementById('edit-estado')?.value,
@@ -6084,6 +6106,7 @@ const EXP_PASOS = ['Solicitada','En comparación','Autorizada','OC emitida','Rec
 function _expEstadoDe(sc, comps, ocs){
   const cs=comps.filter(c=>String(c.num_sc||'').indexOf(sc.numSC||sc.num_sc||'')>=0);
   const os=ocs.filter(o=>(Array.isArray(o.scs)?o.scs:[]).some(x=>x===(sc.numSC||sc.num_sc)));
+  if(_scEsCancelada(sc)) return {paso:'Cancelada', comps:cs, ocs:os};
   if(os.some(o=>o.estado==='STANDBY') || cs.some(c=>String(c.estado_autorizacion||'').toUpperCase()==='STANDBY'))
     return {paso:'Stand by', comps:cs, ocs:os};
   if(os.some(o=>o.estado==='CERRADA'))  return {paso:'Cerrada', comps:cs, ocs:os};
@@ -6115,13 +6138,13 @@ async function renderExpediente(){
   });
 
   // Embudo
-  const conteo={}; EXP_PASOS.concat(['Stand by']).forEach(p=>conteo[p]=0);
+  const conteo={}; EXP_PASOS.concat(['Stand by','Cancelada']).forEach(p=>conteo[p]=0);
   exps.forEach(x=>{ conteo[x.paso]=(conteo[x.paso]||0)+1; });
   const emb=document.getElementById('exp-embudo');
   if(emb){
-    const colores={'Solicitada':'#6b7280','En comparación':'#60a5fa','Autorizada':'#8b5cf6','OC emitida':'#06b6d4','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308'};
+    const colores={'Solicitada':'#6b7280','En comparación':'#60a5fa','Autorizada':'#8b5cf6','OC emitida':'#06b6d4','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308','Cancelada':'#9ca3af'};
     emb.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">'
-      + EXP_PASOS.concat(['Stand by']).map(p=>
+      + EXP_PASOS.concat(['Stand by','Cancelada']).map(p=>
         '<div onclick="document.getElementById(\'exp-estado\').value=\''+p+'\';renderExpediente()" style="cursor:pointer;background:var(--s1);border:1px solid '+colores[p]+'44;border-left:3px solid '+colores[p]+';border-radius:9px;padding:11px 13px">'
         +'<div style="font-size:20px;font-weight:800;color:'+colores[p]+'">'+(conteo[p]||0)+'</div>'
         +'<div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">'+p+'</div></div>').join('')
@@ -6136,7 +6159,7 @@ async function renderExpediente(){
 
   if(!lista.length){ cont.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted);background:var(--s1);border:1px solid var(--border);border-radius:11px">Sin expedientes que coincidan.</div>'; return; }
 
-  const colores={'Solicitada':'#6b7280','En comparación':'#60a5fa','Autorizada':'#8b5cf6','OC emitida':'#06b6d4','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308'};
+  const colores={'Solicitada':'#6b7280','En comparación':'#60a5fa','Autorizada':'#8b5cf6','OC emitida':'#06b6d4','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308','Cancelada':'#9ca3af'};
   cont.innerHTML = lista.map(x=>{
     const sc=x.sc, col=colores[x.paso]||'#6b7280';
     const eslabon=(txt,activo,det)=>'<div style="flex:1;min-width:110px;padding:8px 10px;border-radius:8px;background:'+(activo?'rgba(232,97,26,.1)':'var(--s2)')+';border:1px solid '+(activo?'var(--or)':'var(--border)')+'">'
@@ -6550,6 +6573,7 @@ function ocRegistrarRecepcion(numOC){
     + lista.map(n=>'<button onclick="_irRecepcion(\''+_ocE(n)+'\',\''+_ocE(numOC)+'\')" style="display:block;width:100%;text-align:left;margin-bottom:8px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text);cursor:pointer;font-weight:700">'+_ocE(n)+'</button>').join(''));
 }
 function _irRecepcion(numSC, numOC){
+  if(_scBloqCancel(numSC,'registrar recepciones')) return;
   window._recepFoco={numSC, numOC};
   ['cc-modal-ov','oc-modal-ov'].forEach(id=>{ const e=document.getElementById(id); if(e) e.style.display='none'; });
   try{ if(typeof cerrarModalOC==='function') cerrarModalOC(); }catch(e){}
@@ -6567,6 +6591,10 @@ async function _scRecepMontar(sc){
   const numSC=sc.numSC||sc.num||''; if(!numSC) return;
   let box=document.getElementById('sc-recep');
   if(!box){ box=document.createElement('div'); box.id='sc-recep'; box.style.cssText='margin-top:18px'; body.appendChild(box); }
+  if(_scEsCancelada(sc)){
+    box.innerHTML='<div style="padding:12px 14px;border-radius:10px;border:1px dashed var(--border);color:var(--muted);font-size:12.5px">📦 <b>Recepción:</b> deshabilitada — la solicitud está cancelada.</div>';
+    return;
+  }
   if(!ocData || !ocData.length){ try{ await cargarOC(); }catch(e){} }
   const ocsSC=(ocData||[]).filter(o=>RECEP_VIVAS.includes(o.estado) && (
      (Array.isArray(o.scs)&&o.scs.includes(numSC)) || (Array.isArray(o.items)?o.items:_jparse(o.items,[])).some(i=>i.sc===numSC)));
@@ -6662,6 +6690,7 @@ function _recepDif(){
 async function _recepGuardar(numSC){
   if(!esModoEditor()){ showToast('Solo el Administrador puede registrar recepciones','error'); return; }
   const sc=(scs||[]).find(s=>(s.numSC||s.num)===numSC); if(!sc) return;
+  if(_scBloqCancel(sc,'registrar recepciones')) return;
   const numOC=(document.getElementById('rc-oc')||{}).value, remito=String((document.getElementById('rc-num')||{}).value||'').trim();
   const fecha=(document.getElementById('rc-fecha')||{}).value, obs=String((document.getElementById('rc-obs')||{}).value||'').trim();
   const o=(ocData||[]).find(x=>x.num_oc===numOC);
@@ -6790,6 +6819,7 @@ function _precioHistTxt(desc, moneda){
 async function ocDirectaDesdeSC(numSC){
   if(!esModoEditor()){ showToast('Solo el Administrador puede generar órdenes de compra','error'); return; }
   const sc=(scs||[]).find(s=>(s.numSC||s.num)===numSC); if(!sc){ showToast('No se encontró la solicitud '+numSC,'error'); return; }
+  if(_scBloqCancel(sc,'generar una orden de compra')) return;
   await cargarOC();
   _ocdAbrir(sc);
 }
@@ -6800,6 +6830,7 @@ async function nuevaOCDirecta(){
 }
 let _ocd=null;
 function _ocdAbrir(sc){
+  if(sc && _scBloqCancel(sc,'generar una orden de compra')) return;
   const numSC=sc?(sc.numSC||sc.num):null;
   const lineas=sc? _ccScItems(sc.items) : [{qty:1,unit:'u',desc:''},{qty:1,unit:'u',desc:''},{qty:1,unit:'u',desc:''}];
   // Renglones de la SC que ya tienen orden de compra: no se vuelven a ordenar
@@ -7482,6 +7513,17 @@ async function generarOCdesdeCCP(numComp){
       prov:comp.proveedor_elegido||g.name||'', cuit:g.cuit||'', contacto:g.contact||'', email:g.email||'', tel:g.phone||'',
       price:Number((g.prices||[])[i])||0, marca:(g.marcas||[])[i]||'', modelo:(g.modelos||[])[i]||'', pago:g.paymentTerms||comp.condicion_pago||'', entrega:g.deliveryDays||'', iva:21 }));
   }
+  // v262: los renglones de solicitudes CANCELADAS no se ordenan
+  { const scsComp=String(comp.num_sc||'').split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean);
+    const canc=new Set(scsComp.filter(n=>_scEsCancelada(n)));
+    const sinSC=a=>!a.sc;
+    const quitados=adj.filter(a=>(a.sc && _scEsCancelada(a.sc)) || (sinSC(a) && scsComp.length && scsComp.every(n=>canc.has(n))));
+    if(quitados.length){
+      adj=adj.filter(a=>quitados.indexOf(a)<0);
+      const nums=[...new Set(quitados.map(a=>a.sc).filter(Boolean).concat([...canc]))];
+      if(!adj.length){ showToast('⛔ No se puede generar la OC: '+(nums.join(', ')||'la solicitud')+' está CANCELADA','error'); return; }
+      showToast('Se excluyeron '+quitados.length+' renglón(es) de '+nums.join(', ')+' (solicitud cancelada)','error');
+    } }
   const grupos={};
   adj.forEach(a=>{ const k=_parNormProv(a.prov); if(!grupos[k]) grupos[k]={prov:a.prov, ref:a, items:[]}; grupos[k].items.push(a); });
   const existentes=(ocData||[]).filter(o=>o.num_comp===numComp && !['ANULADA','RECHAZADA'].includes(o.estado));
@@ -9256,8 +9298,9 @@ function verSC(idx) {
   const lineas = (sc.items || '').split('\n').map(l => l.trim()).filter(l => l);
   const _cj = sc.justificacionCancel || ((sc.obs||'').includes('⛔ CANCELADA:') ? ((sc.obs.split('⛔ CANCELADA:')[1]||'').trim()) : '');
   const _cancelBanner = (sc.estado === 'CANCELADA')
-    ? `<div style="margin-bottom:14px;padding:12px 16px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);border-radius:10px;color:#f87171;font-size:13px"><strong>⛔ SOLICITUD CANCELADA</strong>${_cj?'<div style="margin-top:4px;color:var(--text);font-weight:400">Motivo: '+_cj+'</div>':''}</div>`
+    ? `<div style="margin-bottom:14px;padding:12px 16px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);border-radius:10px;color:#f87171;font-size:13px;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:220px"><strong>⛔ SOLICITUD CANCELADA</strong>${_cj?'<div style="margin-top:4px;color:var(--text);font-weight:400">Motivo: '+_cj+'</div>':''}<div style="margin-top:4px;color:var(--muted);font-size:11.5px;font-weight:400">Solo lectura: no admite comparativas, órdenes de compra, recepciones ni cambios en los ítems.</div></div>${esModoEditor()?`<button class="btn btn-sm" onclick="reactivarSC(${idx})" style="background:transparent;color:var(--text);border:1px solid var(--border2);font-weight:700;white-space:nowrap" title="Volver a abrir la solicitud (PIN + motivo)">↩ Reactivar SC</button>`:''}</div>`
     : '';
+  const _scCanc = (sc.estado === 'CANCELADA');
   const _asuntoBanner = (sc.osAsunto)
     ? `<div style="margin-bottom:14px;padding:12px 16px;background:rgba(232,93,37,.08);border:1px solid rgba(232,93,37,.35);border-radius:10px">
          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:3px">📋 Asunto OS/SC</div>
@@ -9278,8 +9321,8 @@ function verSC(idx) {
     ${_asuntoBanner}
     ${_adjBanner}
     ${_cancelBanner}
-    ${modoEditarSC && esModoEditor() ? renderEditGridSC(sc, idx) + '<div style="display:none">' : ''}
-    ${!modoEditarSC && esModoEditor() ? `<div class="sc-edit-panel">
+    ${!_scCanc && modoEditarSC && esModoEditor() ? renderEditGridSC(sc, idx) + '<div style="display:none">' : ''}
+    ${!_scCanc && !modoEditarSC && esModoEditor() ? `<div class="sc-edit-panel">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:12px">✏️ Editar Solicitud — PIN requerido al guardar</div>
       <div class="sc-edit-row">
         <div class="sc-edit-field"><label>Estado</label>
@@ -9307,7 +9350,7 @@ function verSC(idx) {
           💾 Guardar cambios</button>
       </div>
     </div>` : ''}
-    ${modoEditarSC && esModoEditor() ? '</div>' : ''}
+    ${!_scCanc && modoEditarSC && esModoEditor() ? '</div>' : ''}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Estado</div>${estBadge(sc)} ${critBadge(sc.criticidad)}</div>
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Tipo</div><span class="badge badge-or">${sc.tipo||'—'}</span></div>
@@ -9348,7 +9391,7 @@ function verSC(idx) {
         </div>
       </div>
 
-      ${!esModoEditor() ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Solicitante — solo visualización. Ingresá como Administrador para modificar estados.</div>' : '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Seleccioná el estado de cada ítem. Podés indicar cantidades parciales.</div>'}
+      ${_scCanc ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">⛔ Solicitud cancelada — solo visualización.</div>' : !esModoEditor() ? '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 10px;background:var(--s2);border-radius:6px;border:1px solid var(--border)">👁 Modo Solicitante — solo visualización. Ingresá como Administrador para modificar estados.</div>' : '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Seleccioná el estado de cada ítem. Podés indicar cantidades parciales.</div>'}
       <div id="compra-alerta-nocomp" style="display:none;margin-bottom:10px;padding:8px 12px;background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.35);border-radius:8px;font-size:12px;color:#f97316;font-weight:600">
         ⚠️ Algunos ítems marcados como NO COMPRADO. La SC se completará en estado de alerta (naranja).
       </div>
@@ -9361,7 +9404,7 @@ function verSC(idx) {
         ${renderItemsCompra(lineas, sc)}
       </div>
 
-      ${esModoEditor() ? `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap">
+      ${esModoEditor() && !_scCanc ? `<div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="limpiarConfirmacion()">↩ Limpiar todo</button>
           ${sc.estado!=='CANCELADA' ? `<button class="btn btn-sm" style="background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.4);font-weight:700" onclick="cancelarSC(${idx})">⛔ Cancelar SC</button>` : ''}
@@ -9411,6 +9454,19 @@ async function cancelarSC(idx) {
   if (!esModoEditor()) { showToast('⛔ Solo en Modo Administrador','error'); return; }
   const sc = scs[idx != null ? idx : window._scIdx]; if (!sc) return;
   if (sc.estado === 'CANCELADA') { showToast('Esta solicitud ya está cancelada','error'); return; }
+  // v262: no se cancela una SC con orden de compra vigente (primero se anula la OC)
+  try{ if(typeof cargarOC==='function') await cargarOC(); }catch(e){}
+  if (typeof _scTieneOC==='function' && _scTieneOC(sc)) {
+    const n=sc.numSC||sc.num;
+    const ocsV=(ocData||[]).filter(o=>!['ANULADA','RECHAZADA'].includes(o.estado) && ((Array.isArray(o.scs)&&o.scs.includes(n)) || (Array.isArray(o.items)?o.items:_jparse(o.items,[])).some(i=>i.sc===n))).map(o=>o.num_oc);
+    showToast('⛔ No se puede cancelar: la solicitud tiene orden de compra vigente ('+ocsV.join(', ')+'). Anulá primero la OC.','error');
+    return;
+  }
+  try{
+    const c=(typeof circuitoDeSC==='function') ? circuitoDeSC(sc.numSC||sc.num) : null;
+    const pend=(c&&c.comps||[]).filter(x=>!['RECHAZADA'].includes(String(x.estado_autorizacion||'').toUpperCase())).map(x=>x.num_comp);
+    if(pend.length && !confirm('Esta solicitud tiene la comparativa '+pend.join(', ')+' en curso. Al cancelar, la SC queda cerrada y no se podrán generar órdenes desde esa comparativa.\n\n¿Cancelar igual?')) return;
+  }catch(e){}
   const pin = prompt('Para CANCELAR la solicitud ingresá el PIN de confirmación:');
   if (pin === null) return;
   if (pin.trim() !== '1102') { showToast('⛔ PIN incorrecto — cancelación abortada','error'); return; }
@@ -9448,6 +9504,48 @@ async function cancelarSC(idx) {
   const av = document.querySelector('.view.active');
   if (av && av.id === 'view-panel' && typeof renderPanel === 'function') renderPanel();
   showToast(ok ? '⛔ Solicitud cancelada y finalizada' : '⚠️ Cancelada localmente (no se pudo guardar en Supabase)', ok ? 'ok' : 'error');
+}
+// REACTIVAR una SC cancelada por error: PIN + motivo. Vuelve a PENDIENTE (o EN PROCESO si ya tenía ítems avanzados).
+async function reactivarSC(idx) {
+  if (!esModoEditor()) { showToast('⛔ Solo en Modo Administrador','error'); return; }
+  const sc = scs[idx != null ? idx : window._scIdx]; if (!sc) return;
+  if (sc.estado !== 'CANCELADA') { showToast('La solicitud no está cancelada','error'); return; }
+  const pin = prompt('Para REACTIVAR la solicitud ingresá el PIN de confirmación:');
+  if (pin === null) return;
+  if (pin.trim() !== '1102') { showToast('⛔ PIN incorrecto — reactivación abortada','error'); return; }
+  let motivo = prompt('Motivo de la reactivación (OBLIGATORIO):');
+  if (motivo === null) return;
+  motivo = (motivo||'').trim();
+  if (!motivo) { showToast('⛔ El motivo es obligatorio','error'); return; }
+  const lineas = (sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
+  const det = sc.itemsDetalle || {};
+  const nComp = Object.values(det).filter(d=>d && d.estado==='COMPRADO').length;
+  const nAvz  = Object.values(det).filter(d=>d && ['COMPRADO','PRESUPUESTADO','RECIBIDO_PARCIAL'].includes(d.estado)).length;
+  const pct = lineas.length ? Math.round(nComp/lineas.length*100) : 0;
+  sc.estado = nAvz ? 'EN PROCESO' : 'PENDIENTE';
+  sc.pctComprado = pct;
+  sc.tipoCompra = '';
+  delete sc.justificacionCancel;
+  sc.fechaReactivacion = new Date().toISOString();
+  sc.obs = (sc.obs ? sc.obs + '  ·  ' : '') + '↩ REACTIVADA: ' + motivo;
+  _lsSet('nielsen_scs_2026', JSON.stringify(scs));
+  let ok = false;
+  if (sc.numSC) {
+    try {
+      const r = await fetch(_SB_URL + '/rest/v1/solicitudes_compra?num_sc=eq.' + encodeURIComponent(sc.numSC), {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json','apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Prefer':'return=representation'},
+        body: JSON.stringify({ estado: sc.estado, pct_comprado: pct, tipo_compra: null, obs: sc.obs })
+      });
+      if (r.ok) { const arr = await r.json(); ok = Array.isArray(arr) && arr.length > 0; }
+      else console.error('PATCH reactivar SC', await r.text());
+    } catch(e) { console.error('reactivarSC', e); }
+  } else { ok = true; }
+  if (typeof actualizarContadores === 'function') actualizarContadores();
+  if (typeof renderHistorial === 'function') renderHistorial();
+  if (typeof renderKanban === 'function') renderKanban();
+  try{ verSC(scs.indexOf(sc)); }catch(e){}
+  showToast(ok ? '↩ Solicitud reactivada ('+sc.estado+')' : '⚠️ Reactivada localmente (no se pudo guardar en Supabase)', ok ? 'ok' : 'error');
 }
 document.getElementById('modal-sc').addEventListener('click', e => { if (e.target === document.getElementById('modal-sc')) cerrarModal(); });
 
@@ -11291,7 +11389,7 @@ function _scAdjuntosRotos(sc){
 function renderItemsCompra(lineas, sc) {
   if (!lineas.length) return '<div style="color:var(--muted);font-style:italic;font-size:12px">Sin ítems cargados.</div>';
   const det = sc.itemsDetalle || {};
-  const editable = esModoEditor();
+  const editable = esModoEditor() && !_scEsCancelada(sc);
   const dis = editable ? '' : ' disabled';
 
   return lineas.map((l, i) => {
@@ -11442,6 +11540,7 @@ function actualizarBarraCompra(count, total) {
 function setItemEst(idx, estado, total) {
   if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   const sc = scs[window._scIdx]; if(!sc) return;
+  if(_scBloqCancel(sc,'modificar los ítems')) return;
   if(!sc.itemsDetalle) sc.itemsDetalle = {};
   const d = sc.itemsDetalle[idx] || {estado:'PENDIENTE',cantidad:'',justificacion:''};
   d.estado = (d.estado===estado) ? 'PENDIENTE' : estado;
@@ -11453,6 +11552,7 @@ function setItemEst(idx, estado, total) {
 }
 function setItemQty(idx, val) {
   const sc=scs[window._scIdx]; if(!sc) return;
+  if(_scBloqCancel(sc,'modificar los ítems')) return;
   if(!sc.itemsDetalle) sc.itemsDetalle={};
   if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'PENDIENTE',cantidad:'',justificacion:''};
   sc.itemsDetalle[idx].cantidad=val;
@@ -11460,6 +11560,7 @@ function setItemQty(idx, val) {
 async function confirmarCompraFinal() {
   if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   const sc = scs[window._scIdx]; if(!sc) return;
+  if(_scBloqCancel(sc,'confirmar compras')) return;
   _pauseReload = true; // congelar polling durante el guardado
   const lineas = (sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
   const det = sc.itemsDetalle || {};
@@ -11525,6 +11626,7 @@ async function confirmarCompraFinal() {
 
 function setFacturaDato(idx, campo, val) {
   const sc=scs[window._scIdx]; if(!sc) return;
+  if(_scBloqCancel(sc,'cargar facturas')) return;
   if(!sc.itemsDetalle) sc.itemsDetalle={};
   if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'COMPRADO',cantidad:'',justificacion:''};
   if(campo==='fecha')      sc.itemsDetalle[idx].facturaFecha     = val;
@@ -11535,6 +11637,7 @@ function setFacturaDato(idx, campo, val) {
 }
 function setRemitoDato(idx, campo, val) {
   const sc=scs[window._scIdx]; if(!sc) return;
+  if(_scBloqCancel(sc,'cargar remitos')) return;
   if(_scTieneOC(sc)){ showToast('Esta solicitud tiene orden de compra: el remito se registra en la sección Recepción','error'); try{ verSC(window._scIdx); }catch(e){} return; }
   if(!sc.itemsDetalle) sc.itemsDetalle={};
   if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'COMPRADO',cantidad:'',justificacion:''};
@@ -11572,7 +11675,7 @@ function _refreshEstadoDoc(idx){
   el.outerHTML=_estadoDocItem(d);
 }
 function _presupBtnHTML(i, d, dis){
-  const editable = esModoEditor();
+  const editable = esModoEditor() && !dis;
   if (d && d.presupuestoLink){
     const href=(d.presupuestoLink||'').replace(/"/g,'&quot;');
     return '<a href="'+href+'" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="text-decoration:none;color:var(--accent2)">📄 PRESUPUESTO ↗</a>'
@@ -11583,6 +11686,7 @@ function _presupBtnHTML(i, d, dis){
 function setPresupuestoLink(idx){
   if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
   const sc=scs[window._scIdx]; if(!sc) return;
+  if(_scBloqCancel(sc,'cargar presupuestos')) return;
   if(!sc.itemsDetalle) sc.itemsDetalle={};
   if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'PRESUPUESTADO',cantidad:'',justificacion:''};
   const actual=sc.itemsDetalle[idx].presupuestoLink||'';
@@ -11599,6 +11703,7 @@ function setPresupuestoLink(idx){
 
 function setItemJust(idx, val) {
   const sc=scs[window._scIdx]; if(!sc) return;
+  if(_scBloqCancel(sc,'modificar los ítems')) return;
   if(!sc.itemsDetalle) sc.itemsDetalle={};
   if(!sc.itemsDetalle[idx]) sc.itemsDetalle[idx]={estado:'PENDIENTE',cantidad:'',justificacion:''};
   sc.itemsDetalle[idx].justificacion=val;
@@ -11767,6 +11872,7 @@ function confirmarCompra() {
 function limpiarConfirmacion() {
   const sc = scs[window._scIdx];
   if (!sc) return;
+  if(_scBloqCancel(sc,'modificar los ítems')) return;
   const lineas = (sc.items||'').split('\n').map(l=>l.trim()).filter(l=>l);
   for (let i = 0; i < lineas.length; i++) {
     const row = document.getElementById('compra-item-' + i);

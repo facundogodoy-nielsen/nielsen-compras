@@ -3156,7 +3156,7 @@ async function renderParadaSC(){
   const yaNums = asignadas.map(x=>x.num);
 
   // Selector para AGREGAR otra SC (excluye las ya asignadas)
-  const disponibles = scs.filter(x=>!yaNums.includes(x.num_sc));
+  const disponibles = scs.filter(x=>!yaNums.includes(x.num_sc) && String(x.estado||'').toUpperCase()!=='CANCELADA');
   const opts = '<option value="">— Elegí una SC para agregar —</option>' +
     disponibles.map(x=>`<option value="${_escRec(x.num_sc)}">${_escRec(x.num_sc)} · ${_escRec((x.area||'').slice(0,22))} · ${_escRec((x.fecha||'').slice(0,10))}</option>`).join('');
 
@@ -3182,6 +3182,7 @@ async function renderParadaSC(){
     bloques += `<div style="border:1px solid var(--or,#E8611A);border-radius:10px;padding:12px;margin-bottom:10px;background:rgba(232,97,26,.05)">
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-weight:800;color:var(--or,#E8611A);font-size:13px">📋 ${_escRec(sc.num)}</span>
+        ${info&&String(info.estado||'').toUpperCase()==='CANCELADA'?'<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(239,68,68,.15);color:#f87171">⛔ CANCELADA — no retirar</span>':''}
         ${info&&info.area?`<span class="muted" style="font-size:11px">${_escRec(info.area)}</span>`:''}
         <button class="btn danger sm" onclick="_quitarSC('${_escRec(sc.num)}')" style="margin-left:auto;padding:2px 9px;font-size:11px" title="Quitar esta SC">✕</button>
       </div>
