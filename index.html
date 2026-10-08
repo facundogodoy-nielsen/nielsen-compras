@@ -6520,7 +6520,12 @@ function _ocDocumento(o, copia, emision, firmas){
    +'</tbody></table>'
    +'<div class="tot"><table>'+(conPrecio?'<tr><td class="lbl">Neto</td><td class="r">'+_ocFmt(neto,o.moneda)+'</td></tr>'
      +Object.keys(ivas).sort().map(t=>'<tr><td class="lbl">IVA '+t+' %</td><td class="r">'+_ocFmt(ivas[t],o.moneda)+'</td></tr>').join(''):'')
-     +'<tr class="g"><td>TOTAL</td><td class="r">'+_ocFmt(total,o.moneda)+'</td></tr></table></div>'
+     +'<tr class="g"><td>TOTAL</td><td class="r">'+_ocFmt(total,o.moneda)+'</td></tr>'
+     +(()=>{ const P=_ocPercObj(o); if(!conPrecio||!P) return ''; const c=ocPercCalc(items,P,o.moneda,o.tc_usado,o.flete); if(!(c.total>0)) return '';
+        return (c.iibb>0?'<tr><td class="lbl">Percepción IIBB San Juan '+String(c.pctI).replace('.',',')+' %</td><td class="r">'+_ocFmt(c.iibb,o.moneda)+'</td></tr>':'')
+          +(c.iva>0?'<tr><td class="lbl">Percepción IVA RG 2408</td><td class="r">'+_ocFmt(c.iva,o.moneda)+'</td></tr>':'')
+          +'<tr class="g"><td>TOTAL A PAGAR</td><td class="r">'+_ocFmt(total+c.total,o.moneda)+'</td></tr>'; })()
+     +'</table></div>'
    +'<div class="cond"><b>Condiciones generales</b><ol>'
      +'<li>La factura y el remito deben indicar el número de esta orden de compra.</li>'
      +'<li>Sólo se reconocen los bienes y servicios detallados en esta orden, en las cantidades y precios indicados.</li>'
@@ -6916,6 +6921,7 @@ function _ocdAbrir(sc){
         +'<div>'+lbl('PLAZO DE ENTREGA')+'<input id="ocd-plazo" placeholder="Ej: Inmediata / 5 días" style="width:100%;'+inp+'"></div>'
         +'<div>'+lbl('LUGAR DE ENTREGA')+'<input id="ocd-lugar" value="Base San Juan · Depósito Nielsen" style="width:100%;'+inp+'"></div>'
       +'</div>'
+      +'<div style="margin-top:12px">'+lbl('PERCEPCIONES')+'<div id="ocd-perc">'+_ocPercUI('ocd',{iibb:false,iva:false},inp,'_ocd&&(_ocd.percTocado=true);_ocdCalc()')+'</div></div>'
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">'
         +'<div>'+lbl('MOTIVO PARA NO HACER COMPARATIVA *')+'<select id="ocd-mot" onchange="_ocdCalc()" style="width:100%;'+inp+'">'+Object.keys(OCD_MOTIVOS).map(k=>'<option value="'+k+'">'+OCD_MOTIVOS[k]+'</option>').join('')+'</select></div>'
         +'<div>'+lbl('JUSTIFICACIÓN')+'<input id="ocd-just" oninput="_ocdCalc()" placeholder="Obligatoria salvo compra menor" style="width:100%;'+inp+'"></div>'
@@ -6943,6 +6949,15 @@ function _ocdProv(){
   const p=(provData||[]).find(x=>_parNormProv(x.nombre)===_parNormProv(v));
   const i=document.getElementById('ocd-provinfo');
   if(i) i.innerHTML=p? ('CUIT '+_ocE(p.cuit||'—')+(p.email?' · '+_ocE(p.email):'')+(p.tel?' · '+_ocE(p.tel):'')) : (v?'<span style="color:var(--yellow)">No está en la base de proveedores: se cargará igual en la orden.</span>':'');
+  // Percepciones: proponer lo aplicado en la última orden de ese proveedor (si no se tocaron a mano)
+  if(_ocd && !_ocd.percTocado){
+    const pv=_ocPercPrevia(v); const box=document.getElementById('ocd-perc');
+    if(box){ const ii=(document.getElementById('ocd-pi-pct')||{}).value, vv=(document.getElementById('ocd-pv-pct')||{}).value;
+      const inp='padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)';
+      box.innerHTML=_ocPercUI('ocd',pv,inp,'_ocd&&(_ocd.percTocado=true);_ocdCalc()');
+      if(ii) document.getElementById('ocd-pi-pct').value=ii; if(vv) document.getElementById('ocd-pv-pct').value=vv; }
+    _ocdCalc();
+  }
 }
 function _ocdLeer(){
   const mon=(document.getElementById('ocd-mon')||{}).value||'ARS';
@@ -6954,7 +6969,8 @@ function _ocdLeer(){
   const sel=filas.filter(f=>f.inc && f.cant>0 && f.desc);
   const neto=sel.reduce((a,f)=>a+f.cant*f.precio,0), ivaT=sel.reduce((a,f)=>a+f.cant*f.precio*f.iva/100,0), total=neto+ivaT;
   const usd= mon==='USD'? total : (tc>0? total/tc : 0);
-  return { mon, tc, filas, sel, neto, ivaT, total, usd,
+  const perc=ocPercCalc(sel.map(f=>({cant:f.cant, precio:f.precio, iva:f.iva})), _ocPercLeerUI('ocd'), mon, tc);
+  return { mon, tc, filas, sel, neto, ivaT, total, usd, perc,
     prov:((document.getElementById('ocd-prov')||{}).value||'').trim(), mot:(document.getElementById('ocd-mot')||{}).value||'MONTO_MENOR',
     just:((document.getElementById('ocd-just')||{}).value||'').trim() };
 }
@@ -6967,9 +6983,11 @@ function _ocdCalc(){
   const pres=ocPresupuestosExigidos(d.usd||0);
   const errs=_ocdErrores(d);
   const r=document.getElementById('ocd-res'); if(!r) return;
+  _ocPercPintarUI('ocd', d.perc, d.mon);
   r.innerHTML='<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline">'
       +'<span>Neto <b>'+_ocFmt(d.neto,d.mon)+'</b></span><span>IVA <b>'+_ocFmt(d.ivaT,d.mon)+'</b></span>'
       +'<span style="font-size:15px">Total <b style="color:var(--or)">'+_ocFmt(d.total,d.mon)+'</b></span>'
+      +(d.perc.total>0?'<span>Percepciones <b>'+_ocFmt(d.perc.total,d.mon)+'</b></span><span style="font-size:15px">A pagar <b style="color:var(--or)">'+_ocFmt(d.total+d.perc.total,d.mon)+'</b></span>':'')
       +(d.mon==='ARS'?'<span style="color:var(--muted)">≈ USD '+(d.usd?Math.round(d.usd).toLocaleString('es-AR'):'—')+'</span>':'')
       +'<span>Autoriza: <b>'+_ocE(niv.lbl)+'</b></span></div>'
     +'<div style="margin-top:6px;color:'+(pres?'var(--yellow)':'#4ade80')+'">'
@@ -7005,6 +7023,7 @@ async function _ocdCrear(rapido){
     lugar_entrega:((document.getElementById('ocd-lugar')||{}).value||'').trim(), moneda:d.mon, items,
     total:Math.round(d.total*100)/100, total_usd:Math.round((d.usd||0)*100)/100||null, tc_usado:d.mon==='ARS'?d.tc:null,
     excepcion_tipo:d.mot, excepcion_just:d.just||OCD_MOTIVOS[d.mot],
+    percepciones: ocPercGuardable(d.perc),
     autorizacion:'REQUERIDA', estado_aut:'PENDIENTE', nivel_aut:niv.nivel, estado:'BORRADOR', regularizar:urg, emitida_por:'Compras' };
   if(!(await _ocGuardar(oc))) return;
   ocData.unshift(oc);
@@ -7199,13 +7218,15 @@ function _factEvaluar(){
     ch.forEach(c=>dif.push(it.desc+': '+c));
     const c=tr.querySelector('.ft-chk'); if(c) c.innerHTML=q<=0?'<span style="color:var(--muted)">—</span>':(ch.length?'<span style="color:var(--red)">'+ch.map(_ocE).join('<br>')+'</span>':'<span style="color:#4ade80">✓ conforme</span>');
   });
+  const P=_ocPercObj(o); let perc=0;
+  if(P && lineas.length){ const c=ocPercCalc(lineas.map(l=>({cant:l.cant, precio:l.precio, iva:l.iva})), P, o.moneda, o.tc_usado); perc=c.total; calc+=perc; }
   const tot=parseFloat((document.getElementById('ft-total')||{}).value)||0;
   if(tot>0 && calc>0 && Math.abs(tot-calc)/calc*100>tolT) dif.push('El total de la factura ('+_ocFmt(tot,o.moneda)+') no coincide con el calculado ('+_ocFmt(calc,o.moneda)+')');
-  return {lineas, dif, calc, tot, estado:dif.length?'BLOQUEADA':'CONFORME'};
+  return {lineas, dif, calc, tot, perc, estado:dif.length?'BLOQUEADA':'CONFORME'};
 }
 function _factCalc(){
   const e=_factEvaluar(); const r=document.getElementById('ft-res'); if(!e||!r) return;
-  r.innerHTML='Total calculado <b>'+_ocFmt(e.calc,window._fact.o.moneda)+'</b> · '
+  r.innerHTML='Total calculado <b>'+_ocFmt(e.calc,window._fact.o.moneda)+'</b>'+(e.perc>0?' <span style="color:var(--muted)">(incluye percepciones '+_ocFmt(e.perc,window._fact.o.moneda)+')</span>':'')+' · '
     +(e.dif.length? '<b style="color:var(--red)">⛔ Quedará BLOQUEADA PARA PAGO</b><div style="margin-top:5px;color:var(--red)">'+e.dif.map(d=>'• '+_ocE(d)).join('<br>')+'</div>'
                   : '<b style="color:#4ade80">✓ CONFORME: precio y cantidades dentro de tolerancia</b>');
 }
@@ -7476,6 +7497,7 @@ function verOC(numOC){
       if(o.nivel_aut!=='COMPRAS') acciones+=btn('📧 Solicitar autorización','solicitarAutOC(\''+numOC+'\')','#2f9e6b');
     }
     acciones+=btn('👁 Vista previa','ocVistaPrevia(\''+numOC+'\')','#4b5563');
+    if(!(Number(o.copias_emitidas)||0) && !['ANULADA','RECHAZADA'].includes(o.estado)) acciones+=btn('% Percepciones','ocEditarPercepciones(\''+numOC+'\')','#475569');
     if(['PARCIAL','RECIBIDA','CERRADA'].includes(o.estado)) acciones+=btn('🧾 Registrar factura','ocRegistrarFactura(\''+numOC+'\')','#7c3aed');
     if(o.via==='URGENCIA' && o.regularizar && !_ocAutorizada(o) && o.estado!=='BORRADOR') acciones+=btn('📧 Regularizar autorización','solicitarAutOC(\''+numOC+'\')','#2f9e6b');
     if(autOk && viva && nEm<3) acciones+=btn('🖨 Emitir '+OC_COPIAS[nEm],'ocEmitir(\''+numOC+'\')', nEm===0?'#e85d25':'#9a3412');
@@ -7501,6 +7523,8 @@ function verOC(numOC){
     + dato('Solicitudes', (Array.isArray(o.scs)?o.scs:[]).join(' + '))
     + dato('Comparativa', o.num_comp)
     + dato('Total', (o.moneda==='USD'?'USD ':'$')+_ocN(o.total))
+    + (()=>{ const P=_ocPercObj(o); if(!P) return ''; const c=ocPercCalc(Array.isArray(o.items)?o.items:_jparse(o.items,[]),P,o.moneda,o.tc_usado,o.flete);
+        return c.total>0 ? dato('Percepciones', _ocPercTxt(c,o.moneda)) + dato('Total a pagar', (o.moneda==='USD'?'USD ':'$')+_ocN((Number(o.total)||0)+c.total)) : ''; })()
     + dato('Condición de pago', o.condicion_pago)
     + dato('Autorizada por', o.autorizado_por)
     + dato('Recibida el', o.recibida_en ? (o.recibida_en + (o.recepcion_completa===false?' (parcial)':' (completa)')) : '')
@@ -7572,11 +7596,43 @@ async function generarOCdesdeCCP(numComp){
   const cubiertos=new Set(existentes.map(o=>_parNormProv(o.proveedor)));
   const faltan=Object.values(grupos).filter(g=>!cubiertos.has(_parNormProv(g.prov)));
   if(!faltan.length){ showToast('La comparativa '+numComp+' ya tiene sus órdenes: '+existentes.map(o=>o.num_oc).join(', '),'error'); return; }
-  const resumen=faltan.map(g=>'• '+g.prov+' — '+g.items.length+' ítem(s)').join('\n');
-  if(!confirm('Generar '+(faltan.length>1?faltan.length+' órdenes de compra (una por proveedor)':'la orden de compra')+' para '+numComp+':\n\n'+resumen
-      +(existentes.length?'\n\nYa emitidas: '+existentes.map(o=>o.num_oc+' ('+o.proveedor+')').join(', '):'')+'\n\n¿Continuar?')) return;
-  const tc=Number(comp.tc_usado)||0; const creadas=[];
-  for(const g of faltan){
+  const tc=Number(comp.tc_usado)||0;
+  window._ocGen={comp, numComp, faltan, existentes, tc};
+  const inp=_rcInp();
+  const bloques=faltan.map((g,gi)=>{
+    const its=g.items.map(a=>({cant:Number(a.qty)||0, precio:Number(a.price)||0, iva:(a.iva!=null?Number(a.iva):21)}));
+    const neto=its.reduce((t,x)=>t+x.cant*x.precio,0), tot=its.reduce((t,x)=>t+x.cant*x.precio*(1+x.iva/100),0);
+    return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">'
+      +'<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px"><b style="color:var(--or)">'+_ocE(g.prov)+'</b>'
+      +'<span style="font-size:12px;color:var(--muted)">'+g.items.length+' ítem(s) · neto '+_ocFmt(neto,comp.divisa||'ARS')+' · total c/IVA '+_ocFmt(tot,comp.divisa||'ARS')+'</span>'
+      +'<span id="ocg-'+gi+'-tot" style="margin-left:auto;font-size:12.5px"></span></div>'
+      +_ocPercUI('ocg-'+gi, _ocPercPrevia(g.prov), inp, '_ocGenCalc()')+'</div>';
+  }).join('');
+  _rcModal('📄 Generar '+(faltan.length>1?faltan.length+' órdenes de compra':'la orden de compra')+' · '+_ocE(numComp),
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">Una orden por proveedor adjudicado. Marcá las percepciones que aplica cada proveedor.'
+      +(existentes.length?' Ya emitidas: '+existentes.map(o=>_ocE(o.num_oc)+' ('+_ocE(o.proveedor)+')').join(', ')+'.':'')+'</div>'
+    +bloques
+    +'<button onclick="_ocGenCrear()" style="margin-top:4px;padding:10px 18px;border-radius:8px;border:none;background:var(--or);color:#fff;font-weight:800;cursor:pointer">📄 Generar</button>');
+  _ocGenCalc();
+}
+function _ocGenItems(g){ return g.items.map(a=>({cant:Number(a.qty)||0, precio:Number(a.price)||0, iva:(a.iva!=null?Number(a.iva):21)})); }
+function _ocGenCalc(){
+  const G=window._ocGen; if(!G) return;
+  const mon=G.comp.divisa||'ARS';
+  G.faltan.forEach((g,gi)=>{
+    const its=_ocGenItems(g), c=ocPercCalc(its, _ocPercLeerUI('ocg-'+gi), mon, G.tc);
+    _ocPercPintarUI('ocg-'+gi, c, mon);
+    const tot=its.reduce((t,x)=>t+x.cant*x.precio*(1+x.iva/100),0);
+    const e=document.getElementById('ocg-'+gi+'-tot'); if(e) e.innerHTML=c.total>0?('A pagar <b style="color:var(--or)">'+_ocFmt(tot+c.total,mon)+'</b>'):'';
+  });
+}
+async function _ocGenCrear(){
+  const G=window._ocGen; if(!G) return;
+  const {comp, numComp, faltan, tc}=G;
+  const percs=faltan.map((g,gi)=>ocPercCalc(_ocGenItems(g), _ocPercLeerUI('ocg-'+gi), comp.divisa||'ARS', tc));
+  _rcCerrarModal(); window._ocGen=null;
+  const creadas=[];
+  for(const [gi,g] of faltan.entries()){
     const its=g.items.map(a=>{ const iva=(a.iva!=null?Number(a.iva):21), pu=Number(a.price)||0, q=Number(a.qty)||0;
       return { desc:a.desc||'', espec:[a.marca,a.modelo,a.spec].filter(Boolean).join(' · '), cant:q, unidad:a.unit||'u',
         precio:pu, iva:iva, precio_iva:Math.round(pu*(1+iva/100)*100)/100, subtotal:Math.round(pu*q*100)/100,
@@ -7588,7 +7644,8 @@ async function generarOCdesdeCCP(numComp){
     const r=g.ref;
     const oc={ num_oc: await _ocNuevoNumero(), fecha:_ocHoy(), num_comp:numComp, scs:scsOC, via:'COMPARATIVA', proveedor:g.prov,
       condicion_pago:r.pago||comp.condicion_pago||'', proveedor_cuit:r.cuit||'', proveedor_contacto:r.contacto||'', proveedor_email:r.email||'', proveedor_tel:r.tel||'',
-      plazo_entrega:r.entrega||'', moneda:comp.divisa||'ARS', items:its, total, total_usd:usd||null, tc_usado:tc||null, estado:'BORRADOR', emitida_por:'Compras' };
+      plazo_entrega:r.entrega||'', moneda:comp.divisa||'ARS', items:its, total, total_usd:usd||null, tc_usado:tc||null, estado:'BORRADOR', emitida_por:'Compras',
+      percepciones: ocPercGuardable(percs[gi]) };
     const h=ocEvaluarHerencia(oc, comp);
     if(h.hereda){ Object.assign(oc,{autorizacion:'HEREDADA', estado_aut:'APROBADA', nivel_aut:comp.nivel_autorizacion||'', autorizado_por:comp.autorizado_por||'', autorizado_en:comp.autorizado_en||null}); }
     else { Object.assign(oc,{autorizacion:'REQUERIDA', estado_aut:'PENDIENTE', motivo_reaut:h.motivo, nivel_aut:ocNivelAut(usd||0).nivel}); }
@@ -7661,20 +7718,134 @@ async function cargarOC(){
     return true;
   }catch(e){ console.warn('cargar OC:', e.message); ocData=ocData||[]; return false; }
 }
+// ══════════════════════════════════════════════════════════════
+// PERCEPCIONES en la orden de compra (v264)
+//  · IIBB San Juan: 3 % sobre el neto (sin IVA). No se suma el 20 % adicional "Lote Hogar".
+//  · IVA (RG 2408, ARCA): 3 % sobre el neto gravado al 21 %; 1,5 % sobre el gravado al 10,5 %;
+//    exento no percibe; sólo si la operación supera el mínimo ($ 3.000).
+// El total de la OC sigue siendo neto + IVA (nivel de autorización, ahorro y gasto no cambian);
+// las percepciones se muestran aparte y dan el TOTAL A PAGAR.
+// ══════════════════════════════════════════════════════════════
+OC_REGLAS.percIIBBpct  = OC_REGLAS.percIIBBpct  || 3;
+OC_REGLAS.percIVApct   = OC_REGLAS.percIVApct   || 3;
+OC_REGLAS.percIVAminimo= OC_REGLAS.percIVAminimo|| 3000;
+function _ocPercObj(o){
+  const p=(o&&o.percepciones!=null)? (typeof o.percepciones==='string'? _jparse(o.percepciones,null) : o.percepciones) : null;
+  return p && typeof p==='object' ? p : null;
+}
+// items: [{cant, precio, iva}] · perc: {iibb:{aplica,pct}, iva:{aplica,pct}}
+function ocPercCalc(items, perc, moneda, tc, flete){
+  let neto=0, n21=0, n105=0;
+  (items||[]).forEach(it=>{ const q=Number(it.cant)||0, pr=Number(it.precio)||0, t=(it.iva!=null?Number(it.iva):21), sub=q*pr;
+    neto+=sub; if(t===21) n21+=sub; else if(t===10.5) n105+=sub; });
+  const fl=Number(flete)||0; if(fl){ neto+=fl; n21+=fl; }
+  const P=perc||{}, pi=P.iibb||{}, pv=P.iva||{};
+  const pctI=(pi.pct!=null && pi.pct!=='')? Number(pi.pct) : OC_REGLAS.percIIBBpct;
+  const pctV=(pv.pct!=null && pv.pct!=='')? Number(pv.pct) : OC_REGLAS.percIVApct;
+  const iibb= pi.aplica ? neto*pctI/100 : 0;
+  const netoARS = moneda==='USD' ? neto*(Number(tc)||0) : neto;
+  const bajoMinimo = !!pv.aplica && moneda!=='USD' && netoARS<=OC_REGLAS.percIVAminimo;
+  const iva = (pv.aplica && !bajoMinimo) ? (n21*pctV/100 + n105*(pctV/2)/100) : 0;
+  const r2=x=>Math.round(x*100)/100;
+  return { iibb:r2(iibb), iva:r2(iva), total:r2(iibb+iva), neto:r2(neto), n21:r2(n21), n105:r2(n105), pctI, pctV, bajoMinimo,
+           aplicaI:!!pi.aplica, aplicaV:!!pv.aplica };
+}
+function ocPercGuardable(c){
+  return { iibb:{aplica:c.aplicaI, pct:c.pctI, monto:c.iibb, jurisdiccion:'San Juan', nota:'Sin adicional Lote Hogar'},
+           iva:{aplica:c.aplicaV, pct:c.pctV, monto:c.iva, norma:'RG 2408', bajo_minimo:c.bajoMinimo}, total:c.total };
+}
+// Lo que se aplicó en la última orden de ese proveedor (para proponerlo por defecto)
+function _ocPercPrevia(prov){
+  const k=_parNormProv(prov||''); if(!k) return {iibb:false, iva:false};
+  const o=(ocData||[]).filter(x=>_parNormProv(x.proveedor||'')===k && _ocPercObj(x))
+    .sort((a,b)=>String(b.fecha||'').localeCompare(String(a.fecha||''))||String(b.num_oc||'').localeCompare(String(a.num_oc||'')))[0];
+  const p=o?_ocPercObj(o):null;
+  return { iibb:!!(p&&p.iibb&&p.iibb.aplica), iva:!!(p&&p.iva&&p.iva.aplica), desde:o?o.num_oc:'' };
+}
+function _ocPercTxt(c, mon){
+  const parts=[];
+  if(c.aplicaI) parts.push('IIBB '+String(c.pctI).replace('.',',')+' % '+_ocFmt(c.iibb,mon));
+  if(c.aplicaV) parts.push('IVA '+(c.bajoMinimo?'(bajo el mínimo) ':String(c.pctV).replace('.',',')+' % ')+_ocFmt(c.iva,mon));
+  return parts.join(' · ');
+}
+// Bloque de dos casillas reutilizable (OC directa, generación desde CCP y edición de la OC)
+function _ocPercUI(pref, prev, inp, onch){
+  const chk='accent-color:var(--or);width:16px;height:16px;flex:none';
+  const pct='width:62px;'+inp;
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<label style="display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--s2);cursor:pointer">'
+      +'<input type="checkbox" id="'+pref+'-pi"'+(prev.iibb?' checked':'')+' onchange="'+onch+'" style="'+chk+'">'
+      +'<div style="flex:1"><div style="font-size:12.5px;font-weight:700">Percepción IIBB San Juan</div>'
+      +'<div style="font-size:10.5px;color:var(--muted);margin:2px 0 6px">Sobre el neto sin IVA · sin el adicional Lote Hogar</div>'
+      +'<div style="display:flex;gap:6px;align-items:center;font-size:12px"><input id="'+pref+'-pi-pct" type="number" step="0.01" min="0" value="'+OC_REGLAS.percIIBBpct+'" oninput="'+onch+'" style="'+pct+'"> % <b id="'+pref+'-pi-m" style="margin-left:auto;font-family:var(--fm)">—</b></div></div></label>'
+    +'<label style="display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--s2);cursor:pointer">'
+      +'<input type="checkbox" id="'+pref+'-pv"'+(prev.iva?' checked':'')+' onchange="'+onch+'" style="'+chk+'">'
+      +'<div style="flex:1"><div style="font-size:12.5px;font-weight:700">Percepción IVA (RG 2408)</div>'
+      +'<div style="font-size:10.5px;color:var(--muted);margin:2px 0 6px">Sobre el neto gravado al 21 % (la mitad sobre el 10,5 %) · desde $ '+OC_REGLAS.percIVAminimo.toLocaleString('es-AR')+'</div>'
+      +'<div style="display:flex;gap:6px;align-items:center;font-size:12px"><input id="'+pref+'-pv-pct" type="number" step="0.01" min="0" value="'+OC_REGLAS.percIVApct+'" oninput="'+onch+'" style="'+pct+'"> % <b id="'+pref+'-pv-m" style="margin-left:auto;font-family:var(--fm)">—</b></div></div></label>'
+    +'</div>'
+    +(prev.desde?'<div style="font-size:10.5px;color:var(--muted);margin-top:4px">Propuesto según la última orden de este proveedor ('+_ocE(prev.desde)+').</div>':'');
+}
+function _ocPercLeerUI(pref){
+  const g=id=>document.getElementById(pref+'-'+id);
+  return { iibb:{aplica:!!(g('pi')&&g('pi').checked), pct:parseFloat((g('pi-pct')||{}).value)}, iva:{aplica:!!(g('pv')&&g('pv').checked), pct:parseFloat((g('pv-pct')||{}).value)} };
+}
+function _ocPercPintarUI(pref, c, mon){
+  const a=document.getElementById(pref+'-pi-m'), b=document.getElementById(pref+'-pv-m');
+  if(a) a.textContent=c.aplicaI?_ocFmt(c.iibb,mon):'—';
+  if(b) b.textContent=c.aplicaV?(c.bajoMinimo?'bajo el mínimo':_ocFmt(c.iva,mon)):'—';
+}
+// Editar las percepciones de una orden todavía no emitida
+function ocEditarPercepciones(numOC){
+  if(!esModoEditor()){ showToast('Solo el Administrador puede modificar la orden','error'); return; }
+  const o=(ocData||[]).find(x=>x.num_oc===numOC); if(!o) return;
+  if((Number(o.copias_emitidas)||0)>0){ showToast('La orden ya fue emitida: las percepciones no se pueden cambiar','error'); return; }
+  const P=_ocPercObj(o)||{}; window._ocpe=o;
+  _rcModal('% Percepciones · '+_ocE(numOC)+' · '+_ocE(o.proveedor||''),
+    _ocPercUI('ocpe', {iibb:!!(P.iibb&&P.iibb.aplica), iva:!!(P.iva&&P.iva.aplica)}, _rcInp(), '_ocpeCalc()')
+    +'<div id="ocpe-res" style="margin-top:12px;padding:11px 13px;border-radius:9px;background:var(--s2);font-size:12.5px"></div>'
+    +'<button onclick="_ocpeGuardar()" style="margin-top:12px;padding:10px 18px;border-radius:8px;border:none;background:var(--or);color:#fff;font-weight:800;cursor:pointer">Guardar</button>');
+  if(P.iibb&&P.iibb.pct!=null){ const e=document.getElementById('ocpe-pi-pct'); if(e) e.value=P.iibb.pct; }
+  if(P.iva&&P.iva.pct!=null){ const e=document.getElementById('ocpe-pv-pct'); if(e) e.value=P.iva.pct; }
+  _ocpeCalc();
+}
+function _ocpeCalc(){
+  const o=window._ocpe; if(!o) return;
+  const its=Array.isArray(o.items)?o.items:_jparse(o.items,[]);
+  const c=ocPercCalc(its, _ocPercLeerUI('ocpe'), o.moneda, o.tc_usado, o.flete);
+  _ocPercPintarUI('ocpe', c, o.moneda);
+  const r=document.getElementById('ocpe-res');
+  if(r) r.innerHTML='Total OC (neto + IVA) <b>'+_ocFmt(Number(o.total)||0,o.moneda)+'</b> · Percepciones <b>'+_ocFmt(c.total,o.moneda)+'</b> · <span style="font-size:14px">Total a pagar <b style="color:var(--or)">'+_ocFmt((Number(o.total)||0)+c.total,o.moneda)+'</b></span>';
+  return c;
+}
+async function _ocpeGuardar(){
+  const o=window._ocpe; if(!o) return; const c=_ocpeCalc();
+  const antes=o.percepciones; o.percepciones=ocPercGuardable(c);
+  if(!(await _ocGuardar(o))){ o.percepciones=antes; return; }
+  _rcCerrarModal(); showToast('Percepciones actualizadas en '+o.num_oc,'ok'); try{ verOC(o.num_oc); }catch(e){}
+}
+
 async function _ocGuardar(oc){
   const body=Object.assign({}, oc, {actualizado_en:new Date().toISOString()});
   delete body.id;
   try{
+    const _sinPerc=t=>/percepciones/i.test(t||'') && body.percepciones!==undefined;
     if(oc.id){
-      const r=await fetch(_SB_URL+'/rest/v1/ordenes_compra?id=eq.'+encodeURIComponent(oc.id), {
+      let r=await fetch(_SB_URL+'/rest/v1/ordenes_compra?id=eq.'+encodeURIComponent(oc.id), {
         method:'PATCH', headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=minimal'},
         body:JSON.stringify(body) });
+      if(!r.ok){ const t=await r.text();
+        if(_sinPerc(t)){ delete body.percepciones; showToast('Falta ejecutar SUPABASE_v264.sql: la orden se guardó sin las percepciones','error');
+          r=await fetch(_SB_URL+'/rest/v1/ordenes_compra?id=eq.'+encodeURIComponent(oc.id), {method:'PATCH', headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=minimal'}, body:JSON.stringify(body)}); } }
       return r.ok;
     }
-    const r=await fetch(_SB_URL+'/rest/v1/ordenes_compra', {
+    let r=await fetch(_SB_URL+'/rest/v1/ordenes_compra', {
       method:'POST', headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=representation'},
       body:JSON.stringify(body) });
-    if(!r.ok){ const t=await r.text(); throw new Error('HTTP '+r.status+' '+t.slice(0,160)); }
+    if(!r.ok){ const t0=await r.text();
+      if(_sinPerc(t0)){ delete body.percepciones; showToast('Falta ejecutar SUPABASE_v264.sql: la orden se guardó sin las percepciones','error');
+        r=await fetch(_SB_URL+'/rest/v1/ordenes_compra', {method:'POST', headers:{'Content-Type':'application/json',apikey:_SB_KEY,Authorization:'Bearer '+_SB_KEY,Prefer:'return=representation'}, body:JSON.stringify(body)}); }
+      if(!r.ok){ const t=await r.text(); throw new Error('HTTP '+r.status+' '+(t||t0).slice(0,160)); } }
     const creado=await r.json();
     if(creado && creado[0]) oc.id=creado[0].id;
     return true;
