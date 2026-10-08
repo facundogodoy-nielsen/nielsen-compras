@@ -5079,13 +5079,21 @@ function circuitoDeSC(numSC){
 const CIRC_COLOR = {'Solicitada':'#6b7280','En comparación':'#60a5fa','Autorizada':'#8b5cf6',
   'OC en borrador':'#3e7cb1','OC emitida':'#06b6d4','Recepción parcial':'#f59e0b','Recibida':'#22c55e','Cerrada':'#16a34a','Stand by':'#eab308','Rechazada':'#ef4444','Cancelada':'#9ca3af'};
 
+function _circPend(numSC, c){
+  if(!c || c.paso==='Solicitada' || c.paso==='Cancelada') return null;
+  const sc=_scPorNum(numSC); if(!sc) return null;
+  const vivas=(c.ocs||[]).filter(_ocViva); if(!vivas.length) return null;
+  const cob=_scCobertura(sc, vivas); return cob.pendientes ? cob : null;
+}
 function circuitoBadge(numSC){
   const c=circuitoDeSC(numSC);
   const col=CIRC_COLOR[c.paso]||'#6b7280';
   const _viv=(c.ocs||[]).filter(o=>!['ANULADA','RECHAZADA'].includes(o.estado));
   const det = _viv.length ? _viv.map(o=>o.num_oc).join(' · ') : (c.oc ? c.oc.num_oc : (c.comp ? c.comp.num_comp : ''));
+  const pe=_circPend(numSC, c);
   return '<span style="font-size:9.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:'+col+'22;color:'+col+'">'+c.paso+'</span>'
-    + (det?'<div style="font-size:9.5px;color:var(--muted);font-family:var(--fm);margin-top:2px">'+_ocE(det)+'</div>':'');
+    + (det?'<div style="font-size:9.5px;color:var(--muted);font-family:var(--fm);margin-top:2px">'+_ocE(det)+'</div>':'')
+    + (pe?'<div style="font-size:9.5px;color:#f4d160;margin-top:2px">⚠ '+pe.pendientes+' renglón(es) sin orden</div>':'');
 }
 
 // El botón del paso siguiente — uno solo, el que corresponde
@@ -5094,6 +5102,11 @@ function circuitoAccion(numSC){
   const b=(txt,fn,bg,tit)=>'<button class="btn btn-sm" title="'+(tit||'')+'" onclick="'+fn+'" style="background:'+bg+';color:#fff;border:none;font-size:10.5px;padding:4px 9px;white-space:nowrap">'+txt+'</button>';
   if(!esModoEditor()) return '';
   if(c.paso==='Cancelada') return '';
+  const pe=_circPend(numSC, c);
+  const extra = pe ? ' '+b('➕ Pendiente ('+pe.pendientes+')','scPendienteMenu(\''+_ocE(numSC)+'\')','#b45309','Quedan '+pe.pendientes+' renglón(es) sin orden de compra: generar otra OC, una CCP o cancelarlos') : '';
+  return _circAccionBase(c, numSC, b) + extra;
+}
+function _circAccionBase(c, numSC, b){
   switch(c.paso){
     case 'Solicitada':
       return b('📊 Crear CCP','crearCCPdesdeSC(\''+_ocE(numSC)+'\')','#3e7cb1','Armar la comparativa de presupuestos')
@@ -5115,6 +5128,77 @@ function circuitoAccion(numSC){
       return b('▶️ Retomar','ocReactivar(\''+_ocE(c.oc?c.oc.num_oc:'')+'\')','#eab308','Reactivar lo postergado');
     default: return '';
   }
+}
+
+// Lo que falta ordenar de una SC con OC parcial
+function scPendienteMenu(numSC){
+  const sc=_scPorNum(numSC); if(!sc) return;
+  if(_scBloqCancel(sc,'generar órdenes')) return;
+  const cob=_scCobertura(sc, (circuitoDeSC(numSC).ocs||[]).filter(_ocViva));
+  const bt=(t,fn,bg,brd)=>'<button onclick="'+fn+'" style="display:block;width:100%;text-align:left;margin-top:8px;padding:11px 14px;border-radius:9px;border:'+(brd||'none')+';background:'+bg+';color:#fff;font-weight:700;cursor:pointer;font-family:var(--ff)">'+t+'</button>';
+  _provModalCC('➕ Pendiente de '+_ocE(numSC),
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:6px">Renglones que todavía no tienen orden de compra:</div>'
+    +cob.filas.filter(f=>f.sinOrden>0).map(f=>'<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px"><b>'+f.sinOrden+' '+_ocE(f.unidad)+'</b> — '+_ocE(f.desc)
+      +(f.ordenado>0?' <span style="font-size:11px;color:var(--muted)">(ya ordenado '+f.ordenado+' de '+f.pedido+')</span>':'')+'</div>').join('')
+    +bt('⚡ OC directa por lo pendiente','document.getElementById(\'cc-modal-ov\').style.display=\'none\';ocDirectaDesdeSC(\''+_ocE(numSC)+'\')','#e85d25')
+    +bt('📊 Comparativa (CCP) por lo pendiente','document.getElementById(\'cc-modal-ov\').style.display=\'none\';crearCCPdesdeSC(\''+_ocE(numSC)+'\')','#3e7cb1')
+    +bt('✂ Cancelar ítems que no se van a comprar','document.getElementById(\'cc-modal-ov\').style.display=\'none\';scCancelarItems('+scs.indexOf(sc)+')','#7f1d1d'));
+}
+// Cancelar la compra de algunos ítems (total o parcial) — PIN + motivo
+async function scCancelarItems(idx){
+  if(!esModoEditor()){ showToast('⛔ Solo en Modo Administrador','error'); return; }
+  const sc=scs[idx!=null?idx:window._scIdx]; if(!sc) return;
+  if(_scBloqCancel(sc,'cancelar ítems')) return;
+  try{ await cargarOC(); }catch(e){}
+  const cob=_scCobertura(sc); window._scci={sc, cob};
+  const inp=_rcInp();
+  const filas=cob.filas.map(f=>'<tr data-i="'+f.i+'">'
+    +'<td style="padding:6px"><input type="checkbox" class="sci-chk" '+(f.sinOrden>0?'':'disabled')+' style="accent-color:#ef4444;width:16px;height:16px"></td>'
+    +'<td style="padding:6px">'+_ocE(f.desc)+'<div style="font-size:10.5px;color:var(--muted)">pedido '+f.pedido+' · ordenado '+f.ordenado+(f.cancelado?' · <span style="color:#f87171">cancelado '+f.cancelado+'</span>':'')+'</div></td>'
+    +'<td style="padding:6px;white-space:nowrap">'+(f.sinOrden>0?'<input class="sci-cant" type="number" min="0" step="any" max="'+f.sinOrden+'" value="'+f.sinOrden+'" style="width:90px;'+inp+'"> <span style="font-size:11px;color:var(--muted)">de '+f.sinOrden+' '+_ocE(f.unidad)+'</span>':'<span style="font-size:11px;color:var(--muted)">sin saldo</span>')+'</td>'
+    +'<td style="padding:6px">'+(f.cancelado>0?'<button onclick="scRestaurarItem('+scs.indexOf(sc)+','+f.i+')" style="padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:11px">↩ Restaurar</button>':'')+'</td></tr>').join('');
+  _rcModal('✂ Cancelar ítems de '+_ocE(sc.numSC||sc.num),
+    '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">Se cancela sólo lo que todavía no tiene orden de compra. Lo cancelado deja de esperarse: la solicitud se completa con lo que sí se compró.</div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'+['','Artículo','Cantidad a cancelar',''].map(t=>'<th style="text-align:left;padding:6px;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">'+t+'</th>').join('')+'</tr></thead><tbody>'+filas+'</tbody></table></div>'
+    +'<div style="margin-top:10px"><div style="font-size:10px;color:var(--muted);margin-bottom:3px">MOTIVO (OBLIGATORIO)</div><input id="sci-mot" placeholder="Ej: lo resolvió el pañol / ya no se necesita / sin stock en plaza" style="width:100%;'+inp+'"></div>'
+    +'<button onclick="_scciGuardar()" style="margin-top:12px;padding:10px 18px;border-radius:8px;border:none;background:#ef4444;color:#fff;font-weight:800;cursor:pointer">✂ Cancelar los ítems marcados</button>');
+}
+async function _scciGuardar(){
+  const X=window._scci; if(!X) return; const sc=X.sc, cob=X.cob;
+  const mot=String((document.getElementById('sci-mot')||{}).value||'').trim();
+  const sel=[]; let err='';
+  document.querySelectorAll('#rc-ov tr[data-i]').forEach(tr=>{ const chk=tr.querySelector('.sci-chk'); if(!chk||!chk.checked) return;
+    const i=Number(tr.dataset.i), f=cob.filas[i], q=parseFloat((tr.querySelector('.sci-cant')||{}).value)||0;
+    if(!(q>0)) return; if(q>f.sinOrden+1e-9){ err='"'+f.desc+'": se pueden cancelar hasta '+f.sinOrden; return; } sel.push({i,q,f}); });
+  if(err){ showToast(err,'error'); return; }
+  if(!sel.length){ showToast('Marcá al menos un ítem con cantidad','error'); return; }
+  if(mot.length<6){ showToast('Indicá el motivo de la cancelación','error'); return; }
+  const pin=prompt('Para cancelar ítems ingresá el PIN de confirmación:'); if(pin===null) return;
+  if(String(pin).trim()!=='1102'){ showToast('⛔ PIN incorrecto','error'); return; }
+  sc.itemsDetalle=sc.itemsDetalle||{};
+  sel.forEach(({i,q,f})=>{ const d=sc.itemsDetalle[i]=Object.assign({estado:'PENDIENTE',cantidad:'',justificacion:''}, sc.itemsDetalle[i]||{});
+    d.cantCancelada=_r3((Number(d.cantCancelada)||0)+q); d.cancelMotivo=mot; d.cancelFecha=new Date().toISOString();
+    if(f.ordenado===0 && d.cantCancelada>=f.pedido-1e-9){ d.estado='NO_COMPRADO'; d.justificacion='Cancelado: '+mot; } });
+  const n=sc.numSC||sc.num; const resto=_scCobertura(sc);
+  if(resto.hayOC){ try{ await _rcRecalcular(n); }catch(e){} }
+  try{ await _saveItemDetalle(sc); }catch(e){}
+  _rcCerrarModal();
+  try{ await _circCargar(true); renderHistorial(); }catch(e){}
+  showToast('✂ '+sel.length+' ítem(s) cancelado(s) en '+n,'ok');
+  try{ verSC(scs.indexOf(sc)); }catch(e){}
+  if(resto.todoCancelado && !resto.hayOC && confirm('Todos los ítems de '+n+' quedaron cancelados. ¿Cancelar también la solicitud completa?')) cancelarSC(scs.indexOf(sc));
+}
+async function scRestaurarItem(idx, i){
+  const sc=scs[idx]; if(!sc||!sc.itemsDetalle||!sc.itemsDetalle[i]) return;
+  if(_scBloqCancel(sc,'modificar ítems')) return;
+  const pin=prompt('Restaurar el ítem cancelado: ingresá el PIN de confirmación'); if(pin===null) return;
+  if(String(pin).trim()!=='1102'){ showToast('⛔ PIN incorrecto','error'); return; }
+  const d=sc.itemsDetalle[i]; delete d.cantCancelada; delete d.cancelMotivo; delete d.cancelFecha;
+  if(d.estado==='NO_COMPRADO' && /^Cancelado:/.test(d.justificacion||'')){ d.estado='PENDIENTE'; d.justificacion=''; }
+  const n=sc.numSC||sc.num; if(_scCobertura(sc).hayOC){ try{ await _rcRecalcular(n); }catch(e){} }
+  try{ await _saveItemDetalle(sc); }catch(e){}
+  _rcCerrarModal(); try{ await _circCargar(true); renderHistorial(); }catch(e){}
+  showToast('↩ Ítem restaurado','ok'); try{ verSC(idx); }catch(e){}
 }
 
 // Abre el Comparativo con la solicitud ya asociada
@@ -6594,18 +6678,69 @@ async function _recepCargar(numSC){
     return {ok:true, rows:await r.json()};
   }catch(e){ return {ok:false, rows:[], err:e.message}; }
 }
-// Estado de recepción de una SC: por renglón, cuánto se pidió, recibió y qué OC lo cubre
-function _recepEstado(sc, ocsSC, recs){
+// ══════════════════════════════════════════════════════════════
+// COBERTURA de una SC (v265): cada renglón puede repartirse en varias OC (por ítem
+// o por cantidad) hasta cubrir lo pedido; lo que no se va a comprar se cancela.
+//   pedido = ordenado (OC vivas) + cancelado + sinOrden
+// ══════════════════════════════════════════════════════════════
+const _ocViva=o=>!['ANULADA','RECHAZADA'].includes(o&&o.estado);
+const _r3=x=>Math.round((Number(x)||0)*1000)/1000;
+function _ocItemsDe(o){ return Array.isArray(o&&o.items)?o.items:_jparse(o&&o.items,[]); }
+function _scOcsVivas(numSC, lista){
+  return (lista||ocData||[]).filter(o=>_ocViva(o) && ((Array.isArray(o.scs)&&o.scs.includes(numSC)) || _ocItemsDe(o).some(i=>i.sc===numSC)));
+}
+function _scCobertura(sc, ocs){
+  const numSC=sc.numSC||sc.num||''; const lineas=_ccScItems(sc.items); const det=sc.itemsDetalle||{};
+  ocs=(ocs||_scOcsVivas(numSC)).filter(_ocViva);
+  const filas=lineas.map((l,i)=>({i, desc:l.desc, unidad:l.unit, pedido:l.qty, ordenado:0, ocs:[],
+    cancelado:Math.max(0,Number((det[i]||{}).cantCancelada)||0)}));
+  ocs.forEach(o=>_ocItemsDe(o).forEach(it=>{
+    if(it.sc && it.sc!==numSC) return;
+    const f=filas[_ocItemScIdx(it,numSC,lineas)]; if(!f) return;
+    f.ordenado+=Number(it.cant)||0; if(f.ocs.indexOf(o.num_oc)<0) f.ocs.push(o.num_oc); }));
+  filas.forEach(f=>{ f.ordenado=_r3(f.ordenado); f.cancelado=Math.min(f.cancelado, Math.max(0,_r3(f.pedido-f.ordenado)));
+    f.sinOrden=Math.max(0,_r3(f.pedido-f.cancelado-f.ordenado)); });
+  const pend=filas.filter(f=>f.sinOrden>0);
+  return { filas, pendientes:pend.length, cantPend:_r3(pend.reduce((a,f)=>a+f.sinOrden,0)), hayOC:ocs.length>0,
+           todoCancelado: filas.length>0 && filas.every(f=>f.cancelado>=f.pedido) };
+}
+
+// Estado de recepción de una SC: por renglón, cuánto se pidió, ordenó (en cada OC), recibió y canceló.
+// Con numOC: la vista de ESA orden (pendiente = lo que falta recibir de esa OC).
+function _recepEstado(sc, ocsSC, recs, numOC){
   const numSC=sc.numSC||sc.num||'';
-  const lineas=_ccScItems(sc.items);
+  const lineas=_ccScItems(sc.items); const det=sc.itemsDetalle||{};
   recs=(recs||[]).filter(r=>!r.anulado);
-  const filas=lineas.map((l,i)=>({i, desc:l.desc, unidad:l.unit, pedido:l.qty, recibido:0, oc:null, ocItem:null}));
-  ocsSC.forEach(o=>{ (Array.isArray(o.items)?o.items:_jparse(o.items,[])).forEach(it=>{
-    const k=_ocItemScIdx(it,numSC,lineas); if(k>=0 && filas[k] && !filas[k].oc){ filas[k].oc=o; filas[k].ocItem=it; } }); });
-  recs.forEach(r=>(Array.isArray(r.items)?r.items:_jparse(r.items,[])).forEach(x=>{ const f=filas[Number(x.sc_i)]; if(f) f.recibido+=Number(x.cant)||0; }));
-  filas.forEach(f=>{ f.recibido=Math.round(f.recibido*1000)/1000; f.pendiente=Math.max(0,Math.round((f.pedido-f.recibido)*1000)/1000);
-    const ef=(f.oc&&f.oc.entrega_final&&f.oc.entrega_final.items)||[];
-    if(f.pendiente>0 && ef.some(x=>x.sc===numSC && Number(x.sc_i)===f.i)){ f.faltante=f.pendiente; f.pendiente=0; f.cerrado=true; } });
+  const filas=lineas.map((l,i)=>({i, desc:l.desc, unidad:l.unit, pedido:l.qty, recibido:0, oc:null, ocItem:null, porOC:{}, ordenado:0,
+    cancelado:Math.max(0,Number((det[i]||{}).cantCancelada)||0)}));
+  ocsSC.forEach(o=>_ocItemsDe(o).forEach(it=>{
+    if(it.sc && it.sc!==numSC) return;
+    const f=filas[_ocItemScIdx(it,numSC,lineas)]; if(!f) return;
+    const p=f.porOC[o.num_oc]||(f.porOC[o.num_oc]={o, it, cant:0, recibido:0});
+    p.cant+=Number(it.cant)||0; f.ordenado+=Number(it.cant)||0;
+    if(!f.oc){ f.oc=o; f.ocItem=it; } }));
+  recs.forEach(r=>_ocItemsDe(r).forEach(x=>{ const f=filas[Number(x.sc_i)]; if(!f) return; const c=Number(x.cant)||0; f.recibido+=c;
+    let p=r.num_oc ? f.porOC[r.num_oc] : null;
+    if(!r.num_oc){ const ks=Object.keys(f.porOC); p=ks.length?f.porOC[ks[0]]:null; }
+    if(p) p.recibido+=c; }));
+  filas.forEach(f=>{
+    f.recibido=_r3(f.recibido); f.ordenado=_r3(f.ordenado); let falt=0;
+    Object.values(f.porOC).forEach(p=>{ p.recibido=_r3(p.recibido); p.pendiente=Math.max(0,_r3(p.cant-p.recibido));
+      const ef=(p.o.entrega_final&&p.o.entrega_final.items)||[];
+      if(p.pendiente>0 && ef.some(x=>x.sc===numSC && Number(x.sc_i)===f.i)){ p.faltante=p.pendiente; p.pendiente=0; p.cerrado=true; falt+=p.faltante; } });
+    f.cancelado=Math.min(f.cancelado, Math.max(0,_r3(f.pedido-f.ordenado)));
+    f.sinOrden=Math.max(0,_r3(f.pedido-f.cancelado-f.ordenado));
+    f.completo = f.sinOrden===0 && (f.recibido+falt >= f.pedido-f.cancelado-1e-9) && (f.ordenado>0 || f.cancelado>=f.pedido);
+    if(numOC){
+      const p=f.porOC[numOC];
+      if(p){ f.oc=p.o; f.ocItem=p.it; f.pedidoOC=p.cant; f.recibidoOC=p.recibido; f.pendiente=p.pendiente; f.cerrado=!!p.cerrado; f.faltante=p.faltante||0; }
+      else { f.oc=null; f.ocItem=null; f.pendiente=0; f.cerrado=false; f.faltante=0; }
+    } else {
+      f.pendiente=_r3(Object.values(f.porOC).reduce((a,p)=>a+p.pendiente,0));
+      f.cerrado=Object.values(f.porOC).some(p=>p.cerrado) && f.pendiente===0;
+      f.faltante=falt;
+    }
+  });
   return filas;
 }
 
@@ -6646,17 +6781,19 @@ async function _scRecepMontar(sc){
   const ocsSC=(ocData||[]).filter(o=>RECEP_VIVAS.includes(o.estado) && (
      (Array.isArray(o.scs)&&o.scs.includes(numSC)) || (Array.isArray(o.items)?o.items:_jparse(o.items,[])).some(i=>i.sc===numSC)));
   if(!ocsSC.length){
-    box.innerHTML='<div style="padding:12px 14px;border-radius:10px;border:1px dashed var(--border);color:var(--muted);font-size:12.5px">📦 <b>Recepción:</b> se habilita cuando esta solicitud tenga una orden de compra emitida.</div>';
+    box.innerHTML='<div style="padding:12px 14px;border-radius:10px;border:1px dashed var(--border);color:var(--muted);font-size:12.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="flex:1;min-width:200px">📦 <b>Recepción:</b> se habilita cuando esta solicitud tenga una orden de compra emitida.</span>'
+      +(esModoEditor()?'<button onclick="scCancelarItems(window._scIdx)" style="padding:6px 11px;border-radius:7px;border:1px solid rgba(239,68,68,.45);background:none;color:#f87171;font-weight:700;cursor:pointer;font-size:11.5px">✂ Cancelar ítems</button>':'')+'</div>';
     return;
   }
   box.innerHTML='<div style="padding:14px;color:var(--muted);font-size:12.5px">⏳ Cargando recepción...</div>';
   const rc=await _recepCargar(numSC);
   const recs=rc.rows||[];
-  const filas=_recepEstado(sc, ocsSC, recs);
+  const filas=_recepEstado(sc, _scOcsVivas(numSC), recs);   // incluye OC en borrador para lo "ordenado"
   const foco=window._recepFoco&&window._recepFoco.numSC===numSC ? window._recepFoco.numOC : null;
-  const ocsConSaldo=ocsSC.filter(o=>filas.some(f=>f.oc&&f.oc.num_oc===o.num_oc&&f.pendiente>0));
+  const ocsConSaldo=ocsSC.filter(o=>filas.some(f=>f.porOC[o.num_oc]&&f.porOC[o.num_oc].pendiente>0));
   const ocSel=(foco && ocsConSaldo.some(o=>o.num_oc===foco)) ? foco : (ocsConSaldo[0]||{}).num_oc;
-  const totP=filas.reduce((a,f)=>a+f.pedido,0), totR=filas.reduce((a,f)=>a+Math.min(f.recibido,f.pedido),0);
+  const totP=filas.reduce((a,f)=>a+Math.max(0,f.pedido-f.cancelado),0), totR=filas.reduce((a,f)=>a+Math.min(f.recibido+(f.faltante||0),Math.max(0,f.pedido-f.cancelado)),0);
+  const sinOrd=filas.filter(f=>f.sinOrden>0);
   const pct=totP? Math.round(totR/totP*100):0;
   const est=pct>=100?['#22c55e','Recepción completa']:(pct>0?['#f59e0b','Recepción parcial']:['#60a5fa','Pendiente de recepción']);
   const th=t=>'<th style="padding:7px 9px;text-align:left;font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);background:var(--s2)">'+t+'</th>';
@@ -6667,12 +6804,19 @@ async function _scRecepMontar(sc){
       +'<span style="font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:999px;background:'+est[0]+'22;color:'+est[0]+'">'+est[1]+' · '+pct+'%</span>'
       +(rc.ok?'':'<span style="font-size:11px;color:var(--yellow)">⚠ Falta crear la tabla de recepciones (SUPABASE_recepciones.sql)</span>')
     +'</div>'
-    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'+th('#')+th('Artículo de la solicitud')+th('Pedido')+th('Recibido')+th('Pendiente')+th('Orden de compra')+'</tr></thead><tbody>'
-    +filas.map(f=>{ const ok=f.pendiente===0&&f.pedido>0, exc=f.recibido>f.pedido;
-      return '<tr>'+td(f.i+1,'color:var(--muted)')+td(_ocE(f.desc))+td(f.pedido+' '+_ocE(f.unidad),'white-space:nowrap')
-        +td('<b style="color:'+(ok?'#22c55e':(f.recibido>0?'#f59e0b':'var(--text)'))+'">'+f.recibido+'</b>'+(exc?' <span style="color:var(--red)" title="Se recibió más de lo pedido">⚠</span>':''),'white-space:nowrap')
-        +td(f.cerrado?'<span style="color:var(--yellow)" title="Cerrado por entrega final">cerrado · faltan '+f.faltante+'</span>':(ok?'<span style="color:#22c55e">✓</span>':'<b>'+f.pendiente+'</b>'),'white-space:nowrap')
-        +td(f.oc?('<span style="font-family:var(--fm);font-size:11.5px">'+_ocE(f.oc.num_oc)+'</span><div style="font-size:10.5px;color:var(--muted)">'+_ocE(f.oc.proveedor||'')+'</div>'):'<span style="color:var(--muted);font-size:11px">sin orden</span>')+'</tr>'; }).join('')
+    +(sinOrd.length && esModoEditor() && !_scEsCancelada(sc) ? '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--border);background:rgba(234,179,8,.07)">'
+        +'<span style="font-size:12.5px;color:#f4d160;flex:1;min-width:200px">⚠ <b>'+sinOrd.length+' renglón(es) todavía sin orden de compra</b> ('+sinOrd.map(f=>_ocE(f.sinOrden+' '+f.unidad+' '+f.desc)).join(' · ')+')</span>'
+        +'<button onclick="ocDirectaDesdeSC(\''+_ocE(numSC)+'\')" style="padding:6px 11px;border-radius:7px;border:none;background:#e85d25;color:#fff;font-weight:700;cursor:pointer;font-size:11.5px">⚡ OC por lo pendiente</button>'
+        +'<button onclick="crearCCPdesdeSC(\''+_ocE(numSC)+'\')" style="padding:6px 11px;border-radius:7px;border:none;background:#3e7cb1;color:#fff;font-weight:700;cursor:pointer;font-size:11.5px">📊 CCP por lo pendiente</button>'
+        +'<button onclick="scCancelarItems(window._scIdx)" style="padding:6px 11px;border-radius:7px;border:1px solid rgba(239,68,68,.45);background:none;color:#f87171;font-weight:700;cursor:pointer;font-size:11.5px">✂ Cancelar ítems</button></div>' : '')
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'+th('#')+th('Artículo de la solicitud')+th('Pedido')+th('Ordenado')+th('Recibido')+th('Por recibir')+th('Órdenes de compra')+'</tr></thead><tbody>'
+    +filas.map(f=>{ const exc=f.recibido>f.pedido, okL=f.completo;
+      const ocsTxt=Object.values(f.porOC).map(p=>'<div><span style="font-family:var(--fm);font-size:11.5px">'+_ocE(p.o.num_oc)+'</span> <span style="font-size:10.5px;color:var(--muted)">'+_ocE(p.o.proveedor||'')+' · '+p.cant+(p.o.estado==='BORRADOR'?' · borrador':'')+'</span></div>').join('');
+      return '<tr>'+td(f.i+1,'color:var(--muted)')+td(_ocE(f.desc)+(f.cancelado>0?'<div style="font-size:10.5px;color:#f87171">✂ cancelado '+f.cancelado+' '+_ocE(f.unidad)+'</div>':''))+td(f.pedido+' '+_ocE(f.unidad),'white-space:nowrap')
+        +td((f.ordenado>0?f.ordenado:'—')+(f.sinOrden>0?'<div style="font-size:10.5px;color:var(--yellow)">sin orden: '+f.sinOrden+'</div>':''),'white-space:nowrap')
+        +td('<b style="color:'+(okL?'#22c55e':(f.recibido>0?'#f59e0b':'var(--text)'))+'">'+f.recibido+'</b>'+(exc?' <span style="color:var(--red)" title="Se recibió más de lo pedido">⚠</span>':''),'white-space:nowrap')
+        +td(f.faltante>0?'<span style="color:var(--yellow)" title="Cerrado por entrega final">cerrado · faltan '+f.faltante+'</span>':(okL?'<span style="color:#22c55e">✓</span>':(f.ordenado>0?'<b>'+f.pendiente+'</b>':'<span style="color:var(--muted)">—</span>')),'white-space:nowrap')
+        +td(ocsTxt||'<span style="color:var(--muted);font-size:11px">sin orden</span>')+'</tr>'; }).join('')
     +'</tbody></table></div>';
   if(recs.length){
     h+='<div style="padding:12px 14px 4px;font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)">Remitos registrados</div>'
@@ -6689,7 +6833,7 @@ async function _scRecepMontar(sc){
   }
   if(esModoEditor() && ocSel){
     const o=ocsSC.find(x=>x.num_oc===ocSel);
-    const pend=filas.filter(f=>f.oc&&f.oc.num_oc===ocSel&&f.pendiente>0);
+    const pend=_recepEstado(sc, ocsSC, recs, ocSel).filter(f=>f.oc&&f.oc.num_oc===ocSel&&f.pendiente>0);
     const inp='padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)';
     h+='<div style="margin:6px 14px 14px;padding:13px;border-radius:10px;border:1px solid rgba(232,93,37,.45);background:rgba(232,93,37,.06)">'
       +'<div style="font-size:12px;font-weight:800;color:var(--or);margin-bottom:10px">'+(recs.length?'➕ Nuevo remito — cantidades restantes':'➕ Registrar remito')+'</div>'
@@ -6709,7 +6853,7 @@ async function _scRecepMontar(sc){
       +'<div id="rc-aviso" style="font-size:12px;margin-top:8px;color:var(--muted)"></div>'
       +'<button onclick="_recepGuardar(\''+_ocE(numSC)+'\')" style="margin-top:10px;padding:10px 18px;border-radius:8px;border:none;background:var(--or);color:#fff;font-weight:800;cursor:pointer;font-family:var(--ff)">✔ Registrar remito</button>'
     +'</div>';
-  } else if(pct>=100){
+  } else if(pct>=100 && !sinOrd.length){
     h+='<div style="padding:12px 14px;color:#4ade80;font-size:12.5px">✓ Todos los artículos de la solicitud fueron recibidos.</div>';
   }
   h+='</div>';
@@ -6754,7 +6898,7 @@ async function _recepGuardar(numSC){
   if(rc.rows.some(r=>_normTxt(r.remito)===_normTxt(remito) && _parNormProv(r.proveedor)===_parNormProv(o.proveedor))){
     showToast('El remito '+remito+' de '+o.proveedor+' ya está registrado','error'); return; }
   const ocsSC=(ocData||[]).filter(x=>RECEP_VIVAS.includes(x.estado) && ((Array.isArray(x.scs)&&x.scs.includes(numSC)) || (Array.isArray(x.items)?x.items:_jparse(x.items,[])).some(i=>i.sc===numSC)));
-  const filas=_recepEstado(sc, ocsSC, rc.rows);
+  const filas=_recepEstado(sc, ocsSC, rc.rows, numOC);
   const items=[]; let error='';
   document.querySelectorAll('.rc-cant').forEach(inp=>{
     const i=Number(inp.dataset.i), v=parseFloat(String(inp.value).replace(',','.'))||0, f=filas[i];
@@ -6770,7 +6914,7 @@ async function _recepGuardar(numSC){
     if(!r.ok) throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,120));
   }catch(e){ showToast('No se pudo registrar el remito: '+e.message,'error'); return; }
   await _recepPropagar(sc, rc.rows.concat([reg]), ocsSC);
-  const quedan=_recepEstado(sc, ocsSC, rc.rows.concat([reg])).filter(f=>f.oc&&f.pendiente>0);
+  const quedan=_recepEstado(sc, ocsSC, rc.rows.concat([reg])).filter(f=>f.pendiente>0);
   showToast('✅ Remito '+remito+' registrado'+(quedan.length?' — quedan '+quedan.length+' artículo(s) con saldo: se habilitó un nuevo renglón':' — recepción completa'),'ok');
   window._recepFoco={numSC, numOC};
   _scRecepMontar(sc);
@@ -6798,12 +6942,12 @@ async function _recepPropagar(sc, recs, ocsSC){
     Object.assign(d,{ cantPedida:f.pedido, cantRecibida:f.recibido, cantidad:f.recibido, remitos:mios,
       remitoNum:mios.map(m=>m.num).join(' · '), remitoFecha:ult.fecha, remitoProveedor:ult.proveedor,
       proveedor:ult.proveedor, oc:ult.oc, precio:pu||d.precio||0, monto:pu? Math.round(pu*f.recibido*100)/100 : (d.monto||0),
-      estado: (f.pendiente===0 || f.cerrado) ? 'COMPRADO' : 'RECIBIDO_PARCIAL' });
+      estado: f.completo ? 'COMPRADO' : 'RECIBIDO_PARCIAL' });
   });
   try{ await _saveItemDetalle(sc); }catch(e){ console.warn('detalle SC', e); }
   // 2) Estado de cada orden de compra
   for(const o of ocsSC){
-    const mias=filas.filter(f=>f.oc&&f.oc.num_oc===o.num_oc); if(!mias.length) continue;
+    const mias=_recepEstado(sc, ocsSC, recs, o.num_oc).filter(f=>f.oc&&f.oc.num_oc===o.num_oc); if(!mias.length) continue;
     const recOC=recs.filter(r=>r.num_oc===o.num_oc); if(!recOC.length) continue;
     const completa=mias.every(f=>f.pendiente===0), ult=recOC.map(r=>r.fecha).sort().pop();
     if(!['CERRADA'].includes(o.estado)){
@@ -6880,10 +7024,12 @@ function _ocdAbrir(sc){
   if(sc && _scBloqCancel(sc,'generar una orden de compra')) return;
   const numSC=sc?(sc.numSC||sc.num):null;
   const lineas=sc? _ccScItems(sc.items) : [{qty:1,unit:'u',desc:''},{qty:1,unit:'u',desc:''},{qty:1,unit:'u',desc:''}];
-  // Renglones de la SC que ya tienen orden de compra: no se vuelven a ordenar
-  const cubiertos=new Set();
-  if(numSC) (ocData||[]).filter(o=>!['ANULADA','RECHAZADA'].includes(o.estado)).forEach(o=>(Array.isArray(o.items)?o.items:_jparse(o.items,[])).forEach(it=>{ const k=_ocItemScIdx(it,numSC,lineas); if(k>=0) cubiertos.add(k); }));
-  _ocd={ numSC, sc, lineas, cubiertos, tc:0 };
+  // v265: de cada renglón se puede ordenar sólo lo que falta (pedido − ya ordenado − cancelado)
+  const cob = sc ? _scCobertura(sc) : null;
+  const disp = lineas.map((l,i)=> cob ? cob.filas[i].sinOrden : null);
+  const cubiertos=new Set(); disp.forEach((v,i)=>{ if(v!=null && !(v>0)) cubiertos.add(i); });
+  if(cob && !cob.pendientes){ showToast(cob.todoCancelado?'Todos los renglones de '+numSC+' están cancelados':'Toda la solicitud '+numSC+' ya tiene orden de compra o está cancelada','error'); return; }
+  _ocd={ numSC, sc, lineas, cubiertos, disp, cob, tc:0 };
   let ov=document.getElementById('ocd-ov');
   if(!ov){ ov=document.createElement('div'); ov.id='ocd-ov'; ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px 14px;overflow:auto'; document.body.appendChild(ov); }
   const inp='padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--s2);color:var(--text);font-size:13px;font-family:var(--ff)';
@@ -6894,8 +7040,12 @@ function _ocdAbrir(sc){
     return '<tr data-i="'+i+'" style="'+(tiene?'opacity:.45':'')+'">'
       +'<td style="padding:6px"><input type="checkbox" class="ocd-inc" '+(tiene?'disabled':'checked')+' onchange="_ocdCalc()" style="accent-color:var(--or);width:16px;height:16px"></td>'
       +'<td style="padding:6px;min-width:220px"><input class="ocd-desc" value="'+_ocE(l.desc)+'" '+(numSC?'readonly':'')+' oninput="_ocdCalc()" style="width:100%;'+inp+(numSC?';opacity:.85':'')+'">'
-        +'<div class="ocd-hist" style="font-size:10.5px;color:var(--muted);margin-top:3px"></div>'+(tiene?'<div style="font-size:10.5px;color:var(--yellow)">Ya tiene orden de compra</div>':'')+'</td>'
-      +'<td style="padding:6px"><input class="ocd-cant" type="number" min="0" step="any" value="'+(l.qty||1)+'" oninput="_ocdCalc()" style="width:76px;'+inp+'"></td>'
+        +'<div class="ocd-hist" style="font-size:10.5px;color:var(--muted);margin-top:3px"></div>'
+        +(cob ? (()=>{ const F=cob.filas[i]; const parts=[];
+            if(F.ordenado>0) parts.push('ya ordenado '+F.ordenado+' de '+F.pedido+' ('+F.ocs.join(', ')+')');
+            if(F.cancelado>0) parts.push('cancelado '+F.cancelado);
+            return parts.length?'<div style="font-size:10.5px;color:'+(tiene?'var(--yellow)':'#f4d160')+'">'+_ocE(parts.join(' · '))+(tiene?' — sin saldo':' — quedan '+F.sinOrden)+'</div>':''; })() : '')+'</td>'
+      +'<td style="padding:6px"><input class="ocd-cant" type="number" min="0" step="any" value="'+(cob?(tiene?0:disp[i]):(l.qty||1))+'"'+(cob&&!tiene?' max="'+disp[i]+'"':'')+' oninput="_ocdCalc()" style="width:76px;'+inp+'"></td>'
       +'<td style="padding:6px"><input class="ocd-uni" value="'+_ocE(l.unit||'u')+'" style="width:58px;'+inp+'"></td>'
       +'<td style="padding:6px"><input class="ocd-precio" type="number" min="0" step="any" placeholder="0,00" oninput="_ocdCalc()" style="width:120px;'+inp+'"></td>'
       +'<td style="padding:6px"><select class="ocd-iva" onchange="_ocdCalc()" style="'+inp+'"><option value="21">21%</option><option value="10.5">10,5%</option><option value="0">Exento</option></select></td>'
@@ -7004,6 +7154,8 @@ function _ocdErrores(d){
   if(!d.prov) e.push('Falta el proveedor');
   if(!d.sel.length) e.push('Elegí al menos un artículo con cantidad');
   if(d.sel.some(f=>!(f.precio>0))) e.push('Hay artículos sin precio unitario');
+  if(_ocd && _ocd.disp){ const x=d.sel.find(f=>_ocd.disp[f.i]!=null && f.cant>_ocd.disp[f.i]+1e-9);
+    if(x) e.push('"'+x.desc+'": se pidieron '+x.cant+' y quedan '+_ocd.disp[x.i]+' sin orden'); }
   if(d.mon==='ARS' && !(d.tc>0)) e.push('Falta el tipo de cambio para calcular el nivel de autorización');
   if(d.mot==='MONTO_MENOR' && d.usd>=OC_REGLAS.umbralSinComparativa) e.push('Supera USD '+OC_REGLAS.umbralSinComparativa+': elegí otro motivo');
   if(d.mot!=='MONTO_MENOR' && d.just.length<10) e.push('Escribí una justificación (al menos 10 caracteres)');
@@ -7137,7 +7289,7 @@ async function ocCerrar(numOC){
   for(const n of scsOC){
     const sc=(scs||[]).find(s=>(s.numSC||s.num)===n); if(!sc) continue;
     const rc=await _recepCargar(n);
-    _recepEstado(sc,[o],(rc.rows||[]).filter(r=>!r.anulado)).filter(f=>f.oc&&f.oc.num_oc===numOC&&f.pendiente>0)
+    _recepEstado(sc,[o],(rc.rows||[]).filter(r=>!r.anulado),numOC).filter(f=>f.oc&&f.oc.num_oc===numOC&&f.pendiente>0)
       .forEach(f=>pend.push({sc:n, sc_i:f.i, desc:f.desc, pendiente:f.pendiente, unidad:f.unidad}));
   }
   const sinFactura = !['CONFORME','LIBERADA'].includes(o.estado_factura||'');
@@ -7579,6 +7731,14 @@ async function generarOCdesdeCCP(numComp){
       prov:comp.proveedor_elegido||g.name||'', cuit:g.cuit||'', contacto:g.contact||'', email:g.email||'', tel:g.phone||'',
       price:Number((g.prices||[])[i])||0, marca:(g.marcas||[])[i]||'', modelo:(g.modelos||[])[i]||'', pago:g.paymentTerms||comp.condicion_pago||'', entrega:g.deliveryDays||'', iva:21 }));
   }
+  // v265: si otra OC ya cubrió parte de un renglón, se ordena sólo el saldo
+  { const avisos=[];
+    adj=adj.filter(a=>{ if(!a.sc || a.scIdx==null) return true; const sc=_scPorNum(a.sc); if(!sc) return true;
+      const F=_scCobertura(sc, _scOcsVivas(a.sc).filter(o=>o.num_comp!==numComp)).filas[Number(a.scIdx)]; if(!F) return true;
+      const q=Number(a.qty)||0; if(q<=F.sinOrden+1e-9) return true;
+      if(F.sinOrden<=0){ avisos.push(a.desc+' (ya cubierto)'); return false; }
+      avisos.push(a.desc+' ('+q+' → '+F.sinOrden+')'); a.qty=F.sinOrden; return true; });
+    if(avisos.length) showToast('Ajustado a lo que falta ordenar: '+avisos.join(' · '),'error'); }
   // v262: los renglones de solicitudes CANCELADAS no se ordenan
   { const scsComp=String(comp.num_sc||'').split(/[,;\s]+/).map(x=>x.trim()).filter(Boolean);
     const canc=new Set(scsComp.filter(n=>_scEsCancelada(n)));
