@@ -3618,46 +3618,111 @@ function desactivarEditarSC() {
 }
 
 // ── FULL EDIT verSC renderer ──
+// ── Edición completa de una SC (Ajustes → Editar Centro de Control) ──
+// v263: las listas son las mismas del Formulario SC; un valor viejo que no esté en la
+// lista se conserva tal cual; al guardar solo se envían los campos que el Administrador cambió.
+const SC_FORM_AREAS = [['TALLER','Taller'],['TRANSPORTE','Transporte'],['MANTENIMIENTO','Mantenimiento'],['GERENCIA','Gerencia'],
+  ['COMPRAS','Compras y Abastecimiento'],['SSMA','SSMA'],['LOGISTICA','Logística'],['RRHH','RRHH'],['CALIDAD','Calidad'],
+  ['PRESIDENCIA','Presidencia'],['COCINA BASE','Cocina Base'],['CAMPAMENTOS','Campamentos Fijos/Móviles']];
+const SC_FORM_SUBAREAS = {
+  'MANTENIMIENTO':[['','— Seleccionar —'],['ELECTRICIDAD','ELECTRICIDAD'],['PLOMERIA','PLOMERIA'],['METALURGIA','METALURGIA'],['CAMPAMENTO','CAMPAMENTO']],
+  'SSMA':[['','— General SSMA —'],['MEDIO AMBIENTE','Medio Ambiente'],['SEGURIDAD E HIGIENE','Seguridad e Higiene'],['PREVENCION','Prevención'],['PREVENCION RECURSOS HIDRICOS','Prevención Recursos Hídricos']]
+};
+const SC_FORM_MOTIVOS = [['STOCK','Stock'],['ARMADO/CONSTRUCCION','Armado / Construcción'],['AMPLIACION/MEJORA','Ampliación / Mejora'],
+  ['MANTENIMIENTO/REPARACION','Mantenimiento / Reparación'],['RECAMBIO POR USO O ROTURA','Recambio por Uso o Rotura'],
+  ['REPOSICION POR EXTRAVÍO O HURTO','Reposición por Extravío o Hurto'],['REPUESTOS/EQUIPAMIENTO VEHICULAR','Repuestos / Equipamiento Vehicular'],
+  ['CONSUMIBLES/INSUMOS','Consumibles / Insumos'],['INGRESO DE PERSONAL','Ingreso de Personal'],['OTROS','Otros (justificar)']];
+const SC_FORM_CRIT = [['CRITICA','🔴 Crítica'],['URGENTE','🟠 Urgente'],['ALTA','🟡 Alta'],['MEDIA','🟢 Media'],['BAJA','⚪ Baja']];
+const SC_EDIT_ESTADOS = [['PENDIENTE','🟡 Pendiente'],['EN PROCESO','🔵 En proceso'],['COMPLETADA','✅ Completada']];
+
+function _escFechaISO(v){
+  v=String(v||'').trim(); if(!v) return '';
+  if(/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0,10);
+  const m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  return '';
+}
+function _escEsc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+// Opciones de un select: si el valor guardado no está en la lista, se agrega tal cual (no se pierde)
+function _escOpts(lista, val, vacio){
+  val=String(val==null?'':val);
+  let h='';
+  const esta=lista.some(o=>o[0]===val);
+  if(!esta && val) h+='<option value="'+_escEsc(val)+'" selected>'+_escEsc(val)+' (cargado)</option>';
+  if(!esta && !val && vacio!==false) h+='<option value="" selected>— Sin dato —</option>';
+  h+=lista.map(o=>'<option value="'+_escEsc(o[0])+'"'+(o[0]===val?' selected':'')+'>'+_escEsc(o[1])+'</option>').join('');
+  return h;
+}
+function _escSubareaHTML(area, val){
+  const l=SC_FORM_SUBAREAS[area];
+  if(!l) return val ? '<option value="'+_escEsc(val)+'" selected>'+_escEsc(val)+' (cargado)</option><option value="">— Sin sub-área —</option>' : '<option value="" selected>— No aplica —</option>';
+  return _escOpts(l.filter(o=>o[0]!==''), val, false).replace(/^/, l[0][0]==='' ? '<option value=""'+(val?'':' selected')+'>'+_escEsc(l[0][1])+'</option>' : '');
+}
+function _escAreaCambio(){
+  const a=(document.getElementById('esc-area')||{}).value||'';
+  const sel=document.getElementById('esc-subarea'); if(!sel) return;
+  const orig=(window._escOrig||{});
+  sel.innerHTML=_escSubareaHTML(a, a===orig.area ? orig.subarea : '');
+}
+function _escMotivoCambio(){
+  const m=(document.getElementById('esc-motivo')||{}).value||'';
+  const w=document.getElementById('esc-motivo-otro-wrap'); if(w) w.style.display = m==='OTROS' ? '' : 'none';
+}
+// Valores del formulario de edición, normalizados (lo mismo que se ve al abrir)
+function _escValores(){
+  const g=id=>(document.getElementById('esc-'+id)||{}).value;
+  const t=id=>String(g(id)==null?'':g(id));
+  let motivo=t('motivo');
+  if(motivo==='OTROS'){ const x=t('motivoOtro').trim(); motivo = x ? 'OTROS — '+x : 'OTROS'; }
+  return { numsc:t('numsc').trim(), estado:t('estado'), criticidad:t('criticidad'), area:t('area'), subarea:t('subarea'),
+    solicitante:t('solicitante'), email:t('email'), fecha:t('fecha'), fechaLimite:t('fechaLimite'), motivo,
+    os:t('os'), osAsunto:t('osAsunto'), osDesc:t('osDesc'), osResp:t('osResp'), panolero:t('panolero'), obs:t('obs') };
+}
+
 function renderEditGridSC(sc, idx) {
-  const AREAS = ['TALLER','TRANSPORTE','MANTENIMIENTO','GERENCIA','COMPRAS','SSMA','LOGISTICA','RRHH','CALIDAD','PRESIDENCIA','COCINA BASE','CAMPAMENTOS'];
-  const SUBAREAS = ['ELECTRICIDAD','PLOMERIA','METALURGIA','CAMPAMENTO'];
-  const MOTIVOS = ['REPOSICIÓN DE STOCK','PROYECTO','MANTENIMIENTO','NUEVO REQUERIMIENTO','REEMPLAZO','URGENCIA OPERATIVA','OTROS'];
-  const ESTADOS = ['PENDIENTE','EN PROCESO','COMPLETADA','CANCELADA'];
-  const CRIT = ['CRITICA','URGENTE','ALTA','MEDIA','BAJA'];
-  const f = (id, label, val, type='text', fullrow=false) =>
-    `<div class="sc-full-edit-field${fullrow?' span2':''}">
+  const motivoRaw=String(sc.motivo||'');
+  const esOtros=/^OTROS\b/.test(motivoRaw) && !SC_FORM_MOTIVOS.some(o=>o[0]===motivoRaw && o[0]!=='OTROS');
+  const motivoSel = esOtros ? 'OTROS' : motivoRaw;
+  const motivoOtro = esOtros ? motivoRaw.replace(/^OTROS\s*(—|-)?\s*/,'') : '';
+  const f = (id, label, val, type='text', extra='') =>
+    `<div class="sc-full-edit-field">
       <label>${label}</label>
-      <input type="${type}" id="esc-${id}" value="${(val||'').toString().replace(/"/g,'&quot;')}">
+      <input type="${type}" id="esc-${id}" value="${_escEsc(val)}"${extra}>
     </div>`;
-  const sel = (id, label, val, opts, fullrow=false) =>
-    `<div class="sc-full-edit-field${fullrow?' span2':''}">
+  const sel = (id, label, html, onch='') =>
+    `<div class="sc-full-edit-field">
       <label>${label}</label>
-      <select id="esc-${id}">${opts.map(o=>`<option value="${o}"${o===val?'selected':''}>${o}</option>`).join('')}</select>
+      <select id="esc-${id}"${onch?' onchange="'+onch+'"':''}>${html}</select>
     </div>`;
   const ta = (id, label, val) =>
     `<div class="sc-full-edit-field span2">
       <label>${label}</label>
-      <textarea id="esc-${id}">${(val||'').toString().replace(/</g,'&lt;')}</textarea>
+      <textarea id="esc-${id}">${_escEsc(val)}</textarea>
     </div>`;
-  return `
-    <div class="editar-sc-active-banner">✏️ MODO EDICIÓN — Modificá los campos y presioná GUARDAR</div>
+  const html = `
+    <div class="editar-sc-active-banner">✏️ MODO EDICIÓN — Los campos muestran lo cargado en la solicitud. Solo se guarda lo que cambies.</div>
     <div class="sc-full-edit-grid">
       ${f('numsc','N° SC',sc.numSC||sc.num)}
-      ${sel('estado','Estado',sc.estado,ESTADOS)}
-      ${sel('criticidad','Criticidad',sc.criticidad,CRIT)}
-      ${sel('area','Área',sc.area,AREAS)}
-      ${sc.area==='MANTENIMIENTO'?sel('subarea','Sub-área',sc.subarea,SUBAREAS):''}
+      ${sel('estado','Estado',_escOpts(SC_EDIT_ESTADOS, sc.estado))}
+      ${sel('criticidad','Criticidad',_escOpts(SC_FORM_CRIT, sc.criticidad))}
+      ${sel('area','Área',_escOpts(SC_FORM_AREAS, sc.area),'_escAreaCambio()')}
+      ${sel('subarea','Sub-área',_escSubareaHTML(sc.area, sc.subarea||''))}
       ${f('solicitante','Solicitante',sc.solicitante)}
       ${f('email','Correo',sc.email,'email')}
-      ${f('fecha','Fecha Solicitud',sc.fecha,'date')}
-      ${f('fechaLimite','Fecha Límite',sc.fechaLimite,'date')}
-      ${sel('motivo','Motivo de Compra',sc.motivo,MOTIVOS)}
+      ${f('fecha','Fecha Solicitud',_escFechaISO(sc.fecha),'date')}
+      ${f('fechaLimite','Fecha Límite',_escFechaISO(sc.fechaLimite),'date')}
+      ${sel('motivo','Motivo de Compra',_escOpts(SC_FORM_MOTIVOS, motivoSel),'_escMotivoCambio()')}
+      <div class="sc-full-edit-field" id="esc-motivo-otro-wrap" style="${motivoSel==='OTROS'?'':'display:none'}">
+        <label>Justificación "Otros"</label>
+        <input type="text" id="esc-motivoOtro" value="${_escEsc(motivoOtro)}" placeholder="Describí el motivo...">
+      </div>
       ${f('os','Orden de Servicio',sc.os)}
       ${f('osAsunto','Asunto OS',sc.osAsunto)}
       ${ta('osDesc','Descripción OS',sc.osDesc)}
       ${f('osResp','Responsable OS',sc.osResp)}
       ${f('panolero','Pañolero Consultado',sc.panolero)}
+      ${ta('obs','Observaciones',sc.obs)}
     </div>
+    <div style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Para cancelar la solicitud usá el botón ⛔ Cancelar SC (pide PIN y motivo).</div>
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px">
       <button class="btn btn-ghost btn-sm" onclick="desactivarEditarSC();verSC(window._scIdx)">Cancelar</button>
       <button onclick="guardarEditCompletoSC(${idx})"
@@ -3665,63 +3730,40 @@ function renderEditGridSC(sc, idx) {
         💾 Guardar cambios
       </button>
     </div>`;
+  // Foto de los valores al abrir: después del render se toman del propio formulario
+  setTimeout(()=>{ try{ window._escOrig=_escValores(); window._escOrigIdx=idx; }catch(e){} }, 0);
+  return html;
 }
 
 async function guardarEditCompletoSC(idx) {
   if (!modoEditarSC || !esModoEditor()) return;
   const sc = scs[idx]; if (!sc) return;
-  const g = id => (document.getElementById('esc-'+id)||{}).value||'';
-
-  const oldNumSC = sc.numSC || sc.num;
-  const newNumSC = g('numsc').trim() || oldNumSC;
-
-  // Build patch object
-  const newArea = g('area');
-  // Auto-clear subarea if new area doesn't support it
-  const AREAS_CON_SUBAREA = new Set(['MANTENIMIENTO','SSMA']);
-  const newSubarea = AREAS_CON_SUBAREA.has(newArea) ? g('subarea') : '';
-
-  const patch = {
-    num_sc:       newNumSC,
-    estado:       g('estado'),
-    criticidad:   g('criticidad'),
-    area:         newArea,
-    subarea:      newSubarea,
-    solicitante:  g('solicitante'),
-    email:        g('email'),
-    fecha:        g('fecha'),
-    fecha_limite: g('fechaLimite'),
-    motivo:       g('motivo'),
-    os:           g('os'),
-    os_asunto:    g('osAsunto'),
-    os_desc:      g('osDesc'),
-    os_resp:      g('osResp'),
-    panolero:     g('panolero'),
-  };
-
-  // Update Supabase
-  const ok = await sbPatch('solicitudes_compra', 'num_sc', oldNumSC, patch);
-
-  // Update local state
-  Object.assign(sc, {
-    numSC: newNumSC, num: newNumSC,
-    estado: patch.estado, criticidad: patch.criticidad,
-    area: patch.area, subarea: patch.subarea || '',
-    solicitante: patch.solicitante, email: patch.email,
-    fecha: patch.fecha, fechaLimite: patch.fecha_limite,
-    motivo: patch.motivo, os: patch.os, osAsunto: patch.os_asunto,
-    osDesc: patch.os_desc, osResp: patch.os_resp, panolero: patch.panolero,
+  if (_scBloqCancel(sc,'editar')) return;
+  const orig = (window._escOrigIdx===idx && window._escOrig) ? window._escOrig : null;
+  if (!orig) { showToast('Volvé a abrir la solicitud para editarla','error'); return; }
+  const nv = _escValores();
+  const MAP = { numsc:['num_sc','numSC'], estado:['estado','estado'], criticidad:['criticidad','criticidad'], area:['area','area'],
+    subarea:['subarea','subarea'], solicitante:['solicitante','solicitante'], email:['email','email'], fecha:['fecha','fecha'],
+    fechaLimite:['fecha_limite','fechaLimite'], motivo:['motivo','motivo'], os:['os','os'], osAsunto:['os_asunto','osAsunto'],
+    osDesc:['os_desc','osDesc'], osResp:['os_resp','osResp'], panolero:['panolero','panolero'], obs:['obs','obs'] };
+  const patch = {}, local = {}, cambios = [];
+  Object.keys(MAP).forEach(k=>{
+    if (nv[k] === orig[k]) return;            // sin tocar → no se envía
+    if (k==='numsc' && !nv[k]) return;         // el N° no puede quedar vacío
+    patch[MAP[k][0]] = nv[k];
+    local[MAP[k][1]] = nv[k];
+    cambios.push(k);
   });
-  // Also update localStorage cache
+  if (!cambios.length) { showToast('No hay cambios para guardar','ok'); return; }
+  const oldNumSC = sc.numSC || sc.num;
+  await sbPatch('solicitudes_compra', 'num_sc', oldNumSC, patch);
+  if (local.numSC) local.num = local.numSC;
+  Object.assign(sc, local);
   _lsSet('nielsen_scs_2026', JSON.stringify(scs));
-
-  // Re-render all views
   if (typeof renderHistorial === 'function') renderHistorial();
   if (typeof renderPanelSC === 'function') renderPanelSC();
   if (typeof renderKanban === 'function') renderKanban();
-
-  showToast('✅ SC actualizada correctamente', 'ok');
-  // Refresh the modal with updated data
+  showToast('✅ SC actualizada ('+cambios.length+' campo'+(cambios.length>1?'s':'')+')', 'ok');
   verSC(idx);
 }
 
@@ -9322,34 +9364,6 @@ function verSC(idx) {
     ${_adjBanner}
     ${_cancelBanner}
     ${!_scCanc && modoEditarSC && esModoEditor() ? renderEditGridSC(sc, idx) + '<div style="display:none">' : ''}
-    ${!_scCanc && !modoEditarSC && esModoEditor() ? `<div class="sc-edit-panel">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--or);margin-bottom:12px">✏️ Editar Solicitud — PIN requerido al guardar</div>
-      <div class="sc-edit-row">
-        <div class="sc-edit-field"><label>Estado</label>
-          <select class="sc-edit-sel" id="edit-estado">
-            <option value="PENDIENTE" ${sc.estado==='PENDIENTE'?'selected':''}>🟡 PENDIENTE</option>
-            <option value="EN PROCESO" ${sc.estado==='EN PROCESO'?'selected':''}>🔵 EN PROCESO</option>
-            <option value="COMPLETADA" ${sc.estado==='COMPLETADA'?'selected':''}>✅ COMPLETADA</option>
-            <option value="CANCELADA" ${sc.estado==='CANCELADA'?'selected':''}>⬛ CANCELADA</option>
-          </select></div>
-        <div class="sc-edit-field"><label>Criticidad</label>
-          <select class="sc-edit-sel" id="edit-criticidad">
-            <option value="CRITICA"  ${sc.criticidad==='CRITICA' ?'selected':''}>🔴 CRÍTICA</option>
-            <option value="URGENTE"  ${sc.criticidad==='URGENTE' ?'selected':''}>🟠 URGENTE</option>
-            <option value="ALTA"     ${sc.criticidad==='ALTA'    ?'selected':''}>🟡 ALTA</option>
-            <option value="MEDIA"    ${sc.criticidad==='MEDIA'   ?'selected':''}>🟢 MEDIA</option>
-            <option value="BAJA"     ${sc.criticidad==='BAJA'    ?'selected':''}>⚪ BAJA</option>
-          </select></div>
-        <div class="sc-edit-field"><label>Fecha límite</label>
-          <input type="date" class="sc-edit-sel" id="edit-fechalimite" value="${sc.fechaLimite||''}"></div>
-      </div>
-      <div class="sc-edit-row" style="margin-bottom:0">
-        <div class="sc-edit-field" style="flex:2;min-width:200px"><label>Observaciones</label>
-          <input type="text" class="sc-edit-sel" id="edit-obs" value="${sc.obs||''}" placeholder="Observaciones internas..."></div>
-        <button class="btn btn-sm" style="background:var(--or);color:#fff;border:none;font-weight:700;padding:8px 18px;align-self:flex-end;white-space:nowrap" onclick="guardarCambiosSC(${idx})">
-          💾 Guardar cambios</button>
-      </div>
-    </div>` : ''}
     ${!_scCanc && modoEditarSC && esModoEditor() ? '</div>' : ''}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
       <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Estado</div>${estBadge(sc)} ${critBadge(sc.criticidad)}</div>
